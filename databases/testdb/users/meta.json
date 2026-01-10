@@ -14,26 +14,23 @@
       "type": "TEXT",
       "primary_key": false,
       "unique": true,
-      "not_null": true,
-      "auto_increment": false
+      "not_null": true
     },
     {
       "name": "email",
       "type": "TEXT",
       "primary_key": false,
       "unique": true,
-      "not_null": true,
-      "auto_increment": false
+      "not_null": true
     },
     {
       "name": "is_active",
       "type": "BOOL",
       "primary_key": false,
       "unique": false,
-      "not_null": false,
-      "auto_increment": false
+      "not_null": false
     }
   ],
-  "last_insert_id": 5,
-  "RowCount":5 
+  "last_insert_id": 17,
+  "row_count": 7
 }

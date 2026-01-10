@@ -1,31 +1,43 @@
 [
   {
-    "id": 1,
-    "username": "alice",
     "email": "alice@example.com",
-    "is_active": true
+    "id": 1,
+    "is_active": true,
+    "username": "alice"
   },
   {
-    "id": 2,
-    "username": "bob",
     "email": "bob@example.com",
-    "is_active": true
+    "id": 2,
+    "is_active": true,
+    "username": "bob"
   },
   {
+    "email": "charlie@work.com",
     "id": 3,
-    "username": "charlie",
-    "email": "charlie@work.com"
+    "username": "charlie"
   },
   {
-    "id": 4,
-    "username": "david",
     "email": "david@company.org",
-    "is_active": false
+    "id": 4,
+    "is_active": false,
+    "username": "david"
   },
   {
-    "id": 5,
-    "username": "eve",
     "email": "eve@secure.mail",
-    "is_active": true
+    "id": 5,
+    "is_active": true,
+    "username": "eve"
+  },
+  {
+    "email": "frank@newuser.com",
+    "id": 6,
+    "is_active": true,
+    "username": "frank"
+  },
+  {
+    "email": "grace@secure.mail",
+    "id": 7,
+    "is_active": false,
+    "username": "grace"
   }
 ]
