@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
@@ -18,7 +19,7 @@ func main() {
 
 	// Set as default logger for entire application
 	slog.SetDefault(logger)
-
+	time.Sleep(1 * time.Second)
 	slog.Info("Starting application...")
 
 	// 1. Load Database
@@ -52,61 +53,85 @@ func main() {
 		os.Exit(1)
 	}
 
-	// 5. Demo: Insert new users (only if they don't exist)
-	// Note: do NOT provide "id" if it's auto-increment!
-	demoUsers := []data.Row{
-		{
-			"username":  "frank",
-			"email":     "frank@newuser.com",
-			"is_active": true,
-		},
-		{
-			"username":  "grace",
-			"email":     "grace@secure.mail",
-			"is_active": false,
-		},
+	slog.Info("=== Testing CRUD Operations ===")
+
+	// 5. SELECT All (before operations)
+	allRows := operations.SelectAll(usersTable)
+	slog.Info("Initial row count", "count", len(allRows))
+
+	// 6. Test UPDATE operation
+	slog.Info("=== Testing UPDATE ===")
+	
+	// Update alice's email
+	updated, err := operations.Update(usersTable, func(r data.Row) bool {
+		return r["username"] == "alice"
+	}, data.Row{
+		"email":     "alice.updated@example.com",
+		"is_active": false,
+	})
+	if err != nil {
+		slog.Error("UPDATE failed", "error", err)
+	} else {
+		slog.Info("UPDATE successful", "rows_updated", updated)
+		
+		// Verify update
+		if row, found := operations.SelectByUniqueIndex(usersTable, "username", "alice"); found {
+			slog.Info("Verified alice's updated data", 
+				"email", row["email"],
+				"is_active", row["is_active"],
+			)
+		}
 	}
 
-	slog.Info("Demo: Attempting to insert test users...")
-	for i, row := range demoUsers {
-		err := operations.Insert(usersTable, row)
-		if err != nil {
-			// Check if it's a duplicate - that's okay, just skip
-			slog.Warn("skipping user insert (likely already exists)",
-				"index", i+1,
-				"username", row["username"],
-				"reason", err.Error(),
-			)
-			continue // Don't exit, just skip this user
+	// 7. Test UPDATE by ID
+	slog.Info("=== Testing UPDATE by ID ===")
+	err = operations.UpdateByID(usersTable, int64(2), data.Row{
+		"email": "bob.new@example.com",
+	})
+	if err != nil {
+		slog.Error("UPDATE by ID failed", "error", err)
+	} else {
+		slog.Info("UPDATE by ID successful")
+		if row, found := operations.SelectByUniqueIndex(usersTable, "id", int64(2)); found {
+			slog.Info("Verified bob's updated email", "email", row["email"])
 		}
-		insertedRow := usersTable.Rows[len(usersTable.Rows)-1]
+	}
 
-		slog.Info("successfully inserted user",
-			"username", insertedRow["username"],
-			"email", insertedRow["email"],
-			"new_id", insertedRow["id"],
+	// 8. Test DELETE operation
+	slog.Info("=== Testing DELETE ===")
+	
+	// Delete inactive users
+	deleted, err := operations.Delete(usersTable, func(r data.Row) bool {
+		isActive, ok := r["is_active"].(bool)
+		return ok && !isActive
+	})
+	if err != nil {
+		slog.Error("DELETE failed", "error", err)
+	} else {
+		slog.Info("DELETE successful", "rows_deleted", deleted)
+	}
+
+	// 9. Test DELETE by ID
+	slog.Info("=== Testing DELETE by ID ===")
+	err = operations.DeleteByID(usersTable, int64(3))
+	if err != nil {
+		slog.Error("DELETE by ID failed", "error", err)
+	} else {
+		slog.Info("DELETE by ID successful (charlie deleted)")
+	}
+
+	// 10. Final SELECT to show remaining rows
+	finalRows := operations.SelectAll(usersTable)
+	slog.Info("Final row count after operations", "count", len(finalRows))
+	
+	for _, row := range finalRows {
+		slog.Info("Remaining user",
+			"id", row["id"],
+			"username", row["username"],
+			"email", row["email"],
+			"is_active", row["is_active"],
 		)
 	}
 
-	// 6. Select All (after inserts)
-	allRows := operations.SelectAll(usersTable)
-	slog.Info("all rows after insert",
-		"count", len(allRows),
-		"rows", allRows,
-	)
-
-	// 7. Select with Predicate (example)
-	graceUser := operations.SelectWhere(usersTable, func(r data.Row) bool {
-		return r["username"] == "grace"
-	})
-	slog.Info("found grace", "results", graceUser)
-
-	// 8. Select by Unique Index (using the new auto-generated IDs)
-	if row, found := operations.SelectByUniqueIndex(usersTable, "id", 6); found {
-		slog.Info("found user by id=6 (first new insert)", "data", row)
-	} else {
-		slog.Warn("user id=6 not found")
-	}
-
-	slog.Info("Application ready")
+	slog.Info("Application ready - all CRUD operations tested!")
 }

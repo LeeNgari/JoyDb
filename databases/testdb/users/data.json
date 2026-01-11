@@ -1,26 +1,9 @@
 [
   {
-    "email": "alice@example.com",
-    "id": 1,
-    "is_active": true,
-    "username": "alice"
-  },
-  {
-    "email": "bob@example.com",
+    "email": "bob.new@example.com",
     "id": 2,
     "is_active": true,
     "username": "bob"
-  },
-  {
-    "email": "charlie@work.com",
-    "id": 3,
-    "username": "charlie"
-  },
-  {
-    "email": "david@company.org",
-    "id": 4,
-    "is_active": false,
-    "username": "david"
   },
   {
     "email": "eve@secure.mail",
@@ -33,11 +16,5 @@
     "id": 6,
     "is_active": true,
     "username": "frank"
-  },
-  {
-    "email": "grace@secure.mail",
-    "id": 7,
-    "is_active": false,
-    "username": "grace"
   }
 ]
