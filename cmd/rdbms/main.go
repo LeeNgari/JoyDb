@@ -9,6 +9,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/loader"
 	"github.com/leengari/mini-rdbms/internal/storage/writer"
+	"github.com/leengari/mini-rdbms/internal/storage/bootstrap"
 	"github.com/leengari/mini-rdbms/internal/repl"
 )
 
@@ -20,8 +21,15 @@ func main() {
 	time.Sleep(1 * time.Second)
 	slog.Info("Starting RDBMS application...")
 
+	// Bootstrap database if not exists
+	dbPath := "databases/testdb"
+	if err := bootstrap.EnsureDatabase(dbPath); err != nil {
+		slog.Error("failed to bootstrap database", "error", err)
+		os.Exit(1)
+	}
+
 	// Load Database
-	db, err := loader.LoadDatabase("databases/testdb")
+	db, err := loader.LoadDatabase(dbPath)
 	if err != nil {
 		slog.Error("failed to load database", "error", err)
 		closeFn()
