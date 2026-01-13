@@ -32,6 +32,12 @@ func Execute(stmt ast.Statement, db *schema.Database) (*Result, error) {
 }
 
 func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, error) {
+	// If there are JOINs, use the JOIN executor
+	if len(stmt.Joins) > 0 {
+		return executeJoinSelect(stmt, db)
+	}
+
+	// Simple SELECT without JOINs
 	tableName := stmt.TableName.Value
 	table, ok := db.Tables[tableName]
 	if !ok {
@@ -55,8 +61,13 @@ func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, err
 			Columns:   make([]projection.ColumnRef, len(stmt.Fields)),
 		}
 		for i, f := range stmt.Fields {
-			proj.Columns[i] = projection.ColumnRef{Column: f.Value}
-			columns = append(columns, f.Value)
+			// Handle qualified identifiers (table.column)
+			if f.Table != "" {
+				proj.Columns[i] = projection.ColumnRef{Table: f.Table, Column: f.Value}
+			} else {
+				proj.Columns[i] = projection.ColumnRef{Column: f.Value}
+			}
+			columns = append(columns, f.String())
 		}
 	}
 

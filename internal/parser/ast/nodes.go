@@ -51,11 +51,13 @@ func (l *Literal) expressionNode()      {}
 func (l *Literal) TokenLiteral() string { return l.TokenLiteralValue }
 func (l *Literal) String() string       { return l.TokenLiteralValue }
 
-// SelectStatement: SELECT col1, col2 FROM table WHERE ...
+// SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
+// Represents a SELECT SQL query with optional JOINs and WHERE clause
 type SelectStatement struct {
 	Fields    []*Identifier
 	TableName *Identifier
-	Where     Expression // For now, simple binary expression or nil
+	Joins     []*JoinClause // Optional JOIN clauses
+	Where     Expression    // Optional WHERE clause
 }
 
 func (s *SelectStatement) statementNode()       {}
@@ -64,17 +66,42 @@ func (s *SelectStatement) String() string {
 	var out bytes.Buffer
 	out.WriteString("SELECT ")
 	for i, f := range s.Fields {
-		out.WriteString(f.String())
-		if i < len(s.Fields)-1 {
+		if i > 0 {
 			out.WriteString(", ")
 		}
+		out.WriteString(f.String())
 	}
 	out.WriteString(" FROM ")
 	out.WriteString(s.TableName.String())
+	
+	// Add JOINs if present
+	for _, join := range s.Joins {
+		out.WriteString(" ")
+		out.WriteString(join.String())
+	}
+	
 	if s.Where != nil {
 		out.WriteString(" WHERE ")
 		out.WriteString(s.Where.String())
 	}
+	return out.String()
+}
+
+// JoinClause represents a JOIN operation in a SELECT statement
+// Example: INNER JOIN orders ON users.id = orders.user_id
+type JoinClause struct {
+	JoinType    string      // "INNER", "LEFT", "RIGHT", "FULL"
+	RightTable  *Identifier // Table to join with
+	OnCondition Expression  // JOIN condition (e.g., users.id = orders.user_id)
+}
+
+func (j *JoinClause) String() string {
+	var out bytes.Buffer
+	out.WriteString(j.JoinType)
+	out.WriteString(" JOIN ")
+	out.WriteString(j.RightTable.String())
+	out.WriteString(" ON ")
+	out.WriteString(j.OnCondition.String())
 	return out.String()
 }
 
