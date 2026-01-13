@@ -101,16 +101,26 @@ func executeInsert(stmt *ast.InsertStatement, db *schema.Database) (*Result, err
 		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(stmt.Columns), len(stmt.Values))
 	}
 
+	// Build row from values
 	row := make(data.Row)
 	for i, col := range stmt.Columns {
-		valExpr := stmt.Values[i]
-		lit, ok := valExpr.(*ast.Literal)
+		lit, ok := stmt.Values[i].(*ast.Literal)
 		if !ok {
-			return nil, fmt.Errorf("only literal values supported in INSERT for now")
+			return nil, fmt.Errorf("only literals supported in VALUES")
 		}
+
+		// Validate type matches schema
+		schemaCol := findColumnInSchema(table, col.Value)
+		if schemaCol != nil {
+			if err := validateLiteralType(lit, schemaCol.Type); err != nil {
+				return nil, fmt.Errorf("column '%s': %w", col.Value, err)
+			}
+		}
+
 		row[col.Value] = lit.Value
 	}
 
+	// Insert the row
 	if err := crud.Insert(table, row); err != nil {
 		return nil, err
 	}

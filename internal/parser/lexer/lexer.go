@@ -39,6 +39,9 @@ const (
 	FULL
 	OUTER
 	ON
+	DATE
+	TIME
+	EMAIL
 
 	// Operators & Punctuation
 	ASTERISK    // *
@@ -76,6 +79,9 @@ var keywords = map[string]TokenType{
 	"FULL":   FULL,
 	"OUTER":  OUTER,
 	"ON":     ON,
+	"DATE":   DATE,
+	"TIME":   TIME,
+	"EMAIL":  EMAIL,
 }
 
 type Token struct {

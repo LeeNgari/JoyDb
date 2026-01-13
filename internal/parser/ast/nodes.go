@@ -40,11 +40,25 @@ func (i *Identifier) String() string {
 	return i.Value
 }
 
-// Literal represents a fixed value (string, number)
+// LiteralKind represents the type of a literal value
+type LiteralKind string
+
+const (
+	LiteralString LiteralKind = "STRING"
+	LiteralInt    LiteralKind = "INT"
+	LiteralFloat  LiteralKind = "FLOAT"
+	LiteralBool   LiteralKind = "BOOL"
+	LiteralDate   LiteralKind = "DATE"
+	LiteralTime   LiteralKind = "TIME"
+	LiteralEmail  LiteralKind = "EMAIL"
+)
+
+// Literal represents a fixed value (string, number, boolean, date, time, email)
+// Examples: 'hello', 42, 3.14, true, DATE '2024-01-13', TIME '14:30:00', EMAIL 'user@example.com'
 type Literal struct {
-	TokenLiteralValue string
-	Value             interface{} // string, int, float64
-	Kind              int         // 0=String, 1=Int, 2=Float
+	TokenLiteralValue string      // The original token text
+	Value             interface{} // The parsed value (string, int, float64, bool)
+	Kind              LiteralKind // The type of literal
 }
 
 func (l *Literal) expressionNode()      {}
