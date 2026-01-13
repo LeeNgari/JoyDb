@@ -25,18 +25,34 @@ const (
 	INSERT
 	INTO
 	VALUES
+	UPDATE
+	SET
+	DELETE
 	AND
 	OR
 	TRUE
 	FALSE
+	JOIN
+	INNER
+	LEFT
+	RIGHT
+	FULL
+	OUTER
+	ON
 
 	// Operators & Punctuation
-	ASTERISK   // *
-	COMMA      // ,
-	PAREN_OPEN // (
+	ASTERISK    // *
+	COMMA       // ,
+	PAREN_OPEN  // (
 	PAREN_CLOSE // )
-	EQUALS     // =
-	SEMICOLON  // ;
+	EQUALS      // =
+	LESS_THAN   // <
+	GREATER_THAN // >
+	LESS_EQUAL   // <=
+	GREATER_EQUAL // >=
+	NOT_EQUAL    // != or <>
+	DOT          // .
+	SEMICOLON   // ;
 )
 
 var keywords = map[string]TokenType{
@@ -46,10 +62,20 @@ var keywords = map[string]TokenType{
 	"INSERT": INSERT,
 	"INTO":   INTO,
 	"VALUES": VALUES,
+	"UPDATE": UPDATE,
+	"SET":    SET,
+	"DELETE": DELETE,
 	"AND":    AND,
 	"OR":     OR,
 	"TRUE":   TRUE,
 	"FALSE":  FALSE,
+	"JOIN":   JOIN,
+	"INNER":  INNER,
+	"LEFT":   LEFT,
+	"RIGHT":  RIGHT,
+	"FULL":   FULL,
+	"OUTER":  OUTER,
+	"ON":     ON,
 }
 
 type Token struct {
@@ -115,6 +141,44 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(PAREN_CLOSE, l.ch, l.line, l.column)
 	case '=':
 		tok = newToken(EQUALS, l.ch, l.line, l.column)
+	case '<':
+		// Check for <= or <>
+		if l.peekChar() == '=' {
+			ch := l.ch
+			col := l.column
+			l.readChar()
+			tok = Token{Type: LESS_EQUAL, Literal: string(ch) + string(l.ch), Line: l.line, Column: col}
+		} else if l.peekChar() == '>' {
+			ch := l.ch
+			col := l.column
+			l.readChar()
+			tok = Token{Type: NOT_EQUAL, Literal: string(ch) + string(l.ch), Line: l.line, Column: col}
+		} else {
+			tok = newToken(LESS_THAN, l.ch, l.line, l.column)
+		}
+	case '>':
+		// Check for >=
+		if l.peekChar() == '=' {
+			ch := l.ch
+			col := l.column
+			l.readChar()
+			tok = Token{Type: GREATER_EQUAL, Literal: string(ch) + string(l.ch), Line: l.line, Column: col}
+		} else {
+			tok = newToken(GREATER_THAN, l.ch, l.line, l.column)
+		}
+	case '!':
+		// Check for !=
+		if l.peekChar() == '=' {
+			ch := l.ch
+			col := l.column
+			l.readChar()
+			tok = Token{Type: NOT_EQUAL, Literal: string(ch) + string(l.ch), Line: l.line, Column: col}
+		} else {
+			// ! by itself is illegal in SQL
+			tok = newToken(ILLEGAL, l.ch, l.line, l.column)
+		}
+	case '.':
+		tok = newToken(DOT, l.ch, l.line, l.column)
 	case ';':
 		tok = newToken(SEMICOLON, l.ch, l.line, l.column)
 	case '\'':
