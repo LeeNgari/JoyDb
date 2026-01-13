@@ -359,16 +359,24 @@ func (p *Parser) parseIdentifierList() ([]*ast.Identifier, error) {
 		return nil, fmt.Errorf("expected identifier, got %s", p.curTok.Literal)
 	}
 
-	identifiers = append(identifiers, &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal})
-	p.nextToken()
+	// Parse first identifier (possibly qualified)
+	ident, err := p.parseQualifiedIdentifier()
+	if err != nil {
+		return nil, err
+	}
+	identifiers = append(identifiers, ident)
 
+	// Parse remaining identifiers
 	for p.curTok.Type == lexer.COMMA {
 		p.nextToken()
 		if p.curTok.Type != lexer.IDENTIFIER {
 			return nil, fmt.Errorf("expected identifier after comma, got %s", p.curTok.Literal)
 		}
-		identifiers = append(identifiers, &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal})
-		p.nextToken()
+		ident, err := p.parseQualifiedIdentifier()
+		if err != nil {
+			return nil, err
+		}
+		identifiers = append(identifiers, ident)
 	}
 
 	// Handle ) for column list in INSERT
@@ -377,6 +385,35 @@ func (p *Parser) parseIdentifierList() ([]*ast.Identifier, error) {
 	}
 
 	return identifiers, nil
+}
+
+// parseQualifiedIdentifier parses an identifier that may be qualified (table.column)
+// or unqualified (column). Used in SELECT field lists and other contexts.
+func (p *Parser) parseQualifiedIdentifier() (*ast.Identifier, error) {
+	if p.curTok.Type != lexer.IDENTIFIER {
+		return nil, fmt.Errorf("expected identifier, got %s", p.curTok.Literal)
+	}
+
+	firstPart := p.curTok.Literal
+	p.nextToken()
+
+	// Check for qualified identifier (table.column)
+	if p.curTok.Type == lexer.DOT {
+		p.nextToken()
+		if p.curTok.Type != lexer.IDENTIFIER {
+			return nil, fmt.Errorf("expected column name after '.', got %s", p.curTok.Literal)
+		}
+		colName := p.curTok.Literal
+		p.nextToken()
+		return &ast.Identifier{
+			TokenLiteralValue: firstPart + "." + colName,
+			Table:             firstPart,
+			Value:             colName,
+		}, nil
+	}
+
+	// Unqualified identifier
+	return &ast.Identifier{TokenLiteralValue: firstPart, Value: firstPart}, nil
 }
 
 func (p *Parser) parseExpressionList() ([]ast.Expression, error) {

@@ -234,12 +234,28 @@ func buildComparisonPredicate(binExpr *ast.BinaryExpression) (crud.PredicateFunc
 		return nil, fmt.Errorf("right side of comparison must be a literal")
 	}
 
+	// Get column name (may be qualified like "orders.amount" or unqualified like "amount")
 	colName := leftIdent.Value
-	targetVal := rightLit.Value
+	tableName := leftIdent.Table
 	operator := binExpr.Operator
+	targetVal := rightLit.Value
 
 	return func(row data.Row) bool {
-		val, ok := row[colName]
+		var val interface{}
+		var ok bool
+
+		// Try qualified name first if table is specified (e.g., "orders.amount")
+		if tableName != "" {
+			qualifiedName := tableName + "." + colName
+			val, ok = row[qualifiedName]
+		}
+
+		// If not found with qualified name, try unqualified (e.g., "amount")
+		if !ok {
+			val, ok = row[colName]
+		}
+
+		// If still not found, return false
 		if !ok {
 			return false
 		}
