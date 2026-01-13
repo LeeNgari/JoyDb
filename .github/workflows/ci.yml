@@ -1,4 +1,4 @@
-name: Go CI
+name:  CI
 
 on:
   push:
@@ -20,5 +20,8 @@ jobs:
     - name: Build
       run: go build -v ./...
 
-    - name: Test
-      run: go test -v ./...
+    - name: Install gotestsum
+      run: go install gotest.tools/gotestsum@latest
+
+    - name: Test with gotestsum
+      run: gotestsum --format testname -- -v ./...
