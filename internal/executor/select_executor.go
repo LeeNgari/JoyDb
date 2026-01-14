@@ -5,35 +5,30 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
+	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
-	"github.com/leengari/mini-rdbms/internal/executor/predicate"
 )
 
-// executeSelect handles SELECT statements without JOINs
-// For SELECT with JOINs, see join_executor.go
-func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, error) {
+// executeSelect handles SELECT plans
+func executeSelect(node *plan.SelectNode, db *schema.Database) (*Result, error) {
 	// If there are JOINs, use the JOIN executor
-	if len(stmt.Joins) > 0 {
-		return executeJoinSelect(stmt, db)
+	if len(node.Joins) > 0 {
+		return executeJoinSelect(node, db)
 	}
 
-	// Simple SELECT without JOINs
-	tableName := stmt.TableName.Value
-	table, ok := db.Tables[tableName]
+	table, ok := db.Tables[node.TableName]
 	if !ok {
-		return nil, fmt.Errorf("table not found: %s", tableName)
+		// Should be caught by planner, but check anyway
+		return nil, fmt.Errorf("table not found: %s", node.TableName)
 	}
 
-	// Build Projection
-	var proj *projection.Projection
+	// Calculate Result Metadata (Columns & Types)
 	var columns []string
 	var metadata []ColumnMetadata
 
-	// Check for SELECT *
-	if len(stmt.Fields) == 1 && stmt.Fields[0].Value == "*" {
-		proj = projection.NewProjection()
-		// Get all columns from schema for result header
+	proj := node.Projection
+	if proj.SelectAll {
+		// Get all columns from schema
 		for _, col := range table.Schema.Columns {
 			columns = append(columns, col.Name)
 			metadata = append(metadata, ColumnMetadata{
@@ -42,22 +37,17 @@ func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, err
 			})
 		}
 	} else {
-		proj = &projection.Projection{
-			SelectAll: false,
-			Columns:   make([]projection.ColumnRef, len(stmt.Fields)),
-		}
-		for i, f := range stmt.Fields {
-			// Handle qualified identifiers (table.column)
-			if f.Table != "" {
-				proj.Columns[i] = projection.ColumnRef{Table: f.Table, Column: f.Value}
-			} else {
-				proj.Columns[i] = projection.ColumnRef{Column: f.Value}
+		for _, colRef := range proj.Columns {
+			colName := colRef.Column
+			if colRef.Alias != "" {
+				colName = colRef.Alias
+			} else if colRef.Table != "" {
+				colName = fmt.Sprintf("%s.%s", colRef.Table, colRef.Column)
 			}
-			colName := f.String()
 			columns = append(columns, colName)
-			
-			// Look up type from schema
-			col := findColumnInSchema(table, f.Value)
+
+			// Look up type
+			col := findColumnInSchema(table, colRef.Column)
 			if col != nil {
 				metadata = append(metadata, ColumnMetadata{
 					Name: colName,
@@ -66,7 +56,7 @@ func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, err
 			} else {
 				metadata = append(metadata, ColumnMetadata{
 					Name: colName,
-					Type: "TEXT",
+					Type: "TEXT", // Fallback
 				})
 			}
 		}
@@ -74,23 +64,17 @@ func executeSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result, err
 
 	var rows []data.Row
 
-	if stmt.Where == nil {
-		// Use domain model for SelectAll
+	if node.Predicate == nil {
 		allRows := table.SelectAll()
 		rows = make([]data.Row, len(allRows))
 		for i, row := range allRows {
-			rows[i] = projection.ProjectRow(row, proj, tableName)
+			rows[i] = projection.ProjectRow(row, proj, node.TableName)
 		}
 	} else {
-		pred, err := predicate.Build(stmt.Where)
-		if err != nil {
-			return nil, err
-		}
-		// Use domain model for Select with predicate
-		matchedRows := table.Select(pred)
+		matchedRows := table.Select(node.Predicate)
 		rows = make([]data.Row, len(matchedRows))
 		for i, row := range matchedRows {
-			rows[i] = projection.ProjectRow(row, proj, tableName)
+			rows[i] = projection.ProjectRow(row, proj, node.TableName)
 		}
 	}
 

@@ -8,15 +8,16 @@ import (
 	"text/tabwriter"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/engine"
 	"github.com/leengari/mini-rdbms/internal/executor"
-	"github.com/leengari/mini-rdbms/internal/parser"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
 )
 
 func Start(db *schema.Database) {
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Welcome to M")
 	fmt.Println("Type 'exit' or '\\q' to quit.")
+
+	eng := engine.New(db)
 
 	for {
 		fmt.Print("> ")
@@ -33,25 +34,10 @@ func Start(db *schema.Database) {
 			break
 		}
 
-		// Tokenize
-		tokens, err := lexer.Tokenize(line)
+		// Execute using Engine
+		result, err := eng.Execute(line)
 		if err != nil {
-			fmt.Printf("Lexer Error: %v\n", err)
-			continue
-		}
-
-		// Parse
-		p := parser.New(tokens)
-		stmt, err := p.Parse()
-		if err != nil {
-			fmt.Printf("Parse Error: %v\n", err)
-			continue
-		}
-
-		// Execute
-		result, err := executor.Execute(stmt, db)
-		if err != nil {
-			fmt.Printf("Execution Error: %v\n", err)
+			fmt.Printf("Error: %v\n", err)
 			continue
 		}
 

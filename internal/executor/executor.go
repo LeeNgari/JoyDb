@@ -5,7 +5,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
+	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
 // ColumnMetadata provides rich information about a result column
@@ -23,20 +23,20 @@ type Result struct {
 	RowsAffected int              // Rows affected by INSERT/UPDATE/DELETE
 }
 
-// Execute is the main entry point for executing SQL statements
-// It dispatches to the appropriate executor based on statement type
-func Execute(stmt ast.Statement, db *schema.Database) (*Result, error) {
-	switch s := stmt.(type) {
-	case *ast.SelectStatement:
-		return executeSelect(s, db)
-	case *ast.InsertStatement:
-		return executeInsert(s, db)
-	case *ast.UpdateStatement:
-		return executeUpdate(s, db)
-	case *ast.DeleteStatement:
-		return executeDelete(s, db)
+// Execute is the main entry point for executing execution plans
+// It dispatches to the appropriate executor based on node type
+func Execute(node plan.Node, db *schema.Database) (*Result, error) {
+	switch n := node.(type) {
+	case *plan.SelectNode:
+		return executeSelect(n, db)
+	case *plan.InsertNode:
+		return executeInsert(n, db)
+	case *plan.UpdateNode:
+		return executeUpdate(n, db)
+	case *plan.DeleteNode:
+		return executeDelete(n, db)
 	default:
-		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
+		return nil, fmt.Errorf("unsupported plan node type: %T", node)
 	}
 }
 
