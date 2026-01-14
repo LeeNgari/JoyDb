@@ -1,0 +1,598 @@
+Rich Domain Model & Decoupling Implementation Plan
+Executive Summary
+This plan addresses two major architectural improvements:
+
+Rich Domain Model: Move CRUD behavior onto 
+Table
+ and 
+Database
+ domain objects
+Layer Decoupling: Introduce interfaces between all layers (REPL → Executor → Query → Storage)
+Timeline: 7-10 days
+Risk: Medium (requires careful migration)
+Impact: High (significantly improves maintainability and extensibility)
+
+Current Architecture Analysis
+Current Layer Dependencies (Tight Coupling)
+REPL Layer
+  ↓ (direct imports)
+  ├─→ parser (lexer, ast)
+  ├─→ executor
+  └─→ schema.Database
+Executor Layer
+  ↓ (direct imports)
+  ├─→ parser/ast
+  ├─→ schema (Database, Table)
+  ├─→ query/operations/crud
+  ├─→ query/operations/join
+  └─→ query/operations/projection
+Query Operations Layer
+  ↓ (direct imports)
+  ├─→ schema (Table, Column)
+  ├─→ data (Row, Index)
+  └─→ errors
+Storage Layer
+  ↓ (direct imports)
+  ├─→ schema (Database, Table)
+  └─→ data (Row)
+Problems Identified
+REPL knows too much: Directly imports lexer, parser, executor, and schema
+Executor tightly coupled: Depends on concrete types from parser, schema, and query
+Query operations reach into domain: Direct access to Table internals
+No abstraction boundaries: Can't swap implementations
+Circular dependency risk: Domain ← Query ← Domain (potential)
+Hard to test: Can't mock dependencies easily
+Proposed Architecture
+New Layer Structure with Interfaces
+┌─────────────────────────────────────────────────────┐
+│                    REPL Layer                        │
+│  - Only knows about Engine interface                │
+│  - No knowledge of parser, executor, storage        │
+└──────────────────┬──────────────────────────────────┘
+                   │ uses
+                   ↓
+┌─────────────────────────────────────────────────────┐
+│                 Engine Interface                     │
+│  Execute(sql string) (*Result, error)               │
+│  LoadDatabase(path string) error                    │
+│  SaveDatabase() error                               │
+└──────────────────┬──────────────────────────────────┘
+                   │ implemented by
+                   ↓
+┌─────────────────────────────────────────────────────┐
+│                Executor Layer                        │
+│  - Coordinates parsing and execution                │
+│  - Uses Parser and QueryEngine interfaces           │
+└──────────────────┬──────────────────────────────────┘
+                   │ uses
+                   ↓
+┌──────────────────┬──────────────────────────────────┐
+│  Parser Interface         QueryEngine Interface     │
+│  Parse(sql) Statement     Execute(stmt) Result      │
+└──────────────────┴──────────────────────────────────┘
+                   │ uses
+                   ↓
+┌─────────────────────────────────────────────────────┐
+│              Rich Domain Model                       │
+│  Database.Execute(stmt) (*Result, error)            │
+│  Table.Insert(row) error                            │
+│  Table.Select(pred) []Row                           │
+│  Table.Update(pred, updates) (int, error)           │
+│  Table.Delete(pred) (int, error)                    │
+└──────────────────┬──────────────────────────────────┘
+                   │ uses
+                   ↓
+┌─────────────────────────────────────────────────────┐
+│              Storage Interface                       │
+│  Load(path) (*Database, error)                      │
+│  Save(db *Database, path) error                     │
+└─────────────────────────────────────────────────────┘
+Phase 1: Define Core Interfaces (Day 1)
+1.1 Create Engine Interface
+File: internal/engine/interface.go
+
+package engine
+import "github.com/leengari/mini-rdbms/internal/executor"
+// Engine is the main interface for the RDBMS
+type Engine interface {
+    // Execute runs a SQL statement and returns results
+    Execute(sql string) (*executor.Result, error)
+    
+    // LoadDatabase loads a database from the given path
+    LoadDatabase(path string) error
+    
+    // SaveDatabase persists the current database
+    SaveDatabase() error
+    
+    // Close cleanly shuts down the engine
+    Close() error
+}
+1.2 Create QueryEngine Interface
+File: internal/query/interface.go
+
+package query
+import (
+    "github.com/leengari/mini-rdbms/internal/domain/data"
+    "github.com/leengari/mini-rdbms/internal/parser/ast"
+)
+// QueryEngine executes parsed SQL statements
+type QueryEngine interface {
+    // ExecuteSelect executes a SELECT statement
+    ExecuteSelect(stmt *ast.SelectStatement) ([]data.Row, []string, error)
+    
+    // ExecuteInsert executes an INSERT statement
+    ExecuteInsert(stmt *ast.InsertStatement) (int, error)
+    
+    // ExecuteUpdate executes an UPDATE statement
+    ExecuteUpdate(stmt *ast.UpdateStatement) (int, error)
+    
+    // ExecuteDelete executes a DELETE statement
+    ExecuteDelete(stmt *ast.DeleteStatement) (int, error)
+}
+1.3 Create Storage Interface
+File: internal/storage/interface.go
+
+package storage
+import "github.com/leengari/mini-rdbms/internal/domain/schema"
+// Storage handles database persistence
+type Storage interface {
+    // Load loads a database from the given path
+    Load(path string) (*schema.Database, error)
+    
+    // Save persists a database to its path
+    Save(db *schema.Database) error
+    
+    // SaveTable persists a single table
+    SaveTable(table *schema.Table) error
+}
+Phase 2: Implement Rich Domain Model (Days 2-3)
+2.1 Add Methods to Table
+File: 
+internal/domain/schema/table.go
+
+package schema
+import (
+    "github.com/leengari/mini-rdbms/internal/domain/data"
+    "github.com/leengari/mini-rdbms/internal/domain/errors"
+    "github.com/leengari/mini-rdbms/internal/query/validation"
+)
+// Insert adds a new row to the table
+func (t *Table) Insert(row data.Row) error {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    
+    // Make a copy to prevent mutation
+    rowCopy := row.Copy()
+    
+    // Handle auto-increment
+    if err := t.handleAutoIncrement(rowCopy); err != nil {
+        return err
+    }
+    
+    // Validate row
+    if err := validation.ValidateRow(t, rowCopy, -1); err != nil {
+        return err
+    }
+    
+    // Check constraints
+    if err := t.checkConstraints(rowCopy); err != nil {
+        return err
+    }
+    
+    // Add row
+    newRowPos := len(t.Rows)
+    t.Rows = append(t.Rows, rowCopy)
+    
+    // Update indexes
+    t.updateIndexes(rowCopy, newRowPos)
+    
+    // Mark dirty
+    t.Dirty = true
+    
+    return nil
+}
+// Select returns rows matching the predicate
+func (t *Table) Select(predicate func(data.Row) bool) []data.Row {
+    t.mu.RLock()
+    defer t.mu.RUnlock()
+    
+    var results []data.Row
+    for _, row := range t.Rows {
+        if predicate == nil || predicate(row) {
+            results = append(results, row.Copy())
+        }
+    }
+    return results
+}
+// SelectAll returns all rows
+func (t *Table) SelectAll() []data.Row {
+    return t.Select(nil)
+}
+// SelectByIndex uses an index for faster lookup
+func (t *Table) SelectByIndex(columnName string, value interface{}) (data.Row, bool) {
+    t.mu.RLock()
+    defer t.mu.RUnlock()
+    
+    idx, exists := t.Indexes[columnName]
+    if !exists || !idx.Unique {
+        return nil, false
+    }
+    
+    positions, found := idx.Data[value]
+    if !found || len(positions) == 0 {
+        return nil, false
+    }
+    
+    return t.Rows[positions[0]].Copy(), true
+}
+// Update modifies rows matching the predicate
+func (t *Table) Update(predicate func(data.Row) bool, updates data.Row) (int, error) {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    
+    count := 0
+    for i, row := range t.Rows {
+        if predicate(row) {
+            // Validate updates
+            if err := t.validateUpdates(row, updates); err != nil {
+                return 0, err
+            }
+            
+            // Apply updates
+            for key, value := range updates {
+                t.Rows[i][key] = value
+            }
+            count++
+        }
+    }
+    
+    if count > 0 {
+        t.Dirty = true
+    }
+    
+    return count, nil
+}
+// Delete removes rows matching the predicate
+func (t *Table) Delete(predicate func(data.Row) bool) (int, error) {
+    t.mu.Lock()
+    defer t.mu.Unlock()
+    
+    var newRows []data.Row
+    deleted := 0
+    
+    for _, row := range t.Rows {
+        if predicate(row) {
+            deleted++
+        } else {
+            newRows = append(newRows, row)
+        }
+    }
+    
+    if deleted > 0 {
+        t.Rows = newRows
+        t.rebuildIndexes()
+        t.Dirty = true
+    }
+    
+    return deleted, nil
+}
+// Private helper methods
+func (t *Table) handleAutoIncrement(row data.Row) error {
+    // Implementation from crud/insert.go
+}
+func (t *Table) checkConstraints(row data.Row) error {
+    // Check unique, primary key constraints
+}
+func (t *Table) validateUpdates(row, updates data.Row) error {
+    // Validate update values
+}
+func (t *Table) updateIndexes(row data.Row, position int) {
+    // Update all indexes
+}
+func (t *Table) rebuildIndexes() {
+    // Rebuild all indexes after delete
+}
+2.2 Add Methods to Database
+File: 
+internal/domain/schema/database.go
+
+package schema
+import "github.com/leengari/mini-rdbms/internal/domain/errors"
+// GetTable returns a table by name
+func (db *Database) GetTable(name string) (*Table, error) {
+    table, ok := db.Tables[name]
+    if !ok {
+        return nil, errors.NewTableNotFoundError(name)
+    }
+    return table, nil
+}
+// TableExists checks if a table exists
+func (db *Database) TableExists(name string) bool {
+    _, ok := db.Tables[name]
+    return ok
+}
+// SaveAll persists all dirty tables
+func (db *Database) SaveAll(storage Storage) error {
+    for _, table := range db.Tables {
+        if table.Dirty {
+            if err := storage.SaveTable(table); err != nil {
+                return err
+            }
+        }
+    }
+    return nil
+}
+Phase 3: Create Adapter Layer (Day 4)
+3.1 Query Engine Adapter
+File: internal/query/adapter.go
+
+package query
+import (
+    "github.com/leengari/mini-rdbms/internal/domain/data"
+    "github.com/leengari/mini-rdbms/internal/domain/schema"
+    "github.com/leengari/mini-rdbms/internal/parser/ast"
+    "github.com/leengari/mini-rdbms/internal/executor/predicate"
+)
+// DomainQueryEngine implements QueryEngine using rich domain model
+type DomainQueryEngine struct {
+    db *schema.Database
+}
+func NewDomainQueryEngine(db *schema.Database) *DomainQueryEngine {
+    return &DomainQueryEngine{db: db}
+}
+func (e *DomainQueryEngine) ExecuteInsert(stmt *ast.InsertStatement) (int, error) {
+    table, err := e.db.GetTable(stmt.TableName.Value)
+    if err != nil {
+        return 0, err
+    }
+    
+    // Build row from statement
+    row := make(data.Row)
+    for i, col := range stmt.Columns {
+        if i < len(stmt.Values) {
+            // Convert AST literal to value
+            value, err := convertLiteral(stmt.Values[i])
+            if err != nil {
+                return 0, err
+            }
+            row[col.Value] = value
+        }
+    }
+    
+    // Use domain model
+    if err := table.Insert(row); err != nil {
+        return 0, err
+    }
+    
+    return 1, nil
+}
+func (e *DomainQueryEngine) ExecuteSelect(stmt *ast.SelectStatement) ([]data.Row, []string, error) {
+    table, err := e.db.GetTable(stmt.TableName.Value)
+    if err != nil {
+        return nil, nil, err
+    }
+    
+    // Build predicate from WHERE clause
+    pred, err := predicate.Build(stmt.Where)
+    if err != nil {
+        return nil, nil, err
+    }
+    
+    // Use domain model
+    rows := table.Select(pred)
+    
+    // Build column list
+    columns := buildColumnList(stmt.Fields, table)
+    
+    return rows, columns, nil
+}
+// Similar for ExecuteUpdate, ExecuteDelete
+Phase 4: Implement Engine (Day 5)
+4.1 Main Engine Implementation
+File: internal/engine/engine.go
+
+package engine
+import (
+    "github.com/leengari/mini-rdbms/internal/domain/schema"
+    "github.com/leengari/mini-rdbms/internal/executor"
+    "github.com/leengari/mini-rdbms/internal/parser"
+    "github.com/leengari/mini-rdbms/internal/parser/lexer"
+    "github.com/leengari/mini-rdbms/internal/query"
+    "github.com/leengari/mini-rdbms/internal/storage"
+)
+type StandardEngine struct {
+    db          *schema.Database
+    queryEngine query.QueryEngine
+    storage     storage.Storage
+}
+func New() *StandardEngine {
+    return &StandardEngine{
+        storage: storage.NewFileStorage(),
+    }
+}
+func (e *StandardEngine) LoadDatabase(path string) error {
+    db, err := e.storage.Load(path)
+    if err != nil {
+        return err
+    }
+    
+    e.db = db
+    e.queryEngine = query.NewDomainQueryEngine(db)
+    return nil
+}
+func (e *StandardEngine) Execute(sql string) (*executor.Result, error) {
+    // Tokenize
+    tokens, err := lexer.Tokenize(sql)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Parse
+    p := parser.New(tokens)
+    stmt, err := p.Parse()
+    if err != nil {
+        return nil, err
+    }
+    
+    // Execute using current executor (for now)
+    // Later: migrate to use queryEngine interface
+    return executor.Execute(stmt, e.db)
+}
+func (e *StandardEngine) SaveDatabase() error {
+    return e.storage.Save(e.db)
+}
+func (e *StandardEngine) Close() error {
+    return e.SaveDatabase()
+}
+Phase 5: Update REPL to Use Engine (Day 6)
+5.1 Decouple REPL
+File: 
+internal/repl/repl.go
+
+package repl
+import (
+    "bufio"
+    "fmt"
+    "os"
+    "strings"
+    
+    "github.com/leengari/mini-rdbms/internal/engine"
+)
+// Start runs the REPL with the given engine
+func Start(eng engine.Engine) {
+    scanner := bufio.NewScanner(os.Stdin)
+    fmt.Println("Welcome to Mini-RDBMS")
+    fmt.Println("Type 'exit' or '\\q' to quit.")
+    
+    for {
+        fmt.Print("> ")
+        if !scanner.Scan() {
+            return
+        }
+        line := scanner.Text()
+        
+        if strings.TrimSpace(line) == "" {
+            continue
+        }
+        
+        if line == "exit" || line == "\\q" {
+            break
+        }
+        
+        // Execute through engine interface
+        result, err := eng.Execute(line)
+        if err != nil {
+            fmt.Printf("Error: %v\n", err)
+            continue
+        }
+        
+        // Print result
+        printResult(result)
+    }
+}
+// printResult remains the same
+5.2 Update Main
+File: 
+cmd/rdbms/main.go
+
+package main
+import (
+    "github.com/leengari/mini-rdbms/internal/engine"
+    "github.com/leengari/mini-rdbms/internal/repl"
+)
+func main() {
+    // Create engine
+    eng := engine.New()
+    
+    // Load database
+    if err := eng.LoadDatabase("../../databases/testdb"); err != nil {
+        panic(err)
+    }
+    defer eng.Close()
+    
+    // Start REPL
+    repl.Start(eng)
+}
+Phase 6: Migrate Executor to Use Domain Model (Day 7-8)
+6.1 Update Executors Incrementally
+Start with INSERT executor:
+
+// internal/executor/insert_executor.go
+func executeInsert(stmt *ast.InsertStatement, db *schema.Database) (*Result, error) {
+    table, err := db.GetTable(stmt.TableName.Value)
+    if err != nil {
+        return nil, err
+    }
+    
+    // Build row
+    row := buildRowFromStatement(stmt)
+    
+    // Use domain model method
+    if err := table.Insert(row); err != nil {
+        return nil, err
+    }
+    
+    return &Result{
+        Message:      fmt.Sprintf("INSERT INTO %s", stmt.TableName.Value),
+        RowsAffected: 1,
+    }, nil
+}
+Repeat for SELECT, UPDATE, DELETE executors.
+
+Phase 7: Create Storage Adapter (Day 9)
+7.1 Implement Storage Interface
+File: internal/storage/file_storage.go
+
+package storage
+import (
+    "github.com/leengari/mini-rdbms/internal/domain/schema"
+    "github.com/leengari/mini-rdbms/internal/storage/loader"
+    "github.com/leengari/mini-rdbms/internal/storage/writer"
+)
+type FileStorage struct{}
+func NewFileStorage() *FileStorage {
+    return &FileStorage{}
+}
+func (s *FileStorage) Load(path string) (*schema.Database, error) {
+    return loader.LoadDatabase(path)
+}
+func (s *FileStorage) Save(db *schema.Database) error {
+    return writer.SaveDatabase(db)
+}
+func (s *FileStorage) SaveTable(table *schema.Table) error {
+    return writer.SaveTable(table)
+}
+Phase 8: Testing & Validation (Day 10)
+8.1 Test Rich Domain Model
+func TestTableInsert(t *testing.T) {
+    table := createTestTable()
+    
+    row := data.Row{
+        "username": "test",
+        "email":    "test@example.com",
+    }
+    
+    err := table.Insert(row)
+    assert.NoError(t, err)
+    assert.Equal(t, 1, len(table.Rows))
+}
+func TestTableSelect(t *testing.T) {
+    table := createTestTableWithData()
+    
+    rows := table.Select(func(row data.Row) bool {
+        username, _ := row["username"].(string)
+        return username == "alice"
+    })
+    
+    assert.Equal(t, 1, len(rows))
+}
+8.2 Test Engine Interface
+func TestEngine(t *testing.T) {
+    eng := engine.New()
+    err := eng.LoadDatabase("testdata/db")
+    assert.NoError(t, err)
+    
+    result, err := eng.Execute("SELECT * FROM users")
+    assert.NoError(t, err)
+    assert.NotNil(t, result)
+}

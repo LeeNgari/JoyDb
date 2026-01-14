@@ -1,69 +1,6 @@
 package ast
 
-import (
-	"bytes"
-	"fmt"
-)
-
-// Node is the base interface for all AST nodes
-type Node interface {
-	TokenLiteral() string
-	String() string
-}
-
-// Statement represents a standalone SQL statement (SELECT, INSERT, etc.)
-type Statement interface {
-	Node
-	statementNode()
-}
-
-// Expression represents a value or operation
-type Expression interface {
-	Node
-	expressionNode()
-}
-
-// Identifier represents a column or table name
-// Can be qualified (table.column) or unqualified (column)
-type Identifier struct {
-	TokenLiteralValue string // The token literal (e.g. "users" or "users.id")
-	Value             string // The column/table name (e.g. "users" or "id")
-	Table             string // Optional table qualifier (e.g. "users" in "users.id")
-}
-
-func (i *Identifier) expressionNode()      {}
-func (i *Identifier) TokenLiteral() string { return i.TokenLiteralValue }
-func (i *Identifier) String() string {
-	if i.Table != "" {
-		return i.Table + "." + i.Value
-	}
-	return i.Value
-}
-
-// LiteralKind represents the type of a literal value
-type LiteralKind string
-
-const (
-	LiteralString LiteralKind = "STRING"
-	LiteralInt    LiteralKind = "INT"
-	LiteralFloat  LiteralKind = "FLOAT"
-	LiteralBool   LiteralKind = "BOOL"
-	LiteralDate   LiteralKind = "DATE"
-	LiteralTime   LiteralKind = "TIME"
-	LiteralEmail  LiteralKind = "EMAIL"
-)
-
-// Literal represents a fixed value (string, number, boolean, date, time, email)
-// Examples: 'hello', 42, 3.14, true, DATE '2024-01-13', TIME '14:30:00', EMAIL 'user@example.com'
-type Literal struct {
-	TokenLiteralValue string      // The original token text
-	Value             interface{} // The parsed value (string, int, float64, bool)
-	Kind              LiteralKind // The type of literal
-}
-
-func (l *Literal) expressionNode()      {}
-func (l *Literal) TokenLiteral() string { return l.TokenLiteralValue }
-func (l *Literal) String() string       { return l.TokenLiteralValue }
+import "bytes"
 
 // SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
 // Represents a SELECT SQL query with optional JOINs and WHERE clause
@@ -206,32 +143,4 @@ func (s *DeleteStatement) String() string {
 		out.WriteString(s.Where.String())
 	}
 	return out.String()
-}
-
-// BinaryExpression: Left Operator Right (e.g. id = 1)
-type BinaryExpression struct {
-	Left     Expression
-	Operator string
-	Right    Expression
-}
-
-func (e *BinaryExpression) expressionNode()      {}
-func (e *BinaryExpression) TokenLiteral() string { return e.Operator }
-func (e *BinaryExpression) String() string {
-	return fmt.Sprintf("(%s %s %s)", e.Left.String(), e.Operator, e.Right.String())
-}
-
-// LogicalExpression: Left Operator Right (e.g. age > 18 AND active = true)
-// Represents logical operations (AND, OR) that combine multiple conditions
-// Used in WHERE clauses to create complex predicates
-type LogicalExpression struct {
-	Left     Expression
-	Operator string // "AND" or "OR"
-	Right    Expression
-}
-
-func (e *LogicalExpression) expressionNode()      {}
-func (e *LogicalExpression) TokenLiteral() string { return e.Operator }
-func (e *LogicalExpression) String() string {
-	return fmt.Sprintf("(%s %s %s)", e.Left.String(), e.Operator, e.Right.String())
 }

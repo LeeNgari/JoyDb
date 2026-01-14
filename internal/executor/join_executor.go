@@ -8,6 +8,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
+	"github.com/leengari/mini-rdbms/internal/executor/predicate"
 )
 
 // executeJoinSelect handles SELECT statements with JOINs
@@ -147,7 +148,7 @@ func executeJoinSelect(stmt *ast.SelectStatement, db *schema.Database) (*Result,
 	// Build predicate if WHERE clause exists (convert to join.JoinPredicate)
 	var pred join.JoinPredicate
 	if stmt.Where != nil {
-		crudPred, err := buildPredicate(stmt.Where)
+		crudPred, err := predicate.Build(stmt.Where)
 		if err != nil {
 			return nil, fmt.Errorf("failed to build WHERE predicate: %w", err)
 		}

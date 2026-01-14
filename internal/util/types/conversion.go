@@ -1,4 +1,4 @@
-package executor
+package types
 
 import (
 	"fmt"
@@ -8,13 +8,13 @@ import (
 	"github.com/leengari/mini-rdbms/internal/validation"
 )
 
-// convertLiteralToSchemaType attempts to convert a literal to match the schema type.
+// ConvertLiteralToSchemaType attempts to convert a literal to match the schema type.
 // If literal is already correct type, returns as-is.
 // If literal is STRING and schema expects DATE/TIME/EMAIL, validates and converts.
 // This enables implicit type detection based on schema.
-func convertLiteralToSchemaType(lit *ast.Literal, schemaType schema.ColumnType) (*ast.Literal, error) {
+func ConvertLiteralToSchemaType(lit *ast.Literal, schemaType schema.ColumnType) (*ast.Literal, error) {
 	// If types already match, no conversion needed
-	if typesMatch(lit.Kind, schemaType) {
+	if TypesMatch(lit.Kind, schemaType) {
 		return lit, nil
 	}
 
@@ -79,8 +79,8 @@ func convertLiteralToSchemaType(lit *ast.Literal, schemaType schema.ColumnType) 
 	}
 }
 
-// typesMatch checks if a literal kind matches a schema column type
-func typesMatch(kind ast.LiteralKind, schemaType schema.ColumnType) bool {
+// TypesMatch checks if a literal kind matches a schema column type
+func TypesMatch(kind ast.LiteralKind, schemaType schema.ColumnType) bool {
 	switch schemaType {
 	case schema.ColumnTypeInt:
 		return kind == ast.LiteralInt
@@ -100,4 +100,39 @@ func typesMatch(kind ast.LiteralKind, schemaType schema.ColumnType) bool {
 	default:
 		return false
 	}
+}
+
+// ValidateLiteralType checks if a literal's type matches the expected column type
+func ValidateLiteralType(lit *ast.Literal, expectedType schema.ColumnType) error {
+	switch expectedType {
+	case schema.ColumnTypeInt:
+		if lit.Kind != ast.LiteralInt {
+			return fmt.Errorf("expected INT, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeFloat:
+		if lit.Kind != ast.LiteralInt && lit.Kind != ast.LiteralFloat {
+			return fmt.Errorf("expected FLOAT or INT, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeText:
+		if lit.Kind != ast.LiteralString {
+			return fmt.Errorf("expected TEXT, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeBool:
+		if lit.Kind != ast.LiteralBool {
+			return fmt.Errorf("expected BOOL, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeDate:
+		if lit.Kind != ast.LiteralDate {
+			return fmt.Errorf("expected DATE, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeTime:
+		if lit.Kind != ast.LiteralTime {
+			return fmt.Errorf("expected TIME, got %s", lit.Kind)
+		}
+	case schema.ColumnTypeEmail:
+		if lit.Kind != ast.LiteralEmail {
+			return fmt.Errorf("expected EMAIL, got %s", lit.Kind)
+		}
+	}
+	return nil
 }
