@@ -1,16 +1,19 @@
 package network
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
-	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/engine"
 )
+
+type Request struct {
+	Query string `json:"query"`
+}
 
 // Start starts the TCP database server
 func Start(port int, db *schema.Database) {
@@ -38,52 +41,38 @@ func Start(port int, db *schema.Database) {
 }
 
 func handleConnection(conn net.Conn, db *schema.Database) {
-	defer func() {
-		slog.Info("client disconnected", "remote", conn.RemoteAddr())
-		conn.Close()
-	}()
+	defer conn.Close()
 
-	engine := engine.New(db)
+	dbEngine := engine.New(db) // Renamed to avoid shadowing 'engine' package
 
-	scanner := bufio.NewScanner(conn)
+	// Use Decoder instead of Scanner for network streams
+	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
-	for scanner.Scan() {
-		query := strings.TrimSpace(scanner.Text())
-
-		if query == "" {
-			continue
-		}
-
-		if query == "exit" || query == "\\q" {
+	for {
+		var req Request
+		// Decode directly from the connection
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				return // Connection closed gracefully
+			}
+			slog.Error("decode error", "error", err)
 			return
 		}
 
-		result, err := engine.Execute(query)
+		if req.Query == "exit" || req.Query == "\\q" {
+			return
+		}
+
+		result, err := dbEngine.Execute(req.Query)
 		if err != nil {
-			// Send structured error response
-			_ = encoder.Encode(map[string]any{
-				"error": err.Error(),
-			})
+			_ = encoder.Encode(map[string]any{"error": err.Error()})
 			continue
 		}
 
-		// Send JSON result
 		if err := encoder.Encode(result); err != nil {
-			slog.Error(
-				"failed to encode response",
-				"remote", conn.RemoteAddr(),
-				"error", err,
-			)
+			slog.Error("encode error", "error", err)
 			return
 		}
-	}
-
-	if err := scanner.Err(); err != nil {
-		slog.Error(
-			"connection read error",
-			"remote", conn.RemoteAddr(),
-			"error", err,
-		)
 	}
 }
