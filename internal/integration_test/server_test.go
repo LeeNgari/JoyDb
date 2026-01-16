@@ -3,78 +3,89 @@ package integration
 import (
 	"fmt"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
+	"encoding/json"
+
+	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/network"
 )
 
-func TestServer(t *testing.T) {
+type ColumnMetadata struct {
+	Name string // Column name
+	Type string // Data type as string
+}
+
+// Result represents the outcome of executing a SQL statement
+type Result struct {
+	Columns      []string         // Column names
+	Metadata     []ColumnMetadata // Column metadata
+	Rows         []data.Row       // Result rows
+	Message      string           // Status message
+	RowsAffected int              // Rows affected by INSERT/UPDATE/DELETE
+}
+
+func TestServerJSON(t *testing.T) {
 	db := setupTestDB(t)
 	defer teardownTestDB(t, db)
 
-	// Pick a random high port
 	port := 54321
 
 	// Start server in goroutine
 	go network.Start(port, db)
 
-	// Wait for server to start
+	// Wait a bit for server
 	time.Sleep(100 * time.Millisecond)
 
-	// Connect
 	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", port))
 	if err != nil {
-		t.Fatalf("Failed to connect to server: %v", err)
+		t.Fatalf("Failed to connect: %v", err)
 	}
 	defer conn.Close()
 
-	queries := []string{
-		"SELECT * FROM users",
-	}
+	queries := []network.Request{
+    {Query: "SELECT * FROM users"},
+}
 
-	for _, query := range queries {
+	decoder := json.NewDecoder(conn)
+	encoder := json.NewEncoder(conn)
+
+	for _, req := range queries {
 		// Send query
-		_, err := fmt.Fprintf(conn, "%s\n", query)
-		if err != nil {
-			t.Fatalf("Failed to write to connection: %v", err)
+		if err := encoder.Encode(req); err != nil {
+        t.Fatalf("Failed to send query: %v", err)
+    }
+
+		// Decode response
+		var res Result
+		if err := decoder.Decode(&res); err != nil {
+			t.Fatalf("Failed to decode JSON: %v", err)
 		}
 
-		// Read response loop
-		output := ""
-		buf := make([]byte, 1024)
-		timeout := time.Now().Add(2 * time.Second)
+		t.Logf("Query: %s\nResult: %+v", req, res)
 
-		for time.Now().Before(timeout) {
-			conn.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
-			n, err := conn.Read(buf)
-			if n > 0 {
-				output += string(buf[:n])
-			}
-
-			// Check if we have received the expected tabular output
-			// We look for "Returned" message AND the header separator or content
-			if strings.Contains(output, "Returned") && strings.Contains(output, "---") {
-				break
-			}
-
-			if err != nil {
-				// If we got an error that is not a timeout, or if we got EOF (server closed)
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-					continue
-				}
+		// Assertions
+		foundAdmin := false
+		for _, row := range res.Rows {
+			if row["username"] == "admin" {
+				foundAdmin = true
 				break
 			}
 		}
-
-		t.Logf("Query: %s\nOutput:\n%s", query, output)
-
-		if !strings.Contains(output, "admin") {
-			t.Errorf("Expected 'admin' in output, got: %s", output)
+		if !foundAdmin {
+			t.Errorf("Expected row with username 'admin', got: %+v", res.Rows)
 		}
-		if !strings.Contains(output, "id (INT)") {
-			t.Errorf("Expected header 'id (INT)' in output, got: %s", output)
+
+		headerFound := false
+		for _, col := range res.Columns {
+			if col == "id" {
+				headerFound = true
+				break
+			}
+		}
+		if !headerFound {
+			t.Errorf("Expected 'id' in columns, got: %+v", res.Columns)
 		}
 	}
 }
