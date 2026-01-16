@@ -1,12 +1,15 @@
 package bootstrap
 
 import (
+	"fmt"
 	"os"
 )
 
 // EnsureDatabase checks if the database exists at the given path.
 // If it does not exist, it creates a default database with sample data.
-func EnsureDatabase(path string) error {
+// EnsureDatabase checks if the database exists at the given path.
+// If it does not exist, it creates a default database with sample data.
+func EnsureDatabase(path, name string) error {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		return nil // Database exists
 	}
@@ -17,7 +20,7 @@ func EnsureDatabase(path string) error {
 	}
 
 	// Create meta.json for database
-	dbMeta := `{"name": "testdb", "created_at": "2024-01-01T00:00:00Z"}`
+	dbMeta := fmt.Sprintf(`{"name": "%s", "created_at": "2024-01-01T00:00:00Z"}`, name)
 	if err := os.WriteFile(path+"/meta.json", []byte(dbMeta), 0644); err != nil {
 		return err
 	}

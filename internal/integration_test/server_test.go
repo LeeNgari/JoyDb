@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,6 +27,7 @@ type Result struct {
 	Rows         []data.Row       // Result rows
 	Message      string           // Status message
 	RowsAffected int              // Rows affected by INSERT/UPDATE/DELETE
+	Error        string           // Error message if any
 }
 
 func TestServerJSON(t *testing.T) {
@@ -49,16 +51,30 @@ func TestServerJSON(t *testing.T) {
 	}
 	defer conn.Close()
 
-	queries := []network.Request{
-		{Query: "SELECT * FROM users"},
+	queries := []struct {
+		Request       network.Request
+		ExpectedError string
+	}{
+		{
+			Request:       network.Request{Query: "USE testdb_integration"},
+			ExpectedError: "",
+		},
+		{
+			Request:       network.Request{Query: "SELECT * FROM users"},
+			ExpectedError: "",
+		},
+		{
+			Request:       network.Request{Query: "SELECT * FROM non_existent_table"},
+			ExpectedError: "planning error: table not found: non_existent_table",
+		},
 	}
 
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
-	for _, req := range queries {
+	for _, tc := range queries {
 		// Send query
-		if err := encoder.Encode(req); err != nil {
+		if err := encoder.Encode(tc.Request); err != nil {
 			t.Fatalf("Failed to send query: %v", err)
 		}
 
@@ -68,9 +84,30 @@ func TestServerJSON(t *testing.T) {
 			t.Fatalf("Failed to decode JSON: %v", err)
 		}
 
-		t.Logf("Query: %s\nResult: %+v", req, res)
+		t.Logf("Query: %s\nResult: %+v", tc.Request.Query, res)
 
-		// Assertions
+		if tc.ExpectedError != "" {
+			if res.Error == "" {
+				t.Errorf("Expected error '%s', got no error", tc.ExpectedError)
+			} else if res.Error != tc.ExpectedError {
+				t.Errorf("Expected error '%s', got '%s'", tc.ExpectedError, res.Error)
+			}
+			continue
+		}
+
+		if res.Error != "" {
+			t.Errorf("Unexpected error: %s", res.Error)
+			continue
+		}
+
+		// Assertions for successful query
+		if strings.HasPrefix(strings.ToUpper(tc.Request.Query), "USE") {
+			if res.Message == "" {
+				t.Error("Expected message for USE command, got empty")
+			}
+			continue
+		}
+
 		foundAdmin := false
 		for _, row := range res.Rows {
 			if row["username"] == "admin" {

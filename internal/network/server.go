@@ -8,6 +8,7 @@ import (
 	"net"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/mini-rdbms/internal/executor"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
@@ -63,7 +64,14 @@ func handleConnection(conn net.Conn, registry *manager.Registry) {
 
 		result, err := dbEngine.Execute(req.Query)
 		if err != nil {
-			_ = encoder.Encode(map[string]any{"error": err.Error()})
+			// Return error as a Result object
+			errResult := &executor.Result{
+				Error: err.Error(),
+			}
+			if err := encoder.Encode(errResult); err != nil {
+				slog.Error("encode error", "error", err)
+				return
+			}
 			continue
 		}
 
