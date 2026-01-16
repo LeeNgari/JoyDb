@@ -3,21 +3,23 @@ package repl
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/engine"
 	"github.com/leengari/mini-rdbms/internal/executor"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
-func Start(db *schema.Database) {
+func Start(registry *manager.Registry) {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Welcome to M")
+	fmt.Println("Welcome to Mini-RDBMS")
 	fmt.Println("Type 'exit' or '\\q' to quit.")
 
-	eng := engine.New(db)
+	// Start with no database selected
+	eng := engine.New(nil, registry)
 
 	for {
 		fmt.Print("> ")
@@ -42,57 +44,62 @@ func Start(db *schema.Database) {
 		}
 
 		// Print Result
-		printResult(result)
+		PrintResult(os.Stdout, result)
 	}
 }
 
-func printResult(res *executor.Result) {
+func PrintResult(w io.Writer, res *executor.Result) {
+	if res.Error != "" {
+		fmt.Fprintf(w, "Error: %s\n", res.Error)
+		return
+	}
+
 	if res.Message != "" {
-		fmt.Println(res.Message)
+		fmt.Fprintln(w, res.Message)
 	}
 
 	if len(res.Rows) > 0 || len(res.Columns) > 0 {
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
 		// Header - show type if metadata available
 		for i, col := range res.Columns {
 			if i < len(res.Metadata) && res.Metadata[i].Type != "" {
 				// Show column with type
-				fmt.Fprintf(w, "%s (%s)", col, res.Metadata[i].Type)
+				fmt.Fprintf(tw, "%s (%s)", col, res.Metadata[i].Type)
 			} else {
 				// Just column name
-				fmt.Fprintf(w, "%s", col)
+				fmt.Fprintf(tw, "%s", col)
 			}
 			if i < len(res.Columns)-1 {
-				fmt.Fprintf(w, "\t")
+				fmt.Fprintf(tw, "\t")
 			}
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(tw)
 
 		// Separator
 		for i := range res.Columns {
-			fmt.Fprintf(w, "---")
+			fmt.Fprintf(tw, "---")
 			if i < len(res.Columns)-1 {
-				fmt.Fprintf(w, "\t")
+				fmt.Fprintf(tw, "\t")
 			}
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(tw)
 
 		// Rows
 		for _, row := range res.Rows {
 			for i, col := range res.Columns {
 				val, ok := row[col]
 				if !ok {
-					fmt.Fprintf(w, "NULL")
+					fmt.Fprintf(tw, "NULL")
 				} else {
-					fmt.Fprintf(w, "%v", val)
+					fmt.Fprintf(tw, "%v", val)
 				}
 				if i < len(res.Columns)-1 {
-					fmt.Fprintf(w, "\t")
+					fmt.Fprintf(tw, "\t")
 				}
 			}
-			fmt.Fprintln(w)
+			fmt.Fprintln(tw)
 		}
-		w.Flush()
+		tw.Flush()
 	}
 }

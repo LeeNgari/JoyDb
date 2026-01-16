@@ -1,11 +1,13 @@
 package integration
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/loader"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // TestSQLUpdateStatement tests UPDATE statements end-to-end via SQL
@@ -21,7 +23,8 @@ func TestSQLUpdateStatement(t *testing.T) {
 		t.Fatalf("Failed to build indexes: %v", err)
 	}
 
-	eng := engine.New(db)
+	registry := manager.NewRegistry(filepath.Dir(db.Path))
+	eng := engine.New(db, registry)
 
 	t.Run("UPDATE single column with WHERE", func(t *testing.T) {
 		// First, verify initial state (using id=2 which exists in database)
@@ -132,7 +135,8 @@ func TestSQLDeleteStatement(t *testing.T) {
 		t.Fatalf("Failed to build indexes: %v", err)
 	}
 
-	eng := engine.New(db)
+	registry := manager.NewRegistry(filepath.Dir(db.Path))
+	eng := engine.New(db, registry)
 
 	t.Run("DELETE with WHERE clause", func(t *testing.T) {
 		// First, insert a test user to delete
@@ -225,7 +229,8 @@ func TestSQLCombinedOperations(t *testing.T) {
 		t.Fatalf("Failed to build indexes: %v", err)
 	}
 
-	eng := engine.New(db)
+	registry := manager.NewRegistry(filepath.Dir(db.Path))
+	eng := engine.New(db, registry)
 
 	t.Run("INSERT then UPDATE then DELETE", func(t *testing.T) {
 		// INSERT

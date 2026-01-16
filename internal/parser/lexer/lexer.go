@@ -43,6 +43,15 @@ const (
 	TIME
 	EMAIL
 
+	// DDL & Database Management
+	CREATE
+	DROP
+	ALTER
+	DATABASE
+	USE
+	RENAME
+	TO
+
 	// Operators & Punctuation
 	ASTERISK    // *
 	COMMA       // ,
@@ -82,6 +91,13 @@ var keywords = map[string]TokenType{
 	"DATE":   DATE,
 	"TIME":   TIME,
 	"EMAIL":  EMAIL,
+	"CREATE": CREATE,
+	"DROP":   DROP,
+	"ALTER":  ALTER,
+	"DATABASE": DATABASE,
+	"USE":    USE,
+	"RENAME": RENAME,
+	"TO":     TO,
 }
 
 type Token struct {

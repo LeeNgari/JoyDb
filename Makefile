@@ -16,9 +16,13 @@ build:
 	@echo "✓ Build complete: ./rdbms"
 
 # Run the application
-run: build
+repl: build
 	./rdbms
 
+# Make server
+server: build
+	./rdbms --server
+	
 # Run all tests with summary
 test:
 	@echo "Running all tests..."
