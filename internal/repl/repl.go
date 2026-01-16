@@ -49,6 +49,11 @@ func Start(registry *manager.Registry) {
 }
 
 func PrintResult(w io.Writer, res *executor.Result) {
+	if res.Error != "" {
+		fmt.Fprintf(w, "Error: %s\n", res.Error)
+		return
+	}
+
 	if res.Message != "" {
 		fmt.Fprintln(w, res.Message)
 	}

@@ -21,6 +21,7 @@ type Result struct {
 	Rows         []data.Row       // Result rows
 	Message      string           // Status message
 	RowsAffected int              // Rows affected by INSERT/UPDATE/DELETE
+	Error        string           // Error message if any
 }
 
 // Execute is the main entry point for executing execution plans

@@ -21,7 +21,7 @@ func setupTestDB(t *testing.T) *schema.Database {
 	os.RemoveAll(testDBPath)
 
 	// Bootstrap fresh database
-	if err := bootstrap.EnsureDatabase(testDBPath); err != nil {
+	if err := bootstrap.EnsureDatabase(testDBPath, "testdb_integration"); err != nil {
 		t.Fatalf("Failed to bootstrap test database: %v", err)
 	}
 
