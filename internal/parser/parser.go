@@ -57,7 +57,7 @@ func (p *Parser) Parse() (ast.Statement, error) {
 	case lexer.USE:
 		return p.parseUse()
 	default:
-		return nil, fmt.Errorf("unexpected token %v, expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, or USE", p.curTok.Type)
+		return nil, fmt.Errorf("unexpected token %v, expected a valid SQL statement (SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, USE)", p.curTok.Type)
 	}
 }
 
