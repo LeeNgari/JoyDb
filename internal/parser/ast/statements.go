@@ -144,3 +144,48 @@ func (s *DeleteStatement) String() string {
 	}
 	return out.String()
 }
+
+// CreateDatabaseStatement: CREATE DATABASE name
+type CreateDatabaseStatement struct {
+	Name string
+}
+
+func (s *CreateDatabaseStatement) statementNode()       {}
+func (s *CreateDatabaseStatement) TokenLiteral() string { return "CREATE" }
+func (s *CreateDatabaseStatement) String() string {
+	return "CREATE DATABASE " + s.Name
+}
+
+// DropDatabaseStatement: DROP DATABASE name
+type DropDatabaseStatement struct {
+	Name string
+}
+
+func (s *DropDatabaseStatement) statementNode()       {}
+func (s *DropDatabaseStatement) TokenLiteral() string { return "DROP" }
+func (s *DropDatabaseStatement) String() string {
+	return "DROP DATABASE " + s.Name
+}
+
+// AlterDatabaseStatement: ALTER DATABASE name RENAME TO newName
+type AlterDatabaseStatement struct {
+	Name    string
+	NewName string
+}
+
+func (s *AlterDatabaseStatement) statementNode()       {}
+func (s *AlterDatabaseStatement) TokenLiteral() string { return "ALTER" }
+func (s *AlterDatabaseStatement) String() string {
+	return "ALTER DATABASE " + s.Name + " RENAME TO " + s.NewName
+}
+
+// UseDatabaseStatement: USE name
+type UseDatabaseStatement struct {
+	Name string
+}
+
+func (s *UseDatabaseStatement) statementNode()       {}
+func (s *UseDatabaseStatement) TokenLiteral() string { return "USE" }
+func (s *UseDatabaseStatement) String() string {
+	return "USE " + s.Name
+}

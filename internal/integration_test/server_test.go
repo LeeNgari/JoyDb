@@ -3,11 +3,13 @@ package integration
 import (
 	"fmt"
 	"net"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/leengari/mini-rdbms/internal/network"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 func TestServer(t *testing.T) {
@@ -18,7 +20,13 @@ func TestServer(t *testing.T) {
 	port := 54321
 
 	// Start server in goroutine
-	go network.Start(port, db)
+	// testDBPath is defined in testdb_helper.go ("../../databases/testdb_integration")
+	basePath := filepath.Dir(testDBPath)
+	registry := manager.NewRegistry(basePath)
+	// Pre-load the test database into the registry so it's available and indexed
+	// (Although setupTestDB already created it on disk, registry needs to know about it/load it if we want it shared)
+	// Actually, USE command will load it via registry. So we just need to pass the registry.
+	go network.Start(port, registry)
 
 	// Wait for server to start
 	time.Sleep(100 * time.Millisecond)
@@ -29,6 +37,13 @@ func TestServer(t *testing.T) {
 		t.Fatalf("Failed to connect to server: %v", err)
 	}
 	defer conn.Close()
+
+	// Select the database
+	fmt.Fprintf(conn, "USE testdb_integration\n")
+	// Read response (Switched to database...)
+	tempBuf := make([]byte, 1024)
+	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	conn.Read(tempBuf)
 
 	queries := []string{
 		"SELECT * FROM users",
@@ -53,10 +68,19 @@ func TestServer(t *testing.T) {
 				output += string(buf[:n])
 			}
 
-			// Check if we have received the expected tabular output
-			// We look for "Returned" message AND the header separator or content
+			// We need to wait until we get the actual rows.
+			// "Returned X rows" is first.
+			// Then headers, then "---".
+			// Then rows.
+			// Simple heuristic: if we have "Returned" and "---", wait a bit more for rows to arrive
+			// unless we already have "admin" (which is what we look for).
 			if strings.Contains(output, "Returned") && strings.Contains(output, "---") {
-				break
+				// If we found the user we are looking for, we can stop
+				if strings.Contains(output, "admin") {
+					break
+				}
+				// Otherwise, keep reading until timeout (to ensure we get all data)
+				// or until we hit a reasonable size.
 			}
 
 			if err != nil {

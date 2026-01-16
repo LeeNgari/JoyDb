@@ -6,12 +6,9 @@ import (
 	"time"
 
 	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
-	"github.com/leengari/mini-rdbms/internal/query/indexing"
-	"github.com/leengari/mini-rdbms/internal/storage/loader"
-	"github.com/leengari/mini-rdbms/internal/storage/writer"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 	"flag"
 
-	"github.com/leengari/mini-rdbms/internal/storage/bootstrap"
 	"github.com/leengari/mini-rdbms/internal/repl"
 	"github.com/leengari/mini-rdbms/internal/network"
 )
@@ -28,50 +25,33 @@ func main() {
 	time.Sleep(1 * time.Second)
 	slog.Info("Starting RDBMS application...")
 
-	// Bootstrap database if not exists
-	dbPath := "databases/testdb"
-	if err := bootstrap.EnsureDatabase(dbPath); err != nil {
-		slog.Error("failed to bootstrap database", "error", err)
+	// Base path for databases
+	basePath := "databases"
+
+	// Ensure database directory exists
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		slog.Error("failed to create databases directory", "error", err)
 		os.Exit(1)
 	}
 
-	// Load Database
-	db, err := loader.LoadDatabase(dbPath)
-	if err != nil {
-		slog.Error("failed to load database", "error", err)
-		closeFn()
-		os.Exit(1)
-	}
+	// Create Database Registry
+	registry := manager.NewRegistry(basePath)
 
-	// Save database on shutdown
+	// Save all loaded databases on shutdown
 	defer func() {
-		slog.Info("Shutting down - saving database...")
-		if err := writer.SaveDatabase(db); err != nil {
-			slog.Error("shutdown save failed", "error", err)
-		}
+		slog.Info("Shutting down - saving databases...")
+		registry.SaveAll()
 	}()
-
-	// Build Indexes
-	if err := indexing.BuildDatabaseIndexes(db); err != nil {
-		slog.Error("Index building failed", "error", err)
-		closeFn()
-		os.Exit(1)
-	}
-
-	slog.Info("Database loaded successfully",
-		"name", db.Name,
-		"tables", len(db.Tables),
-	)
 
 	// Application is ready
 	// Run integration tests with: go test ./internal/integration_test/...
-	slog.Info("Application ready!")
+	slog.Info("Application ready!", "base_path", basePath)
 
 	if *serverMode {
 		slog.Info("Starting Server mode...")
-		network.Start(*port, db)
+		network.Start(*port, registry)
 	} else {
 		slog.Info("Starting REPL mode...")
-		repl.Start(db)
+		repl.Start(registry)
 	}
 }

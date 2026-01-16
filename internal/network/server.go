@@ -8,13 +8,13 @@ import (
 	"net"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/engine"
 	"github.com/leengari/mini-rdbms/internal/repl"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // Start starts the TCP server on the given port
-func Start(port int, db *schema.Database) {
+func Start(port int, registry *manager.Registry) {
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -31,13 +31,14 @@ func Start(port int, db *schema.Database) {
 			slog.Error("Failed to accept connection", "error", err)
 			continue
 		}
-		go handleConnection(conn, db)
+		go handleConnection(conn, registry)
 	}
 }
 
-func handleConnection(conn net.Conn, db *schema.Database) {
+func handleConnection(conn net.Conn, registry *manager.Registry) {
 	defer conn.Close()
-	eng := engine.New(db)
+	// Each connection starts with no DB selected, but shares the Registry
+	eng := engine.New(nil, registry)
 	scanner := bufio.NewScanner(conn)
 
 	for scanner.Scan() {
