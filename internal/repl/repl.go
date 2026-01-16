@@ -3,6 +3,7 @@ package repl
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -42,57 +43,57 @@ func Start(db *schema.Database) {
 		}
 
 		// Print Result
-		printResult(result)
+		PrintResult(os.Stdout, result)
 	}
 }
 
-func printResult(res *executor.Result) {
+func PrintResult(w io.Writer, res *executor.Result) {
 	if res.Message != "" {
-		fmt.Println(res.Message)
+		fmt.Fprintln(w, res.Message)
 	}
 
 	if len(res.Rows) > 0 || len(res.Columns) > 0 {
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		
+		tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+
 		// Header - show type if metadata available
 		for i, col := range res.Columns {
 			if i < len(res.Metadata) && res.Metadata[i].Type != "" {
 				// Show column with type
-				fmt.Fprintf(w, "%s (%s)", col, res.Metadata[i].Type)
+				fmt.Fprintf(tw, "%s (%s)", col, res.Metadata[i].Type)
 			} else {
 				// Just column name
-				fmt.Fprintf(w, "%s", col)
+				fmt.Fprintf(tw, "%s", col)
 			}
 			if i < len(res.Columns)-1 {
-				fmt.Fprintf(w, "\t")
+				fmt.Fprintf(tw, "\t")
 			}
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(tw)
 
 		// Separator
 		for i := range res.Columns {
-			fmt.Fprintf(w, "---")
+			fmt.Fprintf(tw, "---")
 			if i < len(res.Columns)-1 {
-				fmt.Fprintf(w, "\t")
+				fmt.Fprintf(tw, "\t")
 			}
 		}
-		fmt.Fprintln(w)
+		fmt.Fprintln(tw)
 
 		// Rows
 		for _, row := range res.Rows {
 			for i, col := range res.Columns {
 				val, ok := row[col]
 				if !ok {
-					fmt.Fprintf(w, "NULL")
+					fmt.Fprintf(tw, "NULL")
 				} else {
-					fmt.Fprintf(w, "%v", val)
+					fmt.Fprintf(tw, "%v", val)
 				}
 				if i < len(res.Columns)-1 {
-					fmt.Fprintf(w, "\t")
+					fmt.Fprintf(tw, "\t")
 				}
 			}
-			fmt.Fprintln(w)
+			fmt.Fprintln(tw)
 		}
-		w.Flush()
+		tw.Flush()
 	}
 }

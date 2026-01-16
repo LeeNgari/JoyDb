@@ -9,11 +9,18 @@ import (
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/loader"
 	"github.com/leengari/mini-rdbms/internal/storage/writer"
+	"flag"
+
 	"github.com/leengari/mini-rdbms/internal/storage/bootstrap"
 	"github.com/leengari/mini-rdbms/internal/repl"
+	"github.com/leengari/mini-rdbms/internal/network"
 )
 
 func main() {
+	serverMode := flag.Bool("server", false, "Run in server mode")
+	port := flag.Int("port", 4444, "Port to listen on")
+	flag.Parse()
+
 	logger, closeFn := logging.SetupLogger()
 	defer closeFn()
 
@@ -59,7 +66,12 @@ func main() {
 	// Application is ready
 	// Run integration tests with: go test ./internal/integration_test/...
 	slog.Info("Application ready!")
-	slog.Info("Starting REPL mode...")
-	
-	repl.Start(db)
+
+	if *serverMode {
+		slog.Info("Starting Server mode...")
+		network.Start(*port, db)
+	} else {
+		slog.Info("Starting REPL mode...")
+		repl.Start(db)
+	}
 }
