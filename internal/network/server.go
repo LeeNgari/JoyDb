@@ -1,19 +1,21 @@
 package network
 
 import (
-	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
-	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/repl"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
-// Start starts the TCP server on the given port
+type Request struct {
+	Query string `json:"query"`
+}
+
+// Start starts the TCP database server
 func Start(port int, registry *manager.Registry) {
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
@@ -37,31 +39,37 @@ func Start(port int, registry *manager.Registry) {
 
 func handleConnection(conn net.Conn, registry *manager.Registry) {
 	defer conn.Close()
-	// Each connection starts with no DB selected, but shares the Registry
-	eng := engine.New(nil, registry)
-	scanner := bufio.NewScanner(conn)
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	dbEngine := engine.New(nil, registry)
 
-		if strings.TrimSpace(line) == "" {
-			continue
+	// Use Decoder instead of Scanner for network streams
+	decoder := json.NewDecoder(conn)
+	encoder := json.NewEncoder(conn)
+
+	for {
+		var req Request
+		// Decode directly from the connection
+		if err := decoder.Decode(&req); err != nil {
+			if err == io.EOF {
+				return // Connection closed gracefully
+			}
+			slog.Error("decode error", "error", err)
+			return
 		}
 
-		if line == "exit" || line == "\\q" {
-			break
+		if req.Query == "exit" || req.Query == "\\q" {
+			return
 		}
 
-		result, err := eng.Execute(line)
+		result, err := dbEngine.Execute(req.Query)
 		if err != nil {
-			io.WriteString(conn, fmt.Sprintf("Error: %v\n", err))
+			_ = encoder.Encode(map[string]any{"error": err.Error()})
 			continue
 		}
 
-		repl.PrintResult(conn, result)
-	}
-
-	if err := scanner.Err(); err != nil {
-		slog.Error("Connection error", "remote_addr", conn.RemoteAddr(), "error", err)
+		if err := encoder.Encode(result); err != nil {
+			slog.Error("encode error", "error", err)
+			return
+		}
 	}
 }
