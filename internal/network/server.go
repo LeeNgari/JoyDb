@@ -2,65 +2,88 @@ package network
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/repl"
 )
 
-// Start starts the TCP server on the given port
+// Start starts the TCP database server
 func Start(port int, db *schema.Database) {
-	addr := fmt.Sprintf(":%d", port)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		slog.Error("Failed to bind to port", "port", port, "error", err)
+		slog.Error("failed to bind TCP listener", "addr", addr, "error", err)
 		return
 	}
 	defer listener.Close()
 
-	slog.Info("Running on port", "port", port)
+	slog.Info("TCP DB server listening", "addr", addr)
 
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			slog.Error("Failed to accept connection", "error", err)
+			slog.Error("failed to accept connection", "error", err)
 			continue
 		}
+
+		slog.Info("client connected", "remote", conn.RemoteAddr())
 		go handleConnection(conn, db)
 	}
 }
 
 func handleConnection(conn net.Conn, db *schema.Database) {
-	defer conn.Close()
-	eng := engine.New(db)
+	defer func() {
+		slog.Info("client disconnected", "remote", conn.RemoteAddr())
+		conn.Close()
+	}()
+
+	engine := engine.New(db)
+
 	scanner := bufio.NewScanner(conn)
+	encoder := json.NewEncoder(conn)
 
 	for scanner.Scan() {
-		line := scanner.Text()
+		query := strings.TrimSpace(scanner.Text())
 
-		if strings.TrimSpace(line) == "" {
+		if query == "" {
 			continue
 		}
 
-		if line == "exit" || line == "\\q" {
-			break
+		if query == "exit" || query == "\\q" {
+			return
 		}
 
-		result, err := eng.Execute(line)
+		result, err := engine.Execute(query)
 		if err != nil {
-			io.WriteString(conn, fmt.Sprintf("Error: %v\n", err))
+			// Send structured error response
+			_ = encoder.Encode(map[string]any{
+				"error": err.Error(),
+			})
 			continue
 		}
 
-		repl.PrintResult(conn, result)
+		// Send JSON result
+		if err := encoder.Encode(result); err != nil {
+			slog.Error(
+				"failed to encode response",
+				"remote", conn.RemoteAddr(),
+				"error", err,
+			)
+			return
+		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		slog.Error("Connection error", "remote_addr", conn.RemoteAddr(), "error", err)
+		slog.Error(
+			"connection read error",
+			"remote", conn.RemoteAddr(),
+			"error", err,
+		)
 	}
 }
