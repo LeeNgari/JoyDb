@@ -48,7 +48,26 @@ func (p *Parser) Parse() (ast.Statement, error) {
 		return p.parseUpdate()
 	case lexer.DELETE:
 		return p.parseDelete()
+	case lexer.CREATE:
+		return p.parseCreate()
+	case lexer.DROP:
+		return p.parseDrop()
+	case lexer.ALTER:
+		return p.parseAlter()
+	case lexer.USE:
+		return p.parseUse()
 	default:
-		return nil, fmt.Errorf("unexpected token %v, expected SELECT, INSERT, UPDATE, or DELETE", p.curTok.Type)
+		return nil, fmt.Errorf("unexpected token %v, expected SELECT, INSERT, UPDATE, DELETE, CREATE, DROP, ALTER, or USE", p.curTok.Type)
 	}
+}
+
+// expectPeek checks if the next token is of the expected type
+// If it is, it advances the parser and returns true
+// If not, it returns false (without advancing)
+func (p *Parser) expectPeek(t lexer.TokenType) bool {
+	if p.peekTok.Type == t {
+		p.nextToken()
+		return true
+	}
+	return false
 }

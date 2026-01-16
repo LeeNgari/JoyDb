@@ -8,17 +8,18 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/engine"
 	"github.com/leengari/mini-rdbms/internal/executor"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
-func Start(db *schema.Database) {
+func Start(registry *manager.Registry) {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Welcome to M")
+	fmt.Println("Welcome to Mini-RDBMS")
 	fmt.Println("Type 'exit' or '\\q' to quit.")
 
-	eng := engine.New(db)
+	// Start with no database selected
+	eng := engine.New(nil, registry)
 
 	for {
 		fmt.Print("> ")
