@@ -22,6 +22,7 @@ repl: build
 # Make server
 server: build
 	./rdbms --server
+	
 # Run all tests with summary
 test:
 	@echo "Running all tests..."
