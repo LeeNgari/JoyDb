@@ -55,6 +55,12 @@ func handleConnection(conn net.Conn, registry *manager.Registry) {
 				return // Connection closed gracefully
 			}
 			slog.Error("decode error", "error", err)
+			
+			// Send error back to client
+			errResult := &executor.Result{
+				Error: fmt.Sprintf("Invalid request format: %v", err),
+			}
+			_ = encoder.Encode(errResult)
 			return
 		}
 

@@ -1,0 +1,122 @@
+[
+  {
+    "action": "login",
+    "id": 1,
+    "timestamp": "2026-01-17T10:00:00Z",
+    "user_id": 1
+  },
+  {
+    "action": "view_product",
+    "id": 2,
+    "timestamp": "2026-01-17T10:05:00Z",
+    "user_id": 1
+  },
+  {
+    "action": "login",
+    "id": 3,
+    "timestamp": "2026-01-17T10:10:00Z",
+    "user_id": 2
+  },
+  {
+    "action": "add_to_cart",
+    "id": 4,
+    "timestamp": "2026-01-17T10:15:00Z",
+    "user_id": 1
+  },
+  {
+    "action": "login",
+    "id": 5,
+    "timestamp": "2026-01-17T10:20:00Z",
+    "user_id": 3
+  },
+  {
+    "action": "checkout",
+    "id": 6,
+    "timestamp": "2026-01-17T10:25:00Z",
+    "user_id": 1
+  },
+  {
+    "action": "logout",
+    "id": 7,
+    "timestamp": "2026-01-17T10:30:00Z",
+    "user_id": 2
+  },
+  {
+    "action": "register",
+    "id": 8,
+    "timestamp": "2026-01-17T10:35:00Z",
+    "user_id": 4
+  },
+  {
+    "action": "login",
+    "id": 9,
+    "timestamp": "2026-01-17T10:40:00Z",
+    "user_id": 5
+  },
+  {
+    "action": "view_profile",
+    "id": 10,
+    "timestamp": "2026-01-17T10:45:00Z",
+    "user_id": 5
+  },
+  {
+    "action": "login",
+    "id": 11,
+    "timestamp": "2026-01-17T10:50:00Z",
+    "user_id": 6
+  },
+  {
+    "action": "search",
+    "id": 12,
+    "timestamp": "2026-01-17T10:55:00Z",
+    "user_id": 6
+  },
+  {
+    "action": "login",
+    "id": 13,
+    "timestamp": "2026-01-17T11:00:00Z",
+    "user_id": 7
+  },
+  {
+    "action": "login",
+    "id": 14,
+    "timestamp": "2026-01-17T11:05:00Z",
+    "user_id": 8
+  },
+  {
+    "action": "register",
+    "id": 15,
+    "timestamp": "2026-01-17T11:10:00Z",
+    "user_id": 9
+  },
+  {
+    "action": "login",
+    "id": 16,
+    "timestamp": "2026-01-17T11:15:00Z",
+    "user_id": 10
+  },
+  {
+    "action": "view_product",
+    "id": 17,
+    "timestamp": "2026-01-17T11:20:00Z",
+    "user_id": 11
+  },
+  {
+    "action": "login",
+    "id": 18,
+    "timestamp": "2026-01-17T11:25:00Z",
+    "user_id": 12
+  },
+  {
+    "action": "login",
+    "id": 19,
+    "timestamp": "2026-01-17T11:30:00Z",
+    "user_id": 13
+  },
+  {
+    "action": "logout",
+    "id": 20,
+    "timestamp": "2026-01-17T11:35:00Z",
+    "user_id": 14
+  }
+]

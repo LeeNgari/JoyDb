@@ -1,0 +1,43 @@
+{
+  "name": "users",
+  "columns": [
+    {
+      "name": "id",
+      "type": "INT",
+      "primary_key": true,
+      "unique": true,
+      "not_null": true,
+      "auto_increment": true
+    },
+    {
+      "name": "username",
+      "type": "TEXT",
+      "primary_key": false,
+      "unique": true,
+      "not_null": true
+    },
+    {
+      "name": "email",
+      "type": "TEXT",
+      "primary_key": false,
+      "unique": true,
+      "not_null": true
+    },
+    {
+      "name": "age",
+      "type": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": false
+    },
+    {
+      "name": "is_active",
+      "type": "BOOL",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    }
+  ],
+  "last_insert_id": 20,
+  "row_count": 20
+}

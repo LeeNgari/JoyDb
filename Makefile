@@ -12,16 +12,16 @@ install-tools:
 # Build the application
 build:
 	@echo "Building..."
-	go build -o rdbms ./cmd/rdbms
-	@echo "✓ Build complete: ./rdbms"
+	go build -o joydb ./cmd/joydb
+	@echo "✓ Build complete: ./joydb"
 
 # Run the application
 repl: build
-	./rdbms
+	./joydb
 
 # Make server
 server: build
-	./rdbms --server
+	./joydb --server
 	
 # Run all tests with summary
 test:
@@ -46,12 +46,12 @@ test-integration-verbose:
 # Clean build artifacts
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -f rdbms
+	rm -f joydb
 	@echo "✓ Clean complete"
 
 # Show help
 help:
-	@echo "RDBMS Makefile Commands:"
+	@echo "JoyDB Makefile Commands:"
 	@echo ""
 	@echo "  make build                    - Build the application"
 	@echo "  make run                      - Build and run the application"

@@ -1,0 +1,36 @@
+{
+  "name": "products",
+  "columns": [
+    {
+      "name": "id",
+      "type": "INT",
+      "primary_key": true,
+      "unique": true,
+      "not_null": true,
+      "auto_increment": true
+    },
+    {
+      "name": "name",
+      "type": "TEXT",
+      "primary_key": false,
+      "unique": true,
+      "not_null": true
+    },
+    {
+      "name": "price",
+      "type": "FLOAT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    },
+    {
+      "name": "in_stock",
+      "type": "BOOL",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    }
+  ],
+  "last_insert_id": 20,
+  "row_count": 20
+}
