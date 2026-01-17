@@ -1,12 +1,80 @@
-# Mini-RDBMS SQL Syntax Reference
+# JoyDB SQL Syntax Reference
 
 ## Overview
 
-This document describes the SQL syntax supported by the Mini-RDBMS. The system supports a subset of standard SQL with full CRUD operations, complex filtering, and JOIN capabilities.
+This document describes the SQL syntax supported by JoyDB. The system supports a subset of standard SQL with full CRUD operations,  filtering, and JOIN capabilities.
+
+---
+
+## Quick Start
+
+### Common Query Patterns
+
+```sql
+-- Database setup
+CREATE DATABASE myapp;
+USE myapp;
+
+-- View all data
+SELECT * FROM users;
+
+-- Find specific records
+SELECT * FROM users WHERE id = 5;
+SELECT * FROM users WHERE username = 'alice';
+
+-- Insert new data
+INSERT INTO users (id, username, email) VALUES (100, 'bob', 'bob@example.com');
+
+-- Update existing data
+UPDATE users SET email = 'newemail@example.com' WHERE id = 100;
+
+-- Delete records
+DELETE FROM users WHERE id = 100;
+
+-- Join tables
+SELECT users.username, orders.product 
+FROM users 
+INNER JOIN orders ON users.id = orders.user_id;
+```
+
+### Common Commands
+
+| Operation | Template | Example |
+|-----------|----------|---------|
+| **Select all** | `SELECT * FROM table;` | `SELECT * FROM users;` |
+| **Filter** | `SELECT * FROM table WHERE col = value;` | `SELECT * FROM users WHERE age > 18;` |
+| **Insert** | `INSERT INTO table (cols) VALUES (vals);` | `INSERT INTO users (id, name) VALUES (1, 'Alice');` |
+| **Update** | `UPDATE table SET col = val WHERE condition;` | `UPDATE users SET active = true WHERE id = 5;` |
+| **Delete** | `DELETE FROM table WHERE condition;` | `DELETE FROM users WHERE id = 5;` |
+| **Join** | `SELECT * FROM t1 JOIN t2 ON t1.id = t2.fk;` | `SELECT * FROM users JOIN orders ON users.id = orders.user_id;` |
+
+---
 
 ## Supported SQL Statements
 
-### 1. SELECT Statement
+### 1. Database Management
+
+#### CREATE DATABASE
+Creates a new database.
+```sql
+CREATE DATABASE my_database;
+```
+
+#### USE
+Switches the active database context.
+```sql
+USE my_database;
+```
+
+#### DROP DATABASE
+Deletes a database and all its tables.
+```sql
+DROP DATABASE my_database;
+```
+
+---
+
+### 2. SELECT Statement
 
 #### Basic Syntax
 ```sql
@@ -42,7 +110,7 @@ SELECT username, email FROM users WHERE is_active = true;
 
 ---
 
-### 2. INSERT Statement
+### 3. INSERT Statement
 
 #### Syntax
 ```sql
@@ -63,7 +131,7 @@ INSERT INTO users (id, username, email) VALUES (102, 'charlie', NULL);
 
 ---
 
-### 3. UPDATE Statement
+### 4. UPDATE Statement
 
 #### Syntax
 ```sql
@@ -87,7 +155,7 @@ UPDATE users SET is_active = true;
 
 ---
 
-### 4. DELETE Statement
+### 5. DELETE Statement
 
 #### Syntax
 ```sql
@@ -339,11 +407,7 @@ WHERE users.is_active = true AND orders.amount > 100;
 7. **No DISTINCT**: Duplicate removal not supported
 8. **Literal values only in SET**: UPDATE SET clause only supports literal values, not expressions
 
-### Best Practices
-1. **Use qualified names in JOINs**: `users.id` instead of just `id` for clarity
-2. **Always use WHERE in UPDATE/DELETE**: Avoid accidentally modifying all rows
-3. **Use parentheses for complex conditions**: Makes precedence explicit
-4. **Index join columns**: Performance warning shown for non-indexed join columns
+
 
 ### Statement Termination
 - Semicolons (`;`) are **optional** at the end of statements
@@ -378,36 +442,5 @@ id   username   email                is_active
 > exit
 ```
 
----
 
-## Quick Reference
 
-### Statement Templates
-
-```sql
--- SELECT
-SELECT column1, column2 FROM table WHERE condition;
-SELECT * FROM table;
-
--- INSERT
-INSERT INTO table (col1, col2) VALUES (val1, val2);
-
--- UPDATE
-UPDATE table SET col1 = val1, col2 = val2 WHERE condition;
-
--- DELETE
-DELETE FROM table WHERE condition;
-
--- JOIN
-SELECT t1.col1, t2.col2 
-FROM table1 t1 
-INNER JOIN table2 t2 ON t1.id = t2.foreign_id 
-WHERE condition;
-```
-
-### Operators Quick Reference
-```sql
--- Comparison: =, !=, <>, <, >, <=, >=
--- Logical: AND, OR
--- Grouping: ( )
-```

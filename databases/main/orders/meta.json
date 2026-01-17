@@ -1,0 +1,36 @@
+{
+  "name": "orders",
+  "columns": [
+    {
+      "name": "id",
+      "type": "INT",
+      "primary_key": true,
+      "unique": true,
+      "not_null": true,
+      "auto_increment": true
+    },
+    {
+      "name": "user_id",
+      "type": "INT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    },
+    {
+      "name": "total",
+      "type": "FLOAT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    },
+    {
+      "name": "status",
+      "type": "TEXT",
+      "primary_key": false,
+      "unique": false,
+      "not_null": true
+    }
+  ],
+  "last_insert_id": 20,
+  "row_count": 20
+}

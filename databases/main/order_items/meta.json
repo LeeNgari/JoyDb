@@ -1,0 +1,43 @@
+{
+    "name": "order_items",
+    "columns": [
+        {
+            "name": "id",
+            "type": "INT",
+            "primary_key": true,
+            "unique": true,
+            "not_null": true,
+            "auto_increment": true
+        },
+        {
+            "name": "order_id",
+            "type": "INT",
+            "primary_key": false,
+            "unique": false,
+            "not_null": true
+        },
+        {
+            "name": "product_id",
+            "type": "INT",
+            "primary_key": false,
+            "unique": false,
+            "not_null": true
+        },
+        {
+            "name": "quantity",
+            "type": "INT",
+            "primary_key": false,
+            "unique": false,
+            "not_null": true
+        },
+        {
+            "name": "price",
+            "type": "FLOAT",
+            "primary_key": false,
+            "unique": false,
+            "not_null": true
+        }
+    ],
+    "last_insert_id": 45,
+    "row_count": 45
+}

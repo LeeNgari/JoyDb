@@ -2,50 +2,9 @@
 
 The query operations package contains the core database operations that manipulate data. These operations are called by executors and work directly with the database schema and storage.
 
-## Package Structure
 
-```
-query/
-├── operations/
-│   ├── crud/          # Create, Read, Update, Delete operations
-│   ├── join/          # JOIN operations
-│   ├── projection/    # Column projection and selection
-│   └── testutil/      # Test utilities
-├── indexing/          # Index building and management
-└── validation/        # Row validation
-```
 
-## CRUD Operations
 
-Located in `operations/crud/`:
-
-| File | Responsibility | LOC |
-|------|---------------|-----|
-| `select.go` | SELECT operations (SelectAll, SelectWhere) | ~70 |
-| `insert.go` | INSERT operations with validation | ~133 |
-| `update.go` | UPDATE operations with validation | ~157 |
-| `delete.go` | DELETE operations | ~86 |
-
-### Usage
-
-```go
-import "github.com/leengari/mini-rdbms/internal/query/operations/crud"
-
-// SELECT all rows
-rows := crud.SelectAll(table, projection)
-
-// SELECT with WHERE clause
-rows := crud.SelectWhere(table, predicate, projection)
-
-// INSERT row
-err := crud.Insert(table, row)
-
-// UPDATE rows
-count, err := crud.Update(table, predicate, updates)
-
-// DELETE rows
-count, err := crud.Delete(table, predicate)
-```
 
 ## JOIN Operations
 
@@ -111,12 +70,7 @@ proj := &projection.Projection{
 projectedRow := projection.Project(row, proj)
 ```
 
-## Design Principles
 
-1. **Separation of Concerns**: Operations don't know about parsing or execution
-2. **Reusability**: Operations can be composed and reused
-3. **Validation**: Operations validate constraints and types
-4. **Concurrency Safety**: Operations use table locks appropriately
 
 ## Predicate Functions
 
@@ -154,19 +108,6 @@ import "github.com/leengari/mini-rdbms/internal/query/indexing"
 err := indexing.BuildDatabaseIndexes(database)
 ```
 
-## Testing
-
-Test utilities in `operations/testutil/`:
-
-```go
-import "github.com/leengari/mini-rdbms/internal/query/operations/testutil"
-
-// Create test table
-table := testutil.CreateTestTable()
-
-// Assert row count
-testutil.AssertRowCount(t, table, expectedCount)
-```
 
 ## Related Packages
 
