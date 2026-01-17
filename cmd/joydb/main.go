@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"time"
@@ -23,7 +24,7 @@ func main() {
 
 	slog.SetDefault(logger)
 	time.Sleep(1 * time.Second)
-	slog.Info("Starting RDBMS application...")
+	fmt.Println("Starting JoyDB application...")
 
 	// Base path for databases
 	basePath := "databases"

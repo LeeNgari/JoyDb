@@ -1,12 +1,34 @@
-# Mini-RDBMS SQL Syntax Reference
+# JoyDB SQL Syntax Reference
 
 ## Overview
 
-This document describes the SQL syntax supported by the Mini-RDBMS. The system supports a subset of standard SQL with full CRUD operations, complex filtering, and JOIN capabilities.
+This document describes the SQL syntax supported by JoyDB. The system supports a subset of standard SQL with full CRUD operations, complex filtering, and JOIN capabilities.
 
 ## Supported SQL Statements
 
-### 1. SELECT Statement
+### 1. Database Management
+
+#### CREATE DATABASE
+Creates a new database.
+```sql
+CREATE DATABASE my_database;
+```
+
+#### USE
+Switches the active database context.
+```sql
+USE my_database;
+```
+
+#### DROP DATABASE
+Deletes a database and all its tables.
+```sql
+DROP DATABASE my_database;
+```
+
+---
+
+### 2. SELECT Statement
 
 #### Basic Syntax
 ```sql
@@ -42,7 +64,7 @@ SELECT username, email FROM users WHERE is_active = true;
 
 ---
 
-### 2. INSERT Statement
+### 3. INSERT Statement
 
 #### Syntax
 ```sql
@@ -63,7 +85,7 @@ INSERT INTO users (id, username, email) VALUES (102, 'charlie', NULL);
 
 ---
 
-### 3. UPDATE Statement
+### 4. UPDATE Statement
 
 #### Syntax
 ```sql
@@ -87,7 +109,7 @@ UPDATE users SET is_active = true;
 
 ---
 
-### 4. DELETE Statement
+### 5. DELETE Statement
 
 #### Syntax
 ```sql
