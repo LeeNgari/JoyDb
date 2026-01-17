@@ -1,27 +1,64 @@
 # JoyDB
 
-JoyDB is a lightweight, in-memory Relational Database Management System (RDBMS) written in Go. It supports a subset of standard SQL, including complex filtering, JOIN operations, and persistent storage via JSON files.
+JoyDB is a lightweight, in-memory Relational Database Management System (RDBMS) written in Go. It supports a subset of standard SQL, including filtering, JOIN operations, and persistent storage via JSON files.
 
 ## Features
 
 - **SQL Support**: SELECT, INSERT, UPDATE, DELETE, JOIN (INNER, LEFT, RIGHT, FULL).
 - **In-Memory Execution**: Fast query processing with in-memory data structures.
 - **Persistence**: Data is persisted to disk in JSON format, making it human-readable and easy to debug.
-- **ACID-compliant**: (Planned) Currently supports basic transaction isolation via table-level locking.
 - **REPL**: Interactive Read-Eval-Print Loop for direct database interaction.
 - **TCP Server**: Server mode for handling remote connections.
 
+## Architecture Overview
+
+JoyDB follows a layered architecture that separates concerns and provides a clear query execution pipeline:
+
+```
+User Interfaces (REPL / TCP Server)
+         ↓
+    Engine (Orchestration)
+         ↓
+    Parser (SQL → AST)
+         ↓
+   Planner (AST → Execution Plan)
+         ↓
+  Executor (Plan → Operations)
+         ↓
+Query Operations (CRUD, JOIN)
+         ↓
+    Domain (Tables, Rows)
+         ↓
+   Storage (JSON Persistence)
+```
+
+**Key Design Principles**:
+- **Separation of Concerns**: Each layer has a single, well-defined responsibility
+- **Dependency Direction**: Dependencies flow downward (higher layers depend on lower layers)
+- **Rich Domain Model**: Tables contain both data and behavior
+- **Concurrency Safety**: Thread-safe operations using read/write locks
+
+For a detailed explanation of the architecture, see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Documentation
 
-- [SQL Syntax Reference](SQL_REFERENCE.md) - Detailed guide on supported SQL statements.
-- **Internal Architecture**:
-  - [Parser](internal/parser/README.md)
-  - [AST](internal/parser/ast/README.md)
-  - [Lexer](internal/parser/lexer/README.md)
-  - [Executor](internal/executor/README.md)
-  - [Query Engine](internal/query/README.md)
-  - [Errors](internal/domain/errors/README.md)
-  - [Utilities](internal/util/README.md)
+### User Documentation
+- **[SQL Syntax Reference](SQL_REFERENCE.md)** - Complete guide to supported SQL statements, operators, and syntax
+- **[Architecture Overview](ARCHITECTURE.md)** - High-level system design and component interactions
+
+### Developer Documentation
+- **[Internal Architecture](internal/README.md)** - Overview of internal components and navigation guide
+- **Layer-Specific Documentation**:
+  - [Interface Layer](internal/interface/README.md) - REPL and Network server
+  - [Parser Layer](internal/parser/README.md) - SQL parsing (Lexer, Parser, AST)
+  - [Planner Layer](internal/planner/README.md) - Query planning and validation
+  - [Executor Layer](internal/executor/README.md) - Query execution
+  - [Query Operations](internal/query/README.md) - CRUD and JOIN operations
+  - [Domain Layer](internal/domain/README.md) - Core entities (Database, Table, Row)
+  - [Storage Layer](internal/storage/README.md) - Data persistence
+  - [Infrastructure](internal/infrastructure/README.md) - Logging and configuration
+  - [Utilities](internal/util/README.md) - Shared helper functions
+  - [Errors](internal/domain/errors/README.md) - Custom error types
 
 ## Getting Started
 
@@ -162,12 +199,4 @@ Since JoyDB persists data as JSON, you can manually edit the files in the `datab
   {"id": 1, "name": "Alice"}
 ]
 ```
-
-## Project Structure
-
-- `cmd/joydb`: Main entry point.
-- `internal/engine`: Core database engine.
-- `internal/parser`: SQL parser and lexer.
-- `internal/storage`: Data persistence layer.
-- `databases/`: Directory where database files are stored.
 
