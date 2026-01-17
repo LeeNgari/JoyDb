@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "location": "A1",
+    "product_id": 1,
+    "quantity": 50
+  },
+  {
+    "id": 2,
+    "location": "A2",
+    "product_id": 2,
+    "quantity": 200
+  },
+  {
+    "id": 3,
+    "location": "A3",
+    "product_id": 3,
+    "quantity": 150
+  },
+  {
+    "id": 4,
+    "location": "B1",
+    "product_id": 4,
+    "quantity": 75
+  },
+  {
+    "id": 5,
+    "location": "B2",
+    "product_id": 5,
+    "quantity": 100
+  },
+  {
+    "id": 6,
+    "location": "B3",
+    "product_id": 6,
+    "quantity": 0
+  },
+  {
+    "id": 7,
+    "location": "C1",
+    "product_id": 7,
+    "quantity": 60
+  },
+  {
+    "id": 8,
+    "location": "C2",
+    "product_id": 8,
+    "quantity": 500
+  },
+  {
+    "id": 9,
+    "location": "C3",
+    "product_id": 9,
+    "quantity": 300
+  },
+  {
+    "id": 10,
+    "location": "D1",
+    "product_id": 10,
+    "quantity": 120
+  },
+  {
+    "id": 11,
+    "location": "D2",
+    "product_id": 11,
+    "quantity": 0
+  },
+  {
+    "id": 12,
+    "location": "D3",
+    "product_id": 12,
+    "quantity": 80
+  },
+  {
+    "id": 13,
+    "location": "E1",
+    "product_id": 13,
+    "quantity": 400
+  },
+  {
+    "id": 14,
+    "location": "E2",
+    "product_id": 14,
+    "quantity": 250
+  },
+  {
+    "id": 15,
+    "location": "E3",
+    "product_id": 15,
+    "quantity": 40
+  },
+  {
+    "id": 16,
+    "location": "F1",
+    "product_id": 16,
+    "quantity": 1000
+  },
+  {
+    "id": 17,
+    "location": "F2",
+    "product_id": 17,
+    "quantity": 150
+  },
+  {
+    "id": 18,
+    "location": "F3",
+    "product_id": 18,
+    "quantity": 300
+  },
+  {
+    "id": 19,
+    "location": "G1",
+    "product_id": 19,
+    "quantity": 0
+  },
+  {
+    "id": 20,
+    "location": "G2",
+    "product_id": 20,
+    "quantity": 90
+  }
+]

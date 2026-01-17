@@ -1,0 +1,11 @@
+{
+  "name": "main",
+  "version": 1,
+  "tables": [
+    "inventory",
+    "logs",
+    "orders",
+    "products",
+    "users"
+  ]
+}

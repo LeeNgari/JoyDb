@@ -1,0 +1,122 @@
+[
+  {
+    "id": 1,
+    "in_stock": true,
+    "name": "Laptop",
+    "price": 999.99
+  },
+  {
+    "id": 2,
+    "in_stock": true,
+    "name": "Mouse",
+    "price": 25.5
+  },
+  {
+    "id": 3,
+    "in_stock": true,
+    "name": "Keyboard",
+    "price": 75
+  },
+  {
+    "id": 4,
+    "in_stock": true,
+    "name": "Monitor",
+    "price": 250
+  },
+  {
+    "id": 5,
+    "in_stock": true,
+    "name": "Headphones",
+    "price": 120
+  },
+  {
+    "id": 6,
+    "in_stock": false,
+    "name": "Webcam",
+    "price": 60
+  },
+  {
+    "id": 7,
+    "in_stock": true,
+    "name": "Microphone",
+    "price": 85
+  },
+  {
+    "id": 8,
+    "in_stock": true,
+    "name": "USB Cable",
+    "price": 10
+  },
+  {
+    "id": 9,
+    "in_stock": true,
+    "name": "HDMI Cable",
+    "price": 15
+  },
+  {
+    "id": 10,
+    "in_stock": true,
+    "name": "Charger",
+    "price": 30
+  },
+  {
+    "id": 11,
+    "in_stock": false,
+    "name": "Docking Station",
+    "price": 150
+  },
+  {
+    "id": 12,
+    "in_stock": true,
+    "name": "External Drive",
+    "price": 90
+  },
+  {
+    "id": 13,
+    "in_stock": true,
+    "name": "Flash Drive",
+    "price": 20
+  },
+  {
+    "id": 14,
+    "in_stock": true,
+    "name": "Mouse Pad",
+    "price": 12
+  },
+  {
+    "id": 15,
+    "in_stock": true,
+    "name": "Laptop Stand",
+    "price": 45
+  },
+  {
+    "id": 16,
+    "in_stock": true,
+    "name": "Screen Cleaner",
+    "price": 8
+  },
+  {
+    "id": 17,
+    "in_stock": true,
+    "name": "Cable Organizer",
+    "price": 15
+  },
+  {
+    "id": 18,
+    "in_stock": true,
+    "name": "Webcam Cover",
+    "price": 5
+  },
+  {
+    "id": 19,
+    "in_stock": false,
+    "name": "Cooling Pad",
+    "price": 35
+  },
+  {
+    "id": 20,
+    "in_stock": true,
+    "name": "Privacy Screen",
+    "price": 25
+  }
+]

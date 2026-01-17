@@ -1,0 +1,142 @@
+[
+  {
+    "age": 25,
+    "email": "user1@example.com",
+    "id": 1,
+    "is_active": true,
+    "username": "user1"
+  },
+  {
+    "age": 30,
+    "email": "user2@example.com",
+    "id": 2,
+    "is_active": false,
+    "username": "user2"
+  },
+  {
+    "age": 22,
+    "email": "user3@example.com",
+    "id": 3,
+    "is_active": true,
+    "username": "user3"
+  },
+  {
+    "age": 35,
+    "email": "user4@example.com",
+    "id": 4,
+    "is_active": true,
+    "username": "user4"
+  },
+  {
+    "age": 28,
+    "email": "user5@example.com",
+    "id": 5,
+    "is_active": false,
+    "username": "user5"
+  },
+  {
+    "age": 40,
+    "email": "user6@example.com",
+    "id": 6,
+    "is_active": true,
+    "username": "user6"
+  },
+  {
+    "age": 29,
+    "email": "user7@example.com",
+    "id": 7,
+    "is_active": true,
+    "username": "user7"
+  },
+  {
+    "age": 33,
+    "email": "user8@example.com",
+    "id": 8,
+    "is_active": false,
+    "username": "user8"
+  },
+  {
+    "age": 26,
+    "email": "user9@example.com",
+    "id": 9,
+    "is_active": true,
+    "username": "user9"
+  },
+  {
+    "age": 31,
+    "email": "user10@example.com",
+    "id": 10,
+    "is_active": true,
+    "username": "user10"
+  },
+  {
+    "age": 27,
+    "email": "user11@example.com",
+    "id": 11,
+    "is_active": false,
+    "username": "user11"
+  },
+  {
+    "age": 34,
+    "email": "user12@example.com",
+    "id": 12,
+    "is_active": true,
+    "username": "user12"
+  },
+  {
+    "age": 23,
+    "email": "user13@example.com",
+    "id": 13,
+    "is_active": true,
+    "username": "user13"
+  },
+  {
+    "age": 38,
+    "email": "user14@example.com",
+    "id": 14,
+    "is_active": false,
+    "username": "user14"
+  },
+  {
+    "age": 32,
+    "email": "user15@example.com",
+    "id": 15,
+    "is_active": true,
+    "username": "user15"
+  },
+  {
+    "age": 24,
+    "email": "user16@example.com",
+    "id": 16,
+    "is_active": true,
+    "username": "user16"
+  },
+  {
+    "age": 36,
+    "email": "user17@example.com",
+    "id": 17,
+    "is_active": false,
+    "username": "user17"
+  },
+  {
+    "age": 39,
+    "email": "user18@example.com",
+    "id": 18,
+    "is_active": true,
+    "username": "user18"
+  },
+  {
+    "age": 21,
+    "email": "user19@example.com",
+    "id": 19,
+    "is_active": true,
+    "username": "user19"
+  },
+  {
+    "age": 37,
+    "email": "user20@example.com",
+    "id": 20,
+    "is_active": false,
+    "username": "user20"
+  }
+]
