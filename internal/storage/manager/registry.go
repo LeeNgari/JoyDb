@@ -101,3 +101,8 @@ func (r *Registry) SaveAll() {
 		}
 	}
 }
+
+// List returns a list of all available databases
+func (r *Registry) List() ([]string, error) {
+	return ListDatabases(r.basePath)
+}

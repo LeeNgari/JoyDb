@@ -36,6 +36,19 @@ func Start(registry *manager.Registry) {
 			break
 		}
 
+		if line == "ls" || line == "list" {
+			dbs, err := registry.List()
+			if err != nil {
+				fmt.Printf("Error listing databases: %v\n", err)
+			} else {
+				fmt.Println("Available databases:")
+				for _, db := range dbs {
+					fmt.Printf("  - %s\n", db)
+				}
+			}
+			continue
+		}
+
 		// Execute using Engine
 		result, err := eng.Execute(line)
 		if err != nil {
