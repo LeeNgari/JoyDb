@@ -10,6 +10,11 @@ JoyDB is a lightweight, in-memory Relational Database Management System (RDBMS) 
 - **REPL**: Interactive Read-Eval-Print Loop for direct database interaction.
 - **TCP Server**: Server mode for handling remote connections.
 
+## Example Usage
+
+This RDBMS is used as the backend database for the **Bliss Ecommerce Dashboard**.
+Check out the project here: [https://github.com/LeeNgari/bliss-pesapal.git](https://github.com/LeeNgari/bliss-pesapal.git)
+
 ## Architecture Overview
 
 JoyDB follows a layered architecture that separates concerns and provides a clear query execution pipeline:
@@ -106,15 +111,18 @@ make repl
 
 **REPL Commands:**
 - Type your SQL query and press Enter to execute.
+- `ls`: List available databases.
+- `ls tables`: List tables in the current database.
 - `exit` or `\q`: Quit the REPL.
 
 **Example Session:**
 ```sql
-> CREATE DATABASE mydb;
-> USE mydb;
-> CREATE TABLE users (id INT, name TEXT);
-> INSERT INTO users VALUES (1, 'Alice');
+> ls;
+> ls tables;
+> USE main;
 > SELECT * FROM users;
+> SELECT * FROM orders;
+> SELECT * FROM products;
 ```
 
 ### 2. Server Mode
@@ -164,15 +172,18 @@ JoyDB uses a simple TCP-based protocol for client-server communication.
 
 ## Seed Data & Population
 
-There are two ways to populate the database with data:
+There are three ways to populate the database with data:
 
-### 1. SQL INSERT Statements
+### 1. Automatic Seeding (Default)
+When you run the `joydb` binary for the first time, it automatically creates and populates a `main` database if it doesn't exist. This database includes sample data (users, products, orders)
+
+### 2. SQL INSERT Statements
 You can use the REPL or a client connection to execute `INSERT` statements.
 ```sql
 INSERT INTO users (id, name) VALUES (1, 'Alice');
 ```
 
-### 2. Manual JSON Editing
+### 3. Manual JSON Editing
 Since JoyDB persists data as JSON, you can manually edit the files in the `databases/` directory.
 
 1.  Create a directory for your database: `databases/mydb/`
