@@ -80,34 +80,68 @@ To build the project from source, run:
 make build
 ```
 
-This will create a `joydb` binary in the root directory.
+To build for all supported platforms (Linux, Windows, macOS), run:
 
-## Binary Usage
+```bash
+make build-all
+```
 
-If you have downloaded the `joydb` binary directly:
+This will create the following binaries in the `dist/` directory:
+- `joydb-linux-amd64`
+- `joydb-windows-amd64.exe`
+- `joydb-darwin-arm64`
 
-1.  **Permissions**: Ensure the binary is executable.
+## Installation & Usage
+
+### Downloading Releases
+You can download the latest pre-compiled binaries for your operating system from the [GitHub Releases](https://github.com/LeeNgari/mini-rdbms/releases) page.
+
+### Running the Application
+
+#### Linux
+1.  Download `joydb-linux-amd64`.
+2.  Open a terminal and navigate to the download location.
+3.  Make the binary executable:
     ```bash
-    chmod +x joydb
+    chmod +x joydb-linux-amd64
     ```
-2.  **Running**: You can run it directly from the terminal.
+4.  Run the application:
     ```bash
-    ./joydb          # Starts REPL mode
-    ./joydb --server # Starts Server mode
+    ./joydb-linux-amd64          # REPL mode
+    ./joydb-linux-amd64 --server # Server mode (default port 4444)
+    ./joydb-linux-amd64 --server --port 54322 # Custom port
+    ```
+
+#### macOS (Apple Silicon)
+1.  Download `joydb-darwin-arm64`.
+2.  Open a terminal.
+3.  Make the binary executable:
+    ```bash
+    chmod +x joydb-darwin-arm64
+    ```
+4.  Run the application:
+    ```bash
+    ./joydb-darwin-arm64          # REPL mode
+    ./joydb-darwin-arm64 --server # Server mode (default port 4444)
+    ./joydb-darwin-arm64 --server --port 54322 # Custom port
+    ```
+> **Note**: You may need to allow the application to run in System Settings > Privacy & Security if macOS blocks it.
+
+#### Windows
+1.  Download `joydb-windows-amd64.exe`.
+2.  Open Command Prompt or PowerShell.
+3.  Run the application:
+    ```powershell
+    .\joydb-windows-amd64.exe          # REPL mode
+    .\joydb-windows-amd64.exe --server # Server mode (default port 4444)
+    .\joydb-windows-amd64.exe --server --port 54322 # Custom port
     ```
 
 ## Usage
 
-### 1. REPL Mode (Interactive)
+### REPL Mode (Interactive)
 
-The Read-Eval-Print Loop (REPL) allows you to interact with the database directly.
 
-Start it with:
-```bash
-make repl
-# OR
-./joydb
-```
 
 **REPL Commands:**
 - Type your SQL query and press Enter to execute.
@@ -125,24 +159,8 @@ make repl
 > SELECT * FROM products;
 ```
 
-### 2. Server Mode
 
-Start the database server to accept TCP connections.
-
-**Default Port**: `4444`
-
-```bash
-make server
-# OR
-./joydb --server
-```
-
-To specify a custom port (e.g., 54322):
-```bash
-./joydb --server --port 54322
-```
-
-### 3. Connecting from a Backend Server
+### Connecting from a Backend Server
 
 JoyDB uses a simple TCP-based protocol for client-server communication.
 
