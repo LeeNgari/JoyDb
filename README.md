@@ -151,9 +151,9 @@ You can download the latest pre-compiled binaries for your operating system from
 
 **Example Session:**
 ```sql
-> ls;
+> ls
+> USE Main
 > ls tables;
-> USE main;
 > SELECT * FROM users;
 > SELECT * FROM orders;
 > SELECT * FROM products;
