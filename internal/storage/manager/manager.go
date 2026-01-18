@@ -104,3 +104,26 @@ func RenameDatabase(oldName, newName string, basePath string) error {
 
 	return nil
 }
+
+// ListDatabases returns a list of all available databases in the base path
+func ListDatabases(basePath string) ([]string, error) {
+	entries, err := os.ReadDir(basePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read databases directory: %w", err)
+	}
+
+	var databases []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Check if it's a valid database (has meta.json)
+		metaPath := filepath.Join(basePath, entry.Name(), "meta.json")
+		if _, err := os.Stat(metaPath); err == nil {
+			databases = append(databases, entry.Name())
+		}
+	}
+
+	return databases, nil
+}

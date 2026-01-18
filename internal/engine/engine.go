@@ -95,3 +95,16 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 
 	return result, nil
 }
+
+// ListTables returns a list of tables in the currently selected database
+func (e *Engine) ListTables() ([]string, error) {
+	if e.db == nil {
+		return nil, fmt.Errorf("no database selected")
+	}
+
+	var tables []string
+	for tableName := range e.db.Tables {
+		tables = append(tables, tableName)
+	}
+	return tables, nil
+}

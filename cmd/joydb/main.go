@@ -1,117 +1,107 @@
 package main
 
 import (
-"flag"
-"fmt"
-"io"
-"log/slog"
-"os"
-"path/filepath"
-"time"
+	"flag"
+	"fmt"
+	"io/fs"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"time"
 
-"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
-"github.com/leengari/mini-rdbms/internal/network"
-"github.com/leengari/mini-rdbms/internal/repl"
-"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/mini-rdbms/databases"
+	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
+	"github.com/leengari/mini-rdbms/internal/network"
+	"github.com/leengari/mini-rdbms/internal/repl"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 func main() {
-serverMode := flag.Bool("server", false, "Run in server mode")
-port := flag.Int("port", 4444, "Port to listen on")
-flag.Parse()
+	serverMode := flag.Bool("server", false, "Run in server mode")
+	port := flag.Int("port", 4444, "Port to listen on")
+	flag.Parse()
 
-logger, closeFn := logging.SetupLogger()
-defer closeFn()
+	logger, closeFn := logging.SetupLogger()
+	defer closeFn()
 
-slog.SetDefault(logger)
-time.Sleep(1 * time.Second)
-fmt.Println("Starting JoyDB application...")
+	slog.SetDefault(logger)
+	time.Sleep(1 * time.Second)
+	fmt.Println("Starting JoyDB application...")
 
-// Base path for databases
-basePath := "databases"
-seedPath := "seed_data"
+	// Base path for databases
+	basePath := "databases"
 
-// Ensure database directory exists
-if err := os.MkdirAll(basePath, 0755); err != nil {
-slog.Error("failed to create databases directory", "error", err)
-os.Exit(1)
+	// Ensure database directory exists
+	if err := os.MkdirAll(basePath, 0755); err != nil {
+		slog.Error("failed to create databases directory", "error", err)
+		os.Exit(1)
+	}
+
+	// Create Database Registry
+	registry := manager.NewRegistry(basePath)
+
+	// Save all loaded databases on shutdown
+	defer func() {
+		slog.Info("Shutting down - saving databases...")
+		registry.SaveAll()
+	}()
+
+	// Seed 'main' from embedded FS
+	if err := ensureDatabaseSeeded(basePath, databases.Content, "main"); err != nil {
+		slog.Error("Failed to seed main database", "error", err)
+	}
+
+	slog.Info("Application ready!", "base_path", basePath)
+
+	if *serverMode {
+		slog.Info("Starting Server mode...")
+		network.Start(*port, registry)
+	} else {
+		slog.Info("Starting REPL mode...")
+		repl.Start(registry)
+	}
 }
 
-// Check if main database exists, if not and seed data exists, copy it
-if err := ensureDatabaseSeeded(basePath, seedPath, "main"); err != nil {
-slog.Error("failed to seed database", "error", err)
-}
+func ensureDatabaseSeeded(basePath string, seedFS fs.FS, dbName string) error {
+	targetDir := filepath.Join(basePath, dbName)
 
-// Create Database Registry
-registry := manager.NewRegistry(basePath)
+	// Check if target exists
+	if _, err := os.Stat(targetDir); !os.IsNotExist(err) {
+		return nil // Already exists
+	}
 
-// Save all loaded databases on shutdown
-defer func() {
-slog.Info("Shutting down - saving databases...")
-registry.SaveAll()
-}()
+	slog.Info("Seeding database...", "database", dbName)
 
-// Application is ready
-// Run integration tests with: go test ./internal/integration_test/...
-slog.Info("Application ready!", "base_path", basePath)
+	// Walk the embedded filesystem
+	return fs.WalkDir(seedFS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
 
-if *serverMode {
-slog.Info("Starting Server mode...")
-network.Start(*port, registry)
-} else {
-slog.Info("Starting REPL mode...")
-repl.Start(registry)
-}
-}
+		// Skip the root "."
+		if path == "." {
+			return nil
+		}
 
-func ensureDatabaseSeeded(basePath, seedPath, dbName string) error {
-targetDir := filepath.Join(basePath, dbName)
-sourceDir := filepath.Join(seedPath, dbName)
+		// Calculate target path
+		// Note: embedded paths will be like "main/meta.json"
+		// We want to extract "main/..." to "databases/main/..."
+		// Since we passed "databases.Content" which contains "main", the paths start with "main"
+		
+		// If we are seeding "main", and the FS has "main/...", we can just join basePath and path
+		targetPath := filepath.Join(basePath, path)
 
-// Check if target exists
-if _, err := os.Stat(targetDir); !os.IsNotExist(err) {
-return nil // Already exists
-}
+		if d.IsDir() {
+			return os.MkdirAll(targetPath, 0755)
+		}
 
-// Check if source exists
-if _, err := os.Stat(sourceDir); os.IsNotExist(err) {
-return nil // No seed data
-}
+		// Read from embedded FS
+		data, err := fs.ReadFile(seedFS, path)
+		if err != nil {
+			return err
+		}
 
-slog.Info("Seeding database...", "database", dbName)
-return copyDir(sourceDir, targetDir)
-}
-
-func copyDir(src, dst string) error {
-return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
-if err != nil {
-return err
-}
-
-relPath, err := filepath.Rel(src, path)
-if err != nil {
-return err
-}
-
-dstPath := filepath.Join(dst, relPath)
-
-if info.IsDir() {
-return os.MkdirAll(dstPath, info.Mode())
-}
-
-srcFile, err := os.Open(path)
-if err != nil {
-return err
-}
-defer srcFile.Close()
-
-dstFile, err := os.Create(dstPath)
-if err != nil {
-return err
-}
-defer dstFile.Close()
-
-_, err = io.Copy(dstFile, srcFile)
-return err
-})
+		// Write to disk
+		return os.WriteFile(targetPath, data, 0644)
+	})
 }

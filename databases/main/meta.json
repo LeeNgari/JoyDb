@@ -4,6 +4,7 @@
   "tables": [
     "inventory",
     "logs",
+    "order_items",
     "orders",
     "products",
     "users"
