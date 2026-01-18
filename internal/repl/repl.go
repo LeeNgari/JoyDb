@@ -49,6 +49,23 @@ func Start(registry *manager.Registry) {
 			continue
 		}
 
+		if line == "ls tables" {
+			tables, err := eng.ListTables()
+			if err != nil {
+				fmt.Printf("Error listing tables: %v\n", err)
+			} else {
+				if len(tables) == 0 {
+					fmt.Println("No tables found in current database.")
+				} else {
+					fmt.Println("Available tables:")
+					for _, t := range tables {
+						fmt.Printf("  - %s\n", t)
+					}
+				}
+			}
+			continue
+		}
+
 		// Execute using Engine
 		result, err := eng.Execute(line)
 		if err != nil {
