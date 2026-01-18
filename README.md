@@ -94,7 +94,7 @@ This will create the following binaries in the `dist/` directory:
 ## Installation & Usage
 
 ### Downloading Releases
-You can download the latest pre-compiled binaries for your operating system from the [GitHub Releases](https://github.com/LeeNgari/mini-rdbms/releases) page.
+You can download the latest pre-compiled binaries for your operating system from the [GitHub Releases](https://github.com/LeeNgari/JoyDb/releases) page.
 
 ### Running the Application
 
