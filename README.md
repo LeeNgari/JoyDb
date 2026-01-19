@@ -59,7 +59,7 @@ For a detailed explanation of the architecture, see [ARCHITECTURE.md](ARCHITECTU
   - [Planner Layer](internal/planner/README.md) - Query planning and validation
   - [Executor Layer](internal/executor/README.md) - Query execution
   - [Query Operations](internal/query/README.md) - CRUD and JOIN operations
-  - [Domain Layer](internal/domain/README.md) - Core entities (Database, Table, Row)
+  - [Domain Layer](internal/domain/README.md) - Core entities (Database, Table, Row, Indexes)
   - [Storage Layer](internal/storage/README.md) - Data persistence
   - [Infrastructure](internal/infrastructure/README.md) - Logging and configuration
   - [Utilities](internal/util/README.md) - Shared helper functions
