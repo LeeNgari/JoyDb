@@ -20,6 +20,10 @@ func Start(registry *manager.Registry) {
 
 	// Start with no database selected
 	eng := engine.New(nil, registry)
+	
+	// Register logging observer for lifecycle tracing
+	loggingObserver := engine.NewLoggingObserver()
+	eng.AddObserver(loggingObserver)
 
 	for {
 		fmt.Print("> ")

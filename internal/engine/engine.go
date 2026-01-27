@@ -2,6 +2,7 @@ package engine
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
@@ -15,13 +16,18 @@ import (
 
 // Engine is the main entry point for the database system
 type Engine struct {
-	db       *schema.Database
-	registry *manager.Registry
+	db        *schema.Database
+	registry  *manager.Registry
+	observers []Observer // Observers for lifecycle events
 }
 
 // New creates a new Engine instance
 func New(db *schema.Database, registry *manager.Registry) *Engine {
-	return &Engine{db: db, registry: registry}
+	return &Engine{
+		db:        db,
+		registry:  registry,
+		observers: make([]Observer, 0),
+	}
 }
 
 // Execute processes a SQL string and returns the result
@@ -31,17 +37,21 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	defer tx.Close()
 
 	// 1. Tokenize
+	e.notify(Event{Type: EventLexStart, TxID: tx.ID, Data: sql})
 	tokens, err := lexer.Tokenize(sql)
 	if err != nil {
 		return nil, fmt.Errorf("lexer error: %w", err)
 	}
+	e.notify(Event{Type: EventLexEnd, TxID: tx.ID, Data: len(tokens)})
 
 	// 2. Parse
+	e.notify(Event{Type: EventParseStart, TxID: tx.ID})
 	p := parser.New(tokens)
 	stmt, err := p.Parse()
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
+	e.notify(Event{Type: EventParseEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", stmt)})
 
 	// 3. Handle Database Management Statements
 	switch s := stmt.(type) {
@@ -87,16 +97,23 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 
 	// 5. Plan (for DML/DQL)
+	e.notify(Event{Type: EventPlanStart, TxID: tx.ID})
 	planNode, err := planner.Plan(stmt, e.db, tx)
 	if err != nil {
 		return nil, fmt.Errorf("planning error: %w", err)
 	}
+	e.notify(Event{Type: EventPlanEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", planNode)})
 
 	// 6. Execute
+	e.notify(Event{Type: EventExecStart, TxID: tx.ID})
 	result, err := executor.Execute(planNode, e.db, tx)
 	if err != nil {
 		return nil, fmt.Errorf("execution error: %w", err)
 	}
+	e.notify(Event{Type: EventExecEnd, TxID: tx.ID, Data: map[string]interface{}{
+		"rows_affected": result.RowsAffected,
+		"rows_returned": len(result.Rows),
+	}})
 
 	return result, nil
 }
@@ -112,4 +129,27 @@ func (e *Engine) ListTables() ([]string, error) {
 		tables = append(tables, tableName)
 	}
 	return tables, nil
+}
+
+// AddObserver registers an observer to receive lifecycle events
+func (e *Engine) AddObserver(observer Observer) {
+	e.observers = append(e.observers, observer)
+}
+
+// RemoveObserver unregisters an observer
+func (e *Engine) RemoveObserver(observer Observer) {
+	for i, o := range e.observers {
+		if o == observer {
+			e.observers = append(e.observers[:i], e.observers[i+1:]...)
+			return
+		}
+	}
+}
+
+// notify sends an event to all registered observers
+func (e *Engine) notify(event Event) {
+	event.Timestamp = time.Now()
+	for _, observer := range e.observers {
+		observer.OnEvent(event)
+	}
 }

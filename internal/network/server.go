@@ -42,6 +42,10 @@ func handleConnection(conn net.Conn, registry *manager.Registry) {
 	defer conn.Close()
 
 	dbEngine := engine.New(nil, registry)
+	
+	// Register logging observer for lifecycle tracing
+	loggingObserver := engine.NewLoggingObserver()
+	dbEngine.AddObserver(loggingObserver)
 
 	// Use Decoder instead of Scanner for network streams
 	decoder := json.NewDecoder(conn)
