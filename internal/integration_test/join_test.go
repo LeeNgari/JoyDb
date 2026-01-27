@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
@@ -35,11 +36,13 @@ func TestJoinOperations(t *testing.T) {
 	}
 
 	t.Run("InnerJoin", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		results, err := join.ExecuteJoin(
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeInner,
-			nil, nil,
+			nil, nil, tx,
 		)
 
 		testutil.AssertNoError(t, err, "INNER JOIN")
@@ -61,11 +64,13 @@ func TestJoinOperations(t *testing.T) {
 	})
 
 	t.Run("LeftJoin", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		results, err := join.ExecuteJoin(
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeLeft,
-			nil, nil,
+			nil, nil, tx,
 		)
 
 		testutil.AssertNoError(t, err, "LEFT JOIN")
@@ -79,11 +84,13 @@ func TestJoinOperations(t *testing.T) {
 	})
 
 	t.Run("RightJoin", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		results, err := join.ExecuteJoin(
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeRight,
-			nil, nil,
+			nil, nil, tx,
 		)
 
 		testutil.AssertNoError(t, err, "RIGHT JOIN")
@@ -95,11 +102,13 @@ func TestJoinOperations(t *testing.T) {
 	})
 
 	t.Run("FullOuterJoin", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		results, err := join.ExecuteJoin(
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeFull,
-			nil, nil,
+			nil, nil, tx,
 		)
 
 		testutil.AssertNoError(t, err, "FULL OUTER JOIN")
@@ -111,6 +120,8 @@ func TestJoinOperations(t *testing.T) {
 	})
 
 	t.Run("JoinWithProjection", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		proj := projection.NewProjectionWithColumns(
 			projection.ColumnRef{Table: "users", Column: "username"},
 			projection.ColumnRef{Table: "orders", Column: "product"},
@@ -121,7 +132,7 @@ func TestJoinOperations(t *testing.T) {
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeInner,
-			nil, proj,
+			nil, proj, tx,
 		)
 
 		testutil.AssertNoError(t, err, "JOIN with projection")
@@ -149,6 +160,8 @@ func TestJoinOperations(t *testing.T) {
 	})
 
 	t.Run("JoinWithPredicate", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// Only orders with amount > 50
 		predicate := func(row data.JoinedRow) bool {
 			amount, exists := row.Get("orders.amount")
@@ -163,7 +176,7 @@ func TestJoinOperations(t *testing.T) {
 			usersTable, ordersTable,
 			"id", "user_id",
 			join.JoinTypeInner,
-			predicate, nil,
+			predicate, nil, tx,
 		)
 
 		testutil.AssertNoError(t, err, "JOIN with predicate")
@@ -181,6 +194,8 @@ func TestJoinOperations(t *testing.T) {
 
 	// Edge case: Empty tables
 	t.Run("JoinEmptyTables", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		emptyUsers := testutil.CreateUsersTable()
 		emptyUsers.Rows = []data.Row{}
 		
@@ -191,7 +206,7 @@ func TestJoinOperations(t *testing.T) {
 			emptyUsers, emptyOrders,
 			"id", "user_id",
 			join.JoinTypeInner,
-			nil, nil,
+			nil, nil, tx,
 		)
 		
 		testutil.AssertNoError(t, err, "JOIN with empty tables")
@@ -200,6 +215,8 @@ func TestJoinOperations(t *testing.T) {
 
 	// Edge case: LEFT JOIN with empty right table
 	t.Run("LeftJoinEmptyRight", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		testUsers := testutil.CreateUsersTable()
 		
 		emptyOrders := testutil.CreateOrdersTable()
@@ -209,7 +226,7 @@ func TestJoinOperations(t *testing.T) {
 			testUsers, emptyOrders,
 			"id", "user_id",
 			join.JoinTypeLeft,
-			nil, nil,
+			nil, nil, tx,
 		)
 		
 		testutil.AssertNoError(t, err, "LEFT JOIN with empty right table")

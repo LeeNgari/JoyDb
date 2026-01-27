@@ -2,10 +2,12 @@ package schema
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/errors"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 )
 
 // Table represents a database table with its schema, data, and indexes
@@ -56,12 +58,16 @@ func (t *Table) RUnlock() {
 }
 
 // Insert adds a new row to the table with full validation and auto-increment support
-func (t *Table) Insert(mutRow data.Row) error {
+func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	row := mutRow.Copy() // prevent mutation of caller's data
 
 	// Acquire write lock for the entire operation
 	t.Lock()
 	defer t.Unlock()
+
+	if tx != nil {
+		slog.Debug("Insert operation", "table", t.Name, "tx_id", tx.ID)
+	}
 
 	// 1. Handle auto-increment primary key FIRST (before validation)
 	var autoIncCol *Column
@@ -164,9 +170,13 @@ func (t *Table) Insert(mutRow data.Row) error {
 }
 
 // SelectAll returns all rows of the table
-func (t *Table) SelectAll() []data.Row {
+func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 	t.RLock()
 	defer t.RUnlock()
+
+	if tx != nil {
+		slog.Debug("SelectAll operation", "table", t.Name, "tx_id", tx.ID)
+	}
 
 	rows := make([]data.Row, len(t.Rows))
 	copy(rows, t.Rows)
@@ -174,9 +184,13 @@ func (t *Table) SelectAll() []data.Row {
 }
 
 // Select returns rows that match the given predicate
-func (t *Table) Select(predicate func(data.Row) bool) []data.Row {
+func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transaction) []data.Row {
 	t.RLock()
 	defer t.RUnlock()
+
+	if tx != nil {
+		slog.Debug("Select operation", "table", t.Name, "tx_id", tx.ID)
+	}
 
 	var result []data.Row
 	for _, row := range t.Rows {
@@ -189,9 +203,13 @@ func (t *Table) Select(predicate func(data.Row) bool) []data.Row {
 
 // SelectByIndex retrieves a row using a unique index
 // Returns the row and true if found, nil and false otherwise
-func (t *Table) SelectByIndex(colName string, value interface{}) (data.Row, bool) {
+func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction.Transaction) (data.Row, bool) {
 	t.RLock()
 	defer t.RUnlock()
+
+	if tx != nil {
+		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.ID)
+	}
 
 	idx, exists := t.Indexes[colName]
 	if !exists || !idx.Unique {
@@ -213,9 +231,13 @@ func (t *Table) SelectByIndex(colName string, value interface{}) (data.Row, bool
 
 // Update modifies rows that match the given predicate
 // Returns the number of rows updated
-func (t *Table) Update(predicate func(data.Row) bool, updates data.Row) (int, error) {
+func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *transaction.Transaction) (int, error) {
 	t.Lock()
 	defer t.Unlock()
+
+	if tx != nil {
+		slog.Debug("Update operation", "table", t.Name, "tx_id", tx.ID)
+	}
 
 	count := 0
 	for i, row := range t.Rows {
@@ -255,9 +277,13 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row) (int, er
 
 // Delete removes rows that match the given predicate
 // Returns the number of rows deleted
-func (t *Table) Delete(predicate func(data.Row) bool) (int, error) {
+func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transaction) (int, error) {
 	t.Lock()
 	defer t.Unlock()
+
+	if tx != nil {
+		slog.Debug("Delete operation", "table", t.Name, "tx_id", tx.ID)
+	}
 
 	var newRows []data.Row
 	deleted := 0

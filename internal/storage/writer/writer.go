@@ -9,11 +9,12 @@ import (
 	"sort"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/storage/metadata"
 )
 
 // SaveTable persists both data.json and meta.json atomically
-func SaveTable(t *schema.Table) error {
+func SaveTable(t *schema.Table, tx *transaction.Transaction) error {
 	if t == nil || t.Path == "" {
 		return fmt.Errorf("cannot save table: nil or missing path")
 	}
@@ -24,6 +25,10 @@ func SaveTable(t *schema.Table) error {
 	// Lock table for reading during save
 	t.RLock()
 	defer t.RUnlock()
+
+	if tx != nil {
+		slog.Debug("SaveTable operation", "table", tableName, "tx_id", tx.ID)
+	}
 
 	// 1. Prepare meta (updated from current in-memory state)
 	meta := metadata.TableMeta{
@@ -91,14 +96,18 @@ func SaveTable(t *schema.Table) error {
 }
 
 // SaveDatabase saves all tables and database metadata
-func SaveDatabase(db *schema.Database) error {
+func SaveDatabase(db *schema.Database, tx *transaction.Transaction) error {
 	if db == nil {
 		return fmt.Errorf("cannot save nil database")
 	}
 
+	if tx != nil {
+		slog.Debug("SaveDatabase operation", "database", db.Name, "tx_id", tx.ID)
+	}
+
 	// 1. Save all tables first
 	for name, table := range db.Tables {
-		if err := SaveTable(table); err != nil {
+		if err := SaveTable(table, tx); err != nil {
 			slog.Error("failed to save table during database save",
 				slog.String("table", name),
 				slog.Any("error", err),
@@ -149,7 +158,7 @@ func SaveDatabase(db *schema.Database) error {
 }
 
 // FlushTableIfDirty saves the table only if it has unsaved changes
-func FlushTableIfDirty(table *schema.Table) error {
+func FlushTableIfDirty(table *schema.Table, tx *transaction.Transaction) error {
 	// Check dirty flag (needs lock)
 	table.RLock()
 	isDirty := table.Dirty
@@ -159,7 +168,7 @@ func FlushTableIfDirty(table *schema.Table) error {
 		return nil
 	}
 
-	if err := SaveTable(table); err != nil {
+	if err := SaveTable(table, tx); err != nil {
 		return err
 	}
 

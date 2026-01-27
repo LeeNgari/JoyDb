@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/executor"
 	"github.com/leengari/mini-rdbms/internal/parser"
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
@@ -25,6 +26,10 @@ func New(db *schema.Database, registry *manager.Registry) *Engine {
 
 // Execute processes a SQL string and returns the result
 func (e *Engine) Execute(sql string) (*executor.Result, error) {
+	// 0. Start Transaction
+	tx := transaction.NewTransaction()
+	defer tx.Close()
+
 	// 1. Tokenize
 	tokens, err := lexer.Tokenize(sql)
 	if err != nil {
@@ -82,13 +87,13 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 
 	// 5. Plan (for DML/DQL)
-	planNode, err := planner.Plan(stmt, e.db)
+	planNode, err := planner.Plan(stmt, e.db, tx)
 	if err != nil {
 		return nil, fmt.Errorf("planning error: %w", err)
 	}
 
 	// 6. Execute
-	result, err := executor.Execute(planNode, e.db)
+	result, err := executor.Execute(planNode, e.db, tx)
 	if err != nil {
 		return nil, fmt.Errorf("execution error: %w", err)
 	}

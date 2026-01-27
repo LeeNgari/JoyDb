@@ -5,12 +5,13 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 )
 
 // executeJoinSelect handles JOIN plans
-func executeJoinSelect(node *plan.SelectNode, db *schema.Database) (*Result, error) {
+func executeJoinSelect(node *plan.SelectNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
 	if len(node.Joins) != 1 {
 		return nil, fmt.Errorf("multiple JOINs not yet supported")
 	}
@@ -98,6 +99,7 @@ func executeJoinSelect(node *plan.SelectNode, db *schema.Database) (*Result, err
 		joinNode.JoinType,
 		joinPred,
 		node.Projection,
+		tx,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("JOIN execution failed: %w", err)
