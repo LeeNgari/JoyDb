@@ -1,12 +1,13 @@
 package join
 
 import (
-"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"fmt"
 	"log/slog"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 )
 
 // JoinPredicate tests whether a joined row matches certain criteria
@@ -23,7 +24,11 @@ func ExecuteJoin(
 	joinType JoinType,
 	pred JoinPredicate,
 	proj *projection.Projection,
+	tx *transaction.Transaction,
 ) ([]data.JoinedRow, error) {
+	if tx != nil {
+		slog.Debug("ExecuteJoin operation", "type", joinType, "tx_id", tx.ID)
+	}
 	// Validate join condition
 	if err := validateJoinCondition(leftTable, rightTable, leftColumn, rightColumn); err != nil {
 		return nil, err

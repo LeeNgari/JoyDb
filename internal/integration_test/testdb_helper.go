@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/bootstrap"
 	"github.com/leengari/mini-rdbms/internal/storage/loader"
@@ -44,7 +45,9 @@ func teardownTestDB(t *testing.T, db *schema.Database) {
 	t.Helper()
 
 	// Save database before cleanup (optional, for debugging)
-	if err := writer.SaveDatabase(db); err != nil {
+	tx := transaction.NewTransaction()
+	defer tx.Close()
+	if err := writer.SaveDatabase(db, tx); err != nil {
 		t.Logf("Warning: Failed to save test database: %v", err)
 	}
 

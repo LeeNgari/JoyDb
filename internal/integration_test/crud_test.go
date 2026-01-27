@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
 )
@@ -20,7 +21,9 @@ func TestCRUDOperations(t *testing.T) {
 	}
 
 	t.Run("SelectAll", func(t *testing.T) {
-		rows := usersTable.SelectAll()
+		tx := transaction.NewTransaction()
+		defer tx.Close()
+		rows := usersTable.SelectAll(tx)
 		if len(rows) == 0 {
 			t.Error("Expected rows, got none")
 		}
@@ -28,13 +31,15 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("SelectWithProjection", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		proj := projection.NewProjectionWithColumns(
 			projection.ColumnRef{Column: "id"},
 			projection.ColumnRef{Column: "username"},
 		)
 		
 		// Get all rows then apply projection manually (simulating executor)
-		allRows := usersTable.SelectAll()
+		allRows := usersTable.SelectAll(tx)
 		var rows []data.Row
 		for _, row := range allRows {
 			rows = append(rows, projection.ProjectRow(row, proj, usersTable.Name))
@@ -53,11 +58,13 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("SelectWhere", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// Find users with specific username
 		rows := usersTable.Select(func(row data.Row) bool {
 			username, ok := row["username"].(string)
 			return ok && username == "guest"
-		})
+		}, tx)
 
 		if len(rows) != 1 {
 			t.Errorf("Expected 1 user named guest, got %d", len(rows))
@@ -65,8 +72,10 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("SelectByUniqueIndex", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// First, get all rows to find a valid ID
-		allRows := usersTable.SelectAll()
+		allRows := usersTable.SelectAll(tx)
 		if len(allRows) == 0 {
 			t.Skip("No users in database to test with")
 		}
@@ -78,7 +87,7 @@ func TestCRUDOperations(t *testing.T) {
 		}
 
 		// Now test SelectByIndex with that ID
-		row, found := usersTable.SelectByIndex("id", firstUserID)
+		row, found := usersTable.SelectByIndex("id", firstUserID, tx)
 		if !found {
 			t.Errorf("Expected to find user with id=%d", firstUserID)
 		}
@@ -95,20 +104,22 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("Insert", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// Insert a new user without specifying ID (let auto-increment handle it)
 		newUser := data.Row{
 			"username": "newuser",
 			"email":    "new@example.com",
 		}
 		
-		err := usersTable.Insert(newUser)
+		err := usersTable.Insert(newUser, tx)
 		testutil.AssertNoError(t, err, "Insert operation")
 		
 		// Get the auto-generated ID
 		newID := usersTable.LastInsertID
 		
 		// Verify insertion
-		row, found := usersTable.SelectByIndex("id", newID)
+		row, found := usersTable.SelectByIndex("id", newID, tx)
 		if !found {
 			t.Error("Expected to find newly inserted user")
 		}
@@ -120,13 +131,15 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// Update a user's email
 		updated, err := usersTable.Update(func(row data.Row) bool {
 			id, ok := row["id"].(int64)
 			return ok && id == int64(2)
 		}, data.Row{
 			"email": "newemail@example.com",
-		})
+		}, tx)
 
 		testutil.AssertNoError(t, err, "Update operation")
 		if updated == 0 {
@@ -134,7 +147,7 @@ func TestCRUDOperations(t *testing.T) {
 		}
 
 		// Verify update
-		row, found := usersTable.SelectByIndex("id", int64(2))
+		row, found := usersTable.SelectByIndex("id", int64(2), tx)
 		if !found {
 			t.Fatal("User not found after update")
 		}
@@ -144,15 +157,17 @@ func TestCRUDOperations(t *testing.T) {
 	})
 
 	t.Run("Delete", func(t *testing.T) {
+		tx := transaction.NewTransaction()
+		defer tx.Close()
 		// Get initial count
-		initialRows := usersTable.SelectAll()
+		initialRows := usersTable.SelectAll(tx)
 		initialCount := len(initialRows)
 		
 		// Delete a specific user (use ID 1 which should exist in fresh DB)
 		deleted, err := usersTable.Delete(func(row data.Row) bool {
 			id, ok := row["id"].(int64)
 			return ok && id == int64(1)
-		})
+		}, tx)
 		
 		testutil.AssertNoError(t, err, "Delete operation")
 		if deleted == 0 {
@@ -160,14 +175,14 @@ func TestCRUDOperations(t *testing.T) {
 		}
 		
 		// Verify deletion
-		finalRows := usersTable.SelectAll()
+		finalRows := usersTable.SelectAll(tx)
 		if len(finalRows) != initialCount-deleted {
 			t.Errorf("Expected %d rows after delete, got %d", 
 				initialCount-deleted, len(finalRows))
 		}
 		
 		// Verify user no longer exists
-		_, found := usersTable.SelectByIndex("id", int64(1))
+		_, found := usersTable.SelectByIndex("id", int64(1), tx)
 		if found {
 			t.Error("Expected user to be deleted")
 		}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/planner/predicate"
@@ -14,22 +15,22 @@ import (
 )
 
 // Plan converts an AST statement into an execution plan
-func Plan(stmt ast.Statement, db *schema.Database) (plan.Node, error) {
+func Plan(stmt ast.Statement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	switch s := stmt.(type) {
 	case *ast.SelectStatement:
-		return planSelect(s, db)
+		return planSelect(s, db, tx)
 	case *ast.InsertStatement:
-		return planInsert(s, db)
+		return planInsert(s, db, tx)
 	case *ast.UpdateStatement:
-		return planUpdate(s, db)
+		return planUpdate(s, db, tx)
 	case *ast.DeleteStatement:
-		return planDelete(s, db)
+		return planDelete(s, db, tx)
 	default:
 		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
 	}
 }
 
-func planSelect(stmt *ast.SelectStatement, db *schema.Database) (plan.Node, error) {
+func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	// 1. Validate tables exist
 	tableName := stmt.TableName.Value
 	_, ok := db.Tables[tableName]
@@ -116,14 +117,15 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database) (plan.Node, erro
 	}
 
 	return &plan.SelectNode{
-		TableName:  tableName,
-		Predicate:  pred,
-		Projection: proj,
-		Joins:      joinNodes,
+		TableName:   tableName,
+		Predicate:   pred,
+		Projection:  proj,
+		Joins:       joinNodes,
+		Transaction: tx,
 	}, nil
 }
 
-func planInsert(stmt *ast.InsertStatement, db *schema.Database) (plan.Node, error) {
+func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	tableName := stmt.TableName.Value
 	table, ok := db.Tables[tableName]
 	if !ok {
@@ -154,12 +156,13 @@ func planInsert(stmt *ast.InsertStatement, db *schema.Database) (plan.Node, erro
 	}
 
 	return &plan.InsertNode{
-		TableName: tableName,
-		Row:       row,
+		TableName:   tableName,
+		Row:         row,
+		Transaction: tx,
 	}, nil
 }
 
-func planUpdate(stmt *ast.UpdateStatement, db *schema.Database) (plan.Node, error) {
+func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	tableName := stmt.TableName.Value
 	table, ok := db.Tables[tableName]
 	if !ok {
@@ -197,13 +200,14 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database) (plan.Node, erro
 	}
 
 	return &plan.UpdateNode{
-		TableName: tableName,
-		Predicate: pred,
-		Updates:   updates,
+		TableName:   tableName,
+		Predicate:   pred,
+		Updates:     updates,
+		Transaction: tx,
 	}, nil
 }
 
-func planDelete(stmt *ast.DeleteStatement, db *schema.Database) (plan.Node, error) {
+func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	tableName := stmt.TableName.Value
 	_, ok := db.Tables[tableName]
 	if !ok {
@@ -222,8 +226,9 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database) (plan.Node, erro
 	}
 
 	return &plan.DeleteNode{
-		TableName: tableName,
-		Predicate: pred,
+		TableName:   tableName,
+		Predicate:   pred,
+		Transaction: tx,
 	}, nil
 }
 

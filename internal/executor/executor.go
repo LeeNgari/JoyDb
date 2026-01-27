@@ -5,6 +5,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
@@ -26,16 +27,16 @@ type Result struct {
 
 // Execute is the main entry point for executing execution plans
 // It dispatches to the appropriate executor based on node type
-func Execute(node plan.Node, db *schema.Database) (*Result, error) {
+func Execute(node plan.Node, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
 	switch n := node.(type) {
 	case *plan.SelectNode:
-		return executeSelect(n, db)
+		return executeSelect(n, db, tx)
 	case *plan.InsertNode:
-		return executeInsert(n, db)
+		return executeInsert(n, db, tx)
 	case *plan.UpdateNode:
-		return executeUpdate(n, db)
+		return executeUpdate(n, db, tx)
 	case *plan.DeleteNode:
-		return executeDelete(n, db)
+		return executeDelete(n, db, tx)
 	default:
 		return nil, fmt.Errorf("unsupported plan node type: %T", node)
 	}

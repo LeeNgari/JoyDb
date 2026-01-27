@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/loader"
 	"github.com/leengari/mini-rdbms/internal/storage/writer"
@@ -81,7 +82,11 @@ func (r *Registry) Rename(oldName, newName string) error {
 
 	// If loaded, we must unload/save
 	if db, ok := r.loaded[oldName]; ok {
-		if err := writer.SaveDatabase(db); err != nil {
+		// Create a transaction for the save operation
+		tx := transaction.NewTransaction()
+		defer tx.Close()
+		
+		if err := writer.SaveDatabase(db, tx); err != nil {
 			return fmt.Errorf("failed to save database before rename: %w", err)
 		}
 		delete(r.loaded, oldName)
@@ -91,12 +96,12 @@ func (r *Registry) Rename(oldName, newName string) error {
 }
 
 // SaveAll saves all currently loaded databases
-func (r *Registry) SaveAll() {
+func (r *Registry) SaveAll(tx *transaction.Transaction) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	for _, db := range r.loaded {
-		if err := writer.SaveDatabase(db); err != nil {
+		if err := writer.SaveDatabase(db, tx); err != nil {
 			slog.Error("failed to save database", "name", db.Name, "error", err)
 		}
 	}

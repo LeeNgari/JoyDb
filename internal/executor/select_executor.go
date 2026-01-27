@@ -5,15 +5,16 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 )
 
 // executeSelect handles SELECT plans
-func executeSelect(node *plan.SelectNode, db *schema.Database) (*Result, error) {
+func executeSelect(node *plan.SelectNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
 	// If there are JOINs, use the JOIN executor
 	if len(node.Joins) > 0 {
-		return executeJoinSelect(node, db)
+		return executeJoinSelect(node, db, tx)
 	}
 
 	table, ok := db.Tables[node.TableName]
@@ -65,13 +66,13 @@ func executeSelect(node *plan.SelectNode, db *schema.Database) (*Result, error) 
 	var rows []data.Row
 
 	if node.Predicate == nil {
-		allRows := table.SelectAll()
+		allRows := table.SelectAll(tx)
 		rows = make([]data.Row, len(allRows))
 		for i, row := range allRows {
 			rows[i] = projection.ProjectRow(row, proj, node.TableName)
 		}
 	} else {
-		matchedRows := table.Select(node.Predicate)
+		matchedRows := table.Select(node.Predicate, tx)
 		rows = make([]data.Row, len(matchedRows))
 		for i, row := range matchedRows {
 			rows[i] = projection.ProjectRow(row, proj, node.TableName)

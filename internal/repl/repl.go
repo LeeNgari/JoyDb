@@ -15,7 +15,7 @@ import (
 
 func Start(registry *manager.Registry) {
 	scanner := bufio.NewScanner(os.Stdin)
-	fmt.Println("Welcome to Mini-RDBMS")
+	fmt.Println("Welcome to JoyDB")
 	fmt.Println("Type 'exit' or '\\q' to quit.")
 
 	// Start with no database selected

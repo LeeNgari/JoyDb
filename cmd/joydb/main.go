@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/leengari/mini-rdbms/databases"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
 	"github.com/leengari/mini-rdbms/internal/network"
 	"github.com/leengari/mini-rdbms/internal/repl"
@@ -43,7 +44,9 @@ func main() {
 	// Save all loaded databases on shutdown
 	defer func() {
 		slog.Info("Shutting down - saving databases...")
-		registry.SaveAll()
+		tx := transaction.NewTransaction()
+		defer tx.Close()
+		registry.SaveAll(tx)
 	}()
 
 	// Seed 'main' from embedded FS
