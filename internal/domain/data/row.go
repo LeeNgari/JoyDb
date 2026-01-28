@@ -1,6 +1,9 @@
 package data
 
-import "sync"
+import (
+	"encoding/json"
+	"sync"
+)
 
 // Row represents a single table row
 // Key = column name, Value = cell value
@@ -27,4 +30,20 @@ func (r Row) Copy() Row {
 	return Row{
 		Data: copy,
 	}
+}
+
+// MarshalJSON implements custom JSON marshaling to flatten the structure
+// This ensures the row appears as a simple map {"id": 1, ...} instead of {"Data": {"id": 1, ...}}
+func (r Row) MarshalJSON() ([]byte, error) {
+	return json.Marshal(r.Data)
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling to handle the flat structure
+func (r *Row) UnmarshalJSON(data []byte) error {
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	r.Data = m
+	return nil
 }
