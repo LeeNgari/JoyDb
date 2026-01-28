@@ -99,7 +99,7 @@ func executeInnerJoin(
 
 	// Probe left table and combine matches
 	for _, leftRow := range leftTable.Rows {
-		leftValue, exists := leftRow[leftColumn]
+		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue // Skip rows with NULL join column
 		}
@@ -156,7 +156,7 @@ func executeLeftJoin(
 
 	// Phase 1: INNER JOIN
 	for leftPos, leftRow := range leftTable.Rows {
-		leftValue, exists := leftRow[leftColumn]
+		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
@@ -178,7 +178,7 @@ func executeLeftJoin(
 	// Phase 2: Add unmatched left rows
 	for leftPos, leftRow := range leftTable.Rows {
 		if !matchedLeftRows[leftPos] {
-			joined := combineRowsWithNull(leftRow, nil, leftTable, rightTable)
+			joined := combineRowsWithNull(leftRow, data.Row{}, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
 			}
@@ -217,7 +217,7 @@ func executeRightJoin(
 
 	// Phase 1: INNER JOIN
 	for _, leftRow := range leftTable.Rows {
-		leftValue, exists := leftRow[leftColumn]
+		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
@@ -239,7 +239,7 @@ func executeRightJoin(
 	// Phase 2: Add unmatched right rows
 	for rightPos, rightRow := range rightTable.Rows {
 		if !matchedRightRows[rightPos] {
-			joined := combineRowsWithNull(nil, rightRow, leftTable, rightTable)
+			joined := combineRowsWithNull(data.Row{}, rightRow, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
 			}
@@ -279,7 +279,7 @@ func executeFullJoin(
 
 	// Phase 1: INNER JOIN
 	for leftPos, leftRow := range leftTable.Rows {
-		leftValue, exists := leftRow[leftColumn]
+		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
@@ -302,7 +302,7 @@ func executeFullJoin(
 	// Phase 2: Add unmatched left rows
 	for leftPos, leftRow := range leftTable.Rows {
 		if !matchedLeftRows[leftPos] {
-			joined := combineRowsWithNull(leftRow, nil, leftTable, rightTable)
+			joined := combineRowsWithNull(leftRow, data.Row{}, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
 			}
@@ -312,7 +312,7 @@ func executeFullJoin(
 	// Phase 3: Add unmatched right rows
 	for rightPos, rightRow := range rightTable.Rows {
 		if !matchedRightRows[rightPos] {
-			joined := combineRowsWithNull(nil, rightRow, leftTable, rightTable)
+			joined := combineRowsWithNull(data.Row{}, rightRow, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
 			}

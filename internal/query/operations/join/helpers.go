@@ -80,7 +80,7 @@ func buildJoinIndex(table *schema.Table, columnName string) (map[interface{}][]i
 	// Build temporary index
 	hashIndex := make(map[interface{}][]int)
 	for i, row := range table.Rows {
-		value, exists := row[columnName]
+		value, exists := row.Data[columnName]
 		if !exists {
 			continue // Skip NULL values
 		}
@@ -100,13 +100,13 @@ func combineRows(
 	joined := data.NewJoinedRow()
 
 	// Add left table columns with prefix
-	for colName, value := range leftRow {
+	for colName, value := range leftRow.Data {
 		qualifiedName := fmt.Sprintf("%s.%s", leftTableName, colName)
 		joined.Set(qualifiedName, value)
 	}
 
 	// Add right table columns with prefix
-	for colName, value := range rightRow {
+	for colName, value := range rightRow.Data {
 		qualifiedName := fmt.Sprintf("%s.%s", rightTableName, colName)
 		joined.Set(qualifiedName, value)
 	}

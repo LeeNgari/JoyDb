@@ -44,9 +44,9 @@ func combineRowsWithNull(
 ) data.JoinedRow {
 	joined := data.NewJoinedRow()
 
-	// Add left table columns (or NULLs if leftRow is nil)
-	if leftRow != nil {
-		for colName, value := range leftRow {
+	// Add left table columns (or NULLs if leftRow is empty)
+	if len(leftRow.Data) > 0 {
+		for colName, value := range leftRow.Data {
 			qualifiedName := fmt.Sprintf("%s.%s", leftTable.Name, colName)
 			joined.Set(qualifiedName, value)
 		}
@@ -58,9 +58,9 @@ func combineRowsWithNull(
 		}
 	}
 
-	// Add right table columns (or NULLs if rightRow is nil)
-	if rightRow != nil {
-		for colName, value := range rightRow {
+	// Add right table columns (or NULLs if rightRow is empty)
+	if len(rightRow.Data) > 0 {
+		for colName, value := range rightRow.Data {
 			qualifiedName := fmt.Sprintf("%s.%s", rightTable.Name, colName)
 			joined.Set(qualifiedName, value)
 		}

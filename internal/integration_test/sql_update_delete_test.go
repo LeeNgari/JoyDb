@@ -38,7 +38,7 @@ func TestSQLUpdateStatement(t *testing.T) {
 			t.Skip("No user with id=2 to test with")
 		}
 		
-		initialEmail := result.Rows[0]["email"]
+		initialEmail := result.Rows[0].Data["email"]
 		
 		// Execute UPDATE
 		updateSQL := "UPDATE users SET email = 'updated@test.com' WHERE id = 2;"
@@ -62,7 +62,7 @@ func TestSQLUpdateStatement(t *testing.T) {
 			t.Fatal("User disappeared after update")
 		}
 		
-		newEmail := result.Rows[0]["email"]
+		newEmail := result.Rows[0].Data["email"]
 		if newEmail != "updated@test.com" {
 			t.Errorf("Expected email 'updated@test.com', got '%v'", newEmail)
 		}
@@ -90,11 +90,11 @@ func TestSQLUpdateStatement(t *testing.T) {
 		result, _ = eng.Execute(selectSQL)
 		
 		if len(result.Rows) > 0 {
-			if result.Rows[0]["username"] != "multiuser" {
-				t.Errorf("Expected username 'multiuser', got '%v'", result.Rows[0]["username"])
+			if result.Rows[0].Data["username"] != "multiuser" {
+				t.Errorf("Expected username 'multiuser', got '%v'", result.Rows[0].Data["username"])
 			}
-			if result.Rows[0]["email"] != "multi@test.com" {
-				t.Errorf("Expected email 'multi@test.com', got '%v'", result.Rows[0]["email"])
+			if result.Rows[0].Data["email"] != "multi@test.com" {
+				t.Errorf("Expected email 'multi@test.com', got '%v'", result.Rows[0].Data["email"])
 			}
 		}
 	})
@@ -256,7 +256,7 @@ func TestSQLCombinedOperations(t *testing.T) {
 		// Verify UPDATE
 		selectSQL := "SELECT email FROM users WHERE id = 997;"
 		result, _ = eng.Execute(selectSQL)
-		if len(result.Rows) > 0 && result.Rows[0]["email"] != "updated@example.com" {
+		if len(result.Rows) > 0 && result.Rows[0].Data["email"] != "updated@example.com" {
 			t.Errorf("Email was not updated correctly")
 		}
 		

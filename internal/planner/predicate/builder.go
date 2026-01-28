@@ -57,12 +57,12 @@ func buildComparison(binExpr *ast.BinaryExpression) (PredicateFunc, error) {
 		// Try qualified name first if table is specified (e.g., "orders.amount")
 		if tableName != "" {
 			qualifiedName := tableName + "." + colName
-			val, ok = row[qualifiedName]
+			val, ok = row.Data[qualifiedName]
 		}
 
 		// If not found with qualified name, try unqualified (e.g., "amount")
 		if !ok {
-			val, ok = row[colName]
+			val, ok = row.Data[colName]
 		}
 
 		// If still not found, return false

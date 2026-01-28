@@ -12,9 +12,9 @@ import (
 
 // executeSelect handles SELECT plans
 func executeSelect(node *plan.SelectNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
-	// If there are JOINs, use the JOIN executor
-	if len(node.Joins) > 0 {
-		return executeJoinSelect(node, db, tx)
+	// If there are children (JOINs), use the JOIN executor
+	if len(node.Children()) > 0 {
+	return executeJoinSelect(node, db, tx)
 	}
 
 	table, ok := db.Tables[node.TableName]

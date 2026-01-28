@@ -38,9 +38,9 @@ func CreateUsersTable() *schema.Table {
 			},
 		},
 		Rows: []data.Row{
-			{"id": int64(1), "username": "alice", "email": "alice@example.com"},
-			{"id": int64(2), "username": "bob", "email": "bob@example.com"},
-			{"id": int64(3), "username": "charlie", "email": "charlie@example.com"},
+			data.NewRow(map[string]interface{}{"id": int64(1), "username": "alice", "email": "alice@example.com"}),
+			data.NewRow(map[string]interface{}{"id": int64(2), "username": "bob", "email": "bob@example.com"}),
+			data.NewRow(map[string]interface{}{"id": int64(3), "username": "charlie", "email": "charlie@example.com"}),
 		},
 		Indexes: make(map[string]*data.Index),
 	}
@@ -62,9 +62,9 @@ func CreateOrdersTable() *schema.Table {
 			},
 		},
 		Rows: []data.Row{
-			{"id": int64(1), "user_id": int64(1), "product": "Laptop", "amount": 999.99},
-			{"id": int64(2), "user_id": int64(1), "product": "Mouse", "amount": 25.50},
-			{"id": int64(3), "user_id": int64(2), "product": "Keyboard", "amount": 75.00},
+			data.NewRow(map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Laptop", "amount": 999.99}),
+			data.NewRow(map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Mouse", "amount": 25.50}),
+			data.NewRow(map[string]interface{}{"id": int64(3), "user_id": int64(2), "product": "Keyboard", "amount": 75.00}),
 			// Note: user_id 3 (charlie) has no orders
 		},
 		Indexes: make(map[string]*data.Index),

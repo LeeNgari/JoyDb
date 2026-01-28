@@ -31,7 +31,7 @@ func BuildIndexes(table *schema.Table) error {
 		}
 
 		for rowPos, row := range table.Rows {
-			val, ok := row[col.Name]
+			val, ok := row.Data[col.Name]
 			if !ok {
 				if col.NotNull {
 					return errors.NewNotNullViolation(table.Name, col.Name, rowPos)

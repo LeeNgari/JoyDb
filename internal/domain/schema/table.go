@@ -83,7 +83,7 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		nextID := t.LastInsertID + 1
 
 		// Allow user to override auto-increment
-		if val, exists := row[autoIncCol.Name]; exists {
+		if val, exists := row.Data[autoIncCol.Name]; exists {
 			userID, ok := normalizeToInt64(val)
 			if !ok {
 				return &errors.ConstraintError{
@@ -108,13 +108,13 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		}
 
 		// Set the auto-increment value
-		row[autoIncCol.Name] = nextID
+		row.Data[autoIncCol.Name] = nextID
 		t.LastInsertID = nextID
 	} else {
 		// If PK is not auto-increment, it must be provided
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			if _, exists := row[pkCol.Name]; !exists {
+			if _, exists := row.Data[pkCol.Name]; !exists {
 				return &errors.ConstraintError{
 					Table:      t.Name,
 					Column:     pkCol.Name,
@@ -132,7 +132,7 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 3. Check unique/primary constraints using current indexes
 	for colName, idx := range t.Indexes {
-		val, exists := row[colName]
+		val, exists := row.Data[colName]
 		if !exists {
 			continue
 		}
@@ -158,7 +158,7 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 6. Update all indexes
 	for colName, idx := range t.Indexes {
-		if val, exists := row[colName]; exists {
+		if val, exists := row.Data[colName]; exists {
 			idx.Data[val] = append(idx.Data[val], newRowPos)
 		}
 	}
@@ -213,7 +213,7 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 
 	idx, exists := t.Indexes[colName]
 	if !exists || !idx.Unique {
-		return nil, false
+		return data.Row{}, false
 	}
 
 	// Convert value to int64 if it's an integer type for comparison
@@ -223,7 +223,7 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 
 	positions, found := idx.Data[value]
 	if !found || len(positions) == 0 {
-		return nil, false
+		return data.Row{}, false
 	}
 
 	return t.Rows[positions[0]], true
@@ -243,7 +243,7 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 	for i, row := range t.Rows {
 		if predicate(row) {
 			// Validate each update value against schema
-			for colName, newValue := range updates {
+			for colName, newValue := range updates.Data {
 				// Find column in schema
 				var col *Column
 				for i := range t.Schema.Columns {
@@ -260,7 +260,7 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 				}
 
 				// Type validation would go here if needed
-				t.Rows[i][colName] = newValue
+				t.Rows[i].Data[colName] = newValue
 			}
 			count++
 		}
@@ -309,7 +309,7 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 // Must be called while holding a lock
 func (t *Table) validateRow(row data.Row) error {
 	for _, col := range t.Schema.Columns {
-		value, exists := row[col.Name]
+		value, exists := row.Data[col.Name]
 
 		// Check NOT NULL constraint
 		if col.NotNull && !exists {
@@ -370,7 +370,7 @@ func (t *Table) rebuildIndexesUnsafe() {
 	// Rebuild from current rows
 	for rowPos, row := range t.Rows {
 		for colName, idx := range t.Indexes {
-			if val, exists := row[colName]; exists {
+			if val, exists := row.Data[colName]; exists {
 				idx.Data[val] = append(idx.Data[val], rowPos)
 			}
 		}

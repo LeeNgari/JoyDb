@@ -62,7 +62,7 @@ func TestCRUDOperations(t *testing.T) {
 		defer tx.Close()
 		// Find users with specific username
 		rows := usersTable.Select(func(row data.Row) bool {
-			username, ok := row["username"].(string)
+			username, ok := row.Data["username"].(string)
 			return ok && username == "guest"
 		}, tx)
 
@@ -81,7 +81,7 @@ func TestCRUDOperations(t *testing.T) {
 		}
 
 		// Get the first user's ID
-		firstUserID, ok := allRows[0]["id"].(int64)
+		firstUserID, ok := allRows[0].Data["id"].(int64)
 		if !ok {
 			t.Fatal("First user doesn't have a valid ID")
 		}
@@ -91,13 +91,13 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Errorf("Expected to find user with id=%d", firstUserID)
 		}
-		if row == nil {
+		if len(row.Data) == 0 {
 			t.Error("Expected non-nil row")
 		}
 		
 		// Verify we got the right user
-		if row != nil {
-			if rowID, ok := row["id"].(int64); ok && rowID != firstUserID {
+		if len(row.Data) > 0 {
+			if rowID, ok := row.Data["id"].(int64); ok && rowID != firstUserID {
 				t.Errorf("Expected id=%d, got id=%d", firstUserID, rowID)
 			}
 		}
@@ -107,10 +107,10 @@ func TestCRUDOperations(t *testing.T) {
 		tx := transaction.NewTransaction()
 		defer tx.Close()
 		// Insert a new user without specifying ID (let auto-increment handle it)
-		newUser := data.Row{
+		newUser := data.NewRow(map[string]interface{}{
 			"username": "newuser",
 			"email":    "new@example.com",
-		}
+		})
 		
 		err := usersTable.Insert(newUser, tx)
 		testutil.AssertNoError(t, err, "Insert operation")
@@ -123,9 +123,9 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Error("Expected to find newly inserted user")
 		}
-		if row != nil {
-			if username, ok := row["username"].(string); !ok || username != "newuser" {
-				t.Errorf("Expected username 'newuser', got '%v'", row["username"])
+		if len(row.Data) > 0 {
+			if username, ok := row.Data["username"].(string); !ok || username != "newuser" {
+				t.Errorf("Expected username 'newuser', got '%v'", row.Data["username"])
 			}
 		}
 	})
@@ -135,11 +135,11 @@ func TestCRUDOperations(t *testing.T) {
 		defer tx.Close()
 		// Update a user's email
 		updated, err := usersTable.Update(func(row data.Row) bool {
-			id, ok := row["id"].(int64)
+			id, ok := row.Data["id"].(int64)
 			return ok && id == int64(2)
-		}, data.Row{
+		}, data.NewRow(map[string]interface{}{
 			"email": "newemail@example.com",
-		}, tx)
+		}), tx)
 
 		testutil.AssertNoError(t, err, "Update operation")
 		if updated == 0 {
@@ -151,8 +151,8 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Fatal("User not found after update")
 		}
-		if email, ok := row["email"].(string); !ok || email != "newemail@example.com" {
-			t.Errorf("Expected email to be updated, got: %v", row["email"])
+		if email, ok := row.Data["email"].(string); !ok || email != "newemail@example.com" {
+			t.Errorf("Expected email to be updated, got: %v", row.Data["email"])
 		}
 	})
 
@@ -165,7 +165,7 @@ func TestCRUDOperations(t *testing.T) {
 		
 		// Delete a specific user (use ID 1 which should exist in fresh DB)
 		deleted, err := usersTable.Delete(func(row data.Row) bool {
-			id, ok := row["id"].(int64)
+			id, ok := row.Data["id"].(int64)
 			return ok && id == int64(1)
 		}, tx)
 		

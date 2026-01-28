@@ -48,58 +48,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		pred = p
 	}
 
-	// 3. Build Joins
-	var joinNodes []plan.JoinNode
-	for _, joinClause := range stmt.Joins {
-		// Validate join table
-		joinTableName := joinClause.RightTable.Value
-		_, ok := db.Tables[joinTableName]
-		if !ok {
-			return nil, fmt.Errorf("right table not found: %s", joinTableName)
-		}
-
-		// Parse ON condition
-		binExpr, ok := joinClause.OnCondition.(*ast.BinaryExpression)
-		if !ok {
-			return nil, fmt.Errorf("JOIN ON condition must be a comparison expression")
-		}
-		if binExpr.Operator != "=" {
-			return nil, fmt.Errorf("JOIN ON condition must use = operator")
-		}
-
-		leftIdent, ok := binExpr.Left.(*ast.Identifier)
-		if !ok {
-			return nil, fmt.Errorf("left side of JOIN condition must be an identifier")
-		}
-		rightIdent, ok := binExpr.Right.(*ast.Identifier)
-		if !ok {
-			return nil, fmt.Errorf("right side of JOIN condition must be an identifier")
-		}
-
-		// Convert string type to enum
-		var jt join.JoinType
-		switch joinClause.JoinType {
-		case "INNER":
-			jt = join.JoinTypeInner
-		case "LEFT":
-			jt = join.JoinTypeLeft
-		case "RIGHT":
-			jt = join.JoinTypeRight
-		case "FULL":
-			jt = join.JoinTypeFull
-		default:
-			return nil, fmt.Errorf("unsupported JOIN type: %s", joinClause.JoinType)
-		}
-
-		joinNodes = append(joinNodes, plan.JoinNode{
-			TargetTable: joinTableName,
-			JoinType:    jt,
-			LeftOnCol:   leftIdent.Value,
-			RightOnCol:  rightIdent.Value,
-		})
-	}
-
-	// 4. Build Projection
+	// 3. Build Projection
 	var proj *projection.Projection
 	if len(stmt.Fields) == 1 && stmt.Fields[0].Value == "*" {
 		proj = projection.NewProjection()
@@ -113,16 +62,105 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 				Table:  f.Table,
 				Column: f.Value,
 			}
-		}
+		}		
 	}
 
-	return &plan.SelectNode{
+	// 4. Build tree structure
+	selectNode := &plan.SelectNode{
 		TableName:   tableName,
 		Predicate:   pred,
 		Projection:  proj,
-		Joins:       joinNodes,
 		Transaction: tx,
-	}, nil
+	}
+
+	// Attach metadata
+	selectNode.Metadata()["source_table"] = tableName
+	selectNode.Metadata()["has_predicate"] = pred != nil
+	selectNode.Metadata()["estimated_rows"] = 1000 // Scaffold: naive estimate
+
+	// 5. Build JOINs as tree children
+	if len(stmt.Joins) > 0 {
+		// Create base scan node for left table
+		leftScan := &plan.ScanNode{
+			TableName:   tableName,
+			Predicate:   pred,
+			Transaction: tx,
+		}
+		leftScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
+		leftScan.Metadata()["table"] = tableName
+
+		// Build JOIN tree
+		currentNode := plan.Node(leftScan)
+		
+		for _, joinClause := range stmt.Joins {
+			// Validate join table
+			joinTableName := joinClause.RightTable.Value
+			_, ok := db.Tables[joinTableName]
+			if !ok {
+				return nil, fmt.Errorf("right table not found: %s", joinTableName)
+			}
+
+			// Parse ON condition
+			binExpr, ok := joinClause.OnCondition.(*ast.BinaryExpression)
+			if !ok {
+				return nil, fmt.Errorf("JOIN ON condition must be a comparison expression")
+			}
+			if binExpr.Operator != "=" {
+				return nil, fmt.Errorf("JOIN ON condition must use = operator")
+			}
+
+			leftIdent, ok := binExpr.Left.(*ast.Identifier)
+			if !ok {
+				return nil, fmt.Errorf("left side of JOIN condition must be an identifier")
+			}
+			rightIdent, ok := binExpr.Right.(*ast.Identifier)
+			if !ok {
+				return nil, fmt.Errorf("right side of JOIN condition must be an identifier")
+			}
+
+			// Convert string type to enum
+			var jt join.JoinType
+			switch joinClause.JoinType {
+			case "INNER":
+				jt = join.JoinTypeInner
+			case "LEFT":
+				jt = join.JoinTypeLeft
+			case "RIGHT":
+				jt = join.JoinTypeRight
+			case "FULL":
+				jt = join.JoinTypeFull
+			default:
+				return nil, fmt.Errorf("unsupported JOIN type: %s", joinClause.JoinType)
+			}
+
+			// Create scan node for right table
+			rightScan := &plan.ScanNode{
+				TableName:   joinTableName,
+				Transaction: tx,
+			}
+			rightScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
+			rightScan.Metadata()["table"] = joinTableName
+
+			// Create JOIN node with left and right children
+			joinNode := plan.NewJoinNode(
+				currentNode,
+				rightScan,
+				jt,
+				leftIdent.Value,
+				rightIdent.Value,
+			)
+			joinNode.Metadata()["join_algorithm"] = "nested_loop" // Scaffold: always nested loop
+			joinNode.Metadata()["left_table"] = tableName
+			joinNode.Metadata()["right_table"] = joinTableName
+
+			currentNode = joinNode
+		}
+
+		// Add the final JOIN tree as child of SelectNode
+		selectNode.AddChild(currentNode)
+	}
+
+	return selectNode, nil
 }
 
 func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
@@ -136,7 +174,7 @@ func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.
 		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(stmt.Columns), len(stmt.Values))
 	}
 
-	row := make(data.Row)
+	row := make(map[string]interface{})
 	for i, col := range stmt.Columns {
 		lit, ok := stmt.Values[i].(*ast.Literal)
 		if !ok {
@@ -157,7 +195,7 @@ func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.
 
 	return &plan.InsertNode{
 		TableName:   tableName,
-		Row:         row,
+		Row:         data.NewRow(row),
 		Transaction: tx,
 	}, nil
 }
@@ -169,7 +207,7 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 		return nil, fmt.Errorf("table not found: %s", tableName)
 	}
 
-	updates := make(data.Row)
+	updates := make(map[string]interface{})
 	for colName, valueExpr := range stmt.Updates {
 		lit, ok := valueExpr.(*ast.Literal)
 		if !ok {
@@ -199,12 +237,18 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 		pred = func(data.Row) bool { return true }
 	}
 
-	return &plan.UpdateNode{
+	node := &plan.UpdateNode{
 		TableName:   tableName,
 		Predicate:   pred,
-		Updates:     updates,
+		Updates:     data.NewRow(updates),
 		Transaction: tx,
-	}, nil
+	}
+	
+	// Attach metadata
+	node.Metadata()["table"] = tableName
+	node.Metadata()["has_predicate"] = pred != nil
+	
+	return node, nil
 }
 
 func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
@@ -225,11 +269,17 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.
 		pred = func(data.Row) bool { return true }
 	}
 
-	return &plan.DeleteNode{
+	node := &plan.DeleteNode{
 		TableName:   tableName,
 		Predicate:   pred,
 		Transaction: tx,
-	}, nil
+	}
+	
+	// Attach metadata
+	node.Metadata()["table"] = tableName
+	node.Metadata()["has_predicate"] = pred != nil
+	
+	return node, nil
 }
 
 func findColumnInSchema(table *schema.Table, colName string) *schema.Column {

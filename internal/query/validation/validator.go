@@ -19,7 +19,7 @@ var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-
 // - Returns ConstraintError for better error handling
 func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
 	for _, col := range table.Schema.Columns {
-		val, exists := row[col.Name]
+		val, exists := row.Data[col.Name]
 
 		// Handle missing value
 		if !exists {
@@ -52,13 +52,13 @@ func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
 			// Normalize to int64 for consistency
 			switch v := val.(type) {
 			case int:
-				row[col.Name] = int64(v) // normalize to int64
+				row.Data[col.Name] = int64(v) // normalize to int64
 			case int64:
 				// already int64, perfect
 			case float64:
 				// JSON numbers come as float64
 				if v == float64(int64(v)) {
-					row[col.Name] = int64(v)
+					row.Data[col.Name] = int64(v)
 				} else {
 					return &errors.ConstraintError{
 						Table:      table.Name,

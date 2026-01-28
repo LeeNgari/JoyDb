@@ -122,7 +122,7 @@ func PrintResult(w io.Writer, res *executor.Result) {
 		// Rows
 		for _, row := range res.Rows {
 			for i, col := range res.Columns {
-				val, ok := row[col]
+				val, ok := row.Data[col]
 				if !ok {
 					fmt.Fprintf(tw, "NULL")
 				} else {

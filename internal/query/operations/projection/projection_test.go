@@ -12,8 +12,8 @@ import (
 func TestProjection_SelectAll(t *testing.T) {
 	table := testutil.CreateTestTable("users")
 	table.Rows = []data.Row{
-		{"id": int64(1), "name": "Alice", "email": "alice@example.com", "age": int64(30)},
-		{"id": int64(2), "name": "Bob", "email": "bob@example.com", "age": int64(25)},
+		data.NewRow(map[string]interface{}{"id": int64(1), "name": "Alice", "email": "alice@example.com", "age": int64(30)}),
+		data.NewRow(map[string]interface{}{"id": int64(2), "name": "Bob", "email": "bob@example.com", "age": int64(25)}),
 	}
 
 	// SELECT * (all columns)
@@ -24,15 +24,15 @@ func TestProjection_SelectAll(t *testing.T) {
 	}
 
 	testutil.AssertRowCount(t, len(results), 2, "SELECT *")
-	testutil.AssertColumnCount(t, len(results[0]), 4, "First row")
+	testutil.AssertColumnCount(t, len(results[0].Data), 4, "First row")
 }
 
 // TestProjection_SelectSpecificColumns tests selecting specific columns
 func TestProjection_SelectSpecificColumns(t *testing.T) {
 	table := testutil.CreateTestTable("users")
 	table.Rows = []data.Row{
-		{"id": int64(1), "name": "Alice", "email": "alice@example.com", "age": int64(30)},
-		{"id": int64(2), "name": "Bob", "email": "bob@example.com", "age": int64(25)},
+		data.NewRow(map[string]interface{}{"id": int64(1), "name": "Alice", "email": "alice@example.com", "age": int64(30)}),
+		data.NewRow(map[string]interface{}{"id": int64(2), "name": "Bob", "email": "bob@example.com", "age": int64(25)}),
 	}
 
 	// SELECT id, name
@@ -47,7 +47,7 @@ func TestProjection_SelectSpecificColumns(t *testing.T) {
 	}
 
 	testutil.AssertRowCount(t, len(results), 2, "SELECT id, name")
-	testutil.AssertColumnCount(t, len(results[0]), 2, "Projected row")
+	testutil.AssertColumnCount(t, len(results[0].Data), 2, "Projected row")
 	testutil.AssertColumnExists(t, results[0], "id", "Projected row")
 	testutil.AssertColumnExists(t, results[0], "name", "Projected row")
 	testutil.AssertColumnNotExists(t, results[0], "email", "Projected row")
@@ -57,7 +57,7 @@ func TestProjection_SelectSpecificColumns(t *testing.T) {
 func TestProjection_WithAlias(t *testing.T) {
 	table := testutil.CreateTestTable("users")
 	table.Rows = []data.Row{
-		{"id": int64(1), "name": "Alice", "email": "alice@example.com"},
+		data.NewRow(map[string]interface{}{"id": int64(1), "name": "Alice", "email": "alice@example.com"}),
 	}
 
 	// SELECT id AS user_id, name AS username
@@ -99,11 +99,11 @@ func TestProjection_ValidateProjection(t *testing.T) {
 func TestProjection_EmptyProjection(t *testing.T) {
 	table := testutil.CreateTestTable("users")
 	table.Rows = []data.Row{
-		{"id": int64(1), "name": "Alice", "email": "alice@example.com"},
+		data.NewRow(map[string]interface{}{"id": int64(1), "name": "Alice", "email": "alice@example.com"}),
 	}
 
 	// nil projection should return all columns
 	result := projection.ProjectRow(table.Rows[0], nil, table.Name)
 
-	testutil.AssertColumnCount(t, len(result), 3, "Nil projection")
+	testutil.AssertColumnCount(t, len(result.Data), 3, "Nil projection")
 }

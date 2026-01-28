@@ -1,6 +1,10 @@
 package testutil
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/leengari/mini-rdbms/internal/domain/data"
+)
 
 // AssertRowCount checks if the result has the expected number of rows
 func AssertRowCount(t *testing.T, actual, expected int, context string) {
@@ -19,17 +23,17 @@ func AssertColumnCount(t *testing.T, actual, expected int, context string) {
 }
 
 // AssertColumnExists checks if a column exists in a row
-func AssertColumnExists(t *testing.T, row map[string]interface{}, column, context string) {
+func AssertColumnExists(t *testing.T, row data.Row, column, context string) {
 	t.Helper()
-	if _, exists := row[column]; !exists {
+	if _, exists := row.Data[column]; !exists {
 		t.Errorf("%s: expected column '%s' to exist", context, column)
 	}
 }
 
 // AssertColumnNotExists checks if a column does not exist in a row
-func AssertColumnNotExists(t *testing.T, row map[string]interface{}, column, context string) {
+func AssertColumnNotExists(t *testing.T, row data.Row, column, context string) {
 	t.Helper()
-	if _, exists := row[column]; exists {
+	if _, exists := row.Data[column]; exists {
 		t.Errorf("%s: did not expect column '%s' to exist", context, column)
 	}
 }

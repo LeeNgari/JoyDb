@@ -12,19 +12,37 @@ import (
 
 // executeJoinSelect handles JOIN plans
 func executeJoinSelect(node *plan.SelectNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
-	if len(node.Joins) != 1 {
-		return nil, fmt.Errorf("multiple JOINs not yet supported")
+	if len(node.Children()) == 0 {
+		return nil, fmt.Errorf("JOIN select has no children")
 	}
 
-	joinNode := node.Joins[0]
+	// Get the JOIN tree (first child)
+	joinTree := node.Children()[0]
+	
+	// Extract JOIN node (should be root of tree)
+	joinNode, ok := joinTree.(*plan.JoinNode)
+	if !ok {
+		return nil, fmt.Errorf("expected JoinNode as child, got %T", joinTree)
+	}
 
-	leftTableName := node.TableName
+	// Extract left and right scan nodes
+	leftScan, ok := joinNode.Left().(*plan.ScanNode)
+	if !ok {
+		return nil, fmt.Errorf("expected ScanNode as left child, got %T", joinNode.Left())
+	}
+	
+	rightScan, ok := joinNode.Right().(*plan.ScanNode)
+	if !ok {
+		return nil, fmt.Errorf("expected ScanNode as right child, got %T", joinNode.Right())
+	}
+
+	leftTableName := leftScan.TableName
 	leftTable, ok := db.Tables[leftTableName]
 	if !ok {
 		return nil, fmt.Errorf("left table not found: %s", leftTableName)
 	}
 
-	rightTableName := joinNode.TargetTable
+	rightTableName := rightScan.TableName
 	rightTable, ok := db.Tables[rightTableName]
 	if !ok {
 		return nil, fmt.Errorf("right table not found: %s", rightTableName)
@@ -82,11 +100,11 @@ func executeJoinSelect(node *plan.SelectNode, db *schema.Database, tx *transacti
 	var joinPred join.JoinPredicate
 	if node.Predicate != nil {
 		joinPred = func(row data.JoinedRow) bool {
-			flatRow := make(data.Row)
+			flatRow := make(map[string]interface{})
 			for k, v := range row.Data {
 				flatRow[k] = v
 			}
-			return node.Predicate(flatRow)
+			return node.Predicate(data.NewRow(flatRow))
 		}
 	}
 
@@ -108,7 +126,7 @@ func executeJoinSelect(node *plan.SelectNode, db *schema.Database, tx *transacti
 	// Convert JoinedRow to Row for Result
 	rows := make([]data.Row, len(joinedRows))
 	for i, joinedRow := range joinedRows {
-		rows[i] = joinedRow.Data
+		rows[i] = data.NewRow(joinedRow.Data)
 	}
 
 	return &Result{

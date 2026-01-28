@@ -15,7 +15,7 @@ func ProjectRow(row data.Row, proj *Projection, tableName string) data.Row {
 		return row.Copy()
 	}
 
-	projected := make(data.Row)
+	projected := make(map[string]interface{})
 
 	for _, colRef := range proj.Columns {
 		// Skip columns from other tables (for JOIN queries)
@@ -23,7 +23,7 @@ func ProjectRow(row data.Row, proj *Projection, tableName string) data.Row {
 			continue
 		}
 
-		value, exists := row[colRef.Column]
+		value, exists := row.Data[colRef.Column]
 		if !exists {
 			// Column doesn't exist in this row - skip it
 			// This can happen in JOIN queries where not all columns are present
@@ -39,7 +39,7 @@ func ProjectRow(row data.Row, proj *Projection, tableName string) data.Row {
 		projected[key] = value
 	}
 
-	return projected
+	return data.NewRow(projected)
 }
 
 // ProjectJoinedRow applies projection to a joined row
