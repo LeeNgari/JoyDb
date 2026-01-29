@@ -5,134 +5,104 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 )
 
-// executeJoinSelect handles JOIN plans
-func executeJoinSelect(node *plan.SelectNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
-	if len(node.Children()) == 0 {
-		return nil, fmt.Errorf("JOIN select has no children")
+// executeJoinNode recursively executes JOIN using tree-walking pattern
+// This enables multi-way JOINs by recursively executing left/right children
+func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateResult, error) {
+	// Recursively execute left child
+	leftResult, err := executeNode(node.Left(), ctx)
+	if err != nil {
+		return nil, fmt.Errorf("left child execution failed: %w", err)
 	}
 
-	// Get the JOIN tree (first child)
-	joinTree := node.Children()[0]
-	
-	// Extract JOIN node (should be root of tree)
-	joinNode, ok := joinTree.(*plan.JoinNode)
-	if !ok {
-		return nil, fmt.Errorf("expected JoinNode as child, got %T", joinTree)
+	// Recursively execute right child
+	rightResult, err := executeNode(node.Right(), ctx)
+	if err != nil {
+		return nil, fmt.Errorf("right child execution failed: %w", err)
 	}
 
-	// Extract left and right scan nodes
-	leftScan, ok := joinNode.Left().(*plan.ScanNode)
-	if !ok {
-		return nil, fmt.Errorf("expected ScanNode as left child, got %T", joinNode.Left())
-	}
-	
-	rightScan, ok := joinNode.Right().(*plan.ScanNode)
-	if !ok {
-		return nil, fmt.Errorf("expected ScanNode as right child, got %T", joinNode.Right())
-	}
+	// Get table names from metadata (for qualified column names)
+	leftTableName := extractTableName(node.Left())
+	rightTableName := extractTableName(node.Right())
 
-	leftTableName := leftScan.TableName
-	leftTable, ok := db.Tables[leftTableName]
-	if !ok {
-		return nil, fmt.Errorf("left table not found: %s", leftTableName)
-	}
+	// Create temporary in-memory tables from child results
+	leftTable := createTempTable(leftTableName, leftResult.Rows)
+	rightTable := createTempTable(rightTableName, rightResult.Rows)
 
-	rightTableName := rightScan.TableName
-	rightTable, ok := db.Tables[rightTableName]
-	if !ok {
-		return nil, fmt.Errorf("right table not found: %s", rightTableName)
-	}
-
-	// Build projection metadata
-	var columns []string
-	var metadata []ColumnMetadata
-
-	proj := node.Projection
-
-	if proj.SelectAll {
-		// Get all columns from both tables
-		for _, col := range leftTable.Schema.Columns {
-			colName := leftTableName + "." + col.Name
-			columns = append(columns, colName)
-			metadata = append(metadata, ColumnMetadata{Name: colName, Type: string(col.Type)})
-		}
-		for _, col := range rightTable.Schema.Columns {
-			colName := rightTableName + "." + col.Name
-			columns = append(columns, colName)
-			metadata = append(metadata, ColumnMetadata{Name: colName, Type: string(col.Type)})
-		}
-	} else {
-		for _, colRef := range proj.Columns {
-			colName := colRef.Column
-			if colRef.Alias != "" {
-				colName = colRef.Alias
-			} else if colRef.Table != "" {
-				colName = fmt.Sprintf("%s.%s", colRef.Table, colRef.Column)
-			}
-			columns = append(columns, colName)
-			
-			// Try to find column type
-			var schemaCol *schema.Column
-			if colRef.Table == leftTableName {
-				schemaCol = findColumnInSchema(leftTable, colRef.Column)
-			} else if colRef.Table == rightTableName {
-				schemaCol = findColumnInSchema(rightTable, colRef.Column)
-			} else {
-				schemaCol = findColumnInSchema(leftTable, colRef.Column)
-				if schemaCol == nil {
-					schemaCol = findColumnInSchema(rightTable, colRef.Column)
-				}
-			}
-
-			if schemaCol != nil {
-				metadata = append(metadata, ColumnMetadata{Name: colName, Type: string(schemaCol.Type)})
-			} else {
-				metadata = append(metadata, ColumnMetadata{Name: colName, Type: "TEXT"})
-			}
-		}
-	}
-
-	var joinPred join.JoinPredicate
-	if node.Predicate != nil {
-		joinPred = func(row data.JoinedRow) bool {
-			flatRow := make(map[string]interface{})
-			for k, v := range row.Data {
-				flatRow[k] = v
-			}
-			return node.Predicate(data.NewRow(flatRow))
-		}
-	}
-
-	// Execute JOIN
+	// Execute JOIN using existing join operations
 	joinedRows, err := join.ExecuteJoin(
 		leftTable,
 		rightTable,
-		joinNode.LeftOnCol,
-		joinNode.RightOnCol,
-		joinNode.JoinType,
-		joinPred,
-		node.Projection,
-		tx,
+		node.LeftOnCol,
+		node.RightOnCol,
+		node.JoinType,
+		nil,  // No additional predicate at this level
+		nil,  // No projection at this level
+		ctx.Transaction,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("JOIN execution failed: %w", err)
 	}
 
-	// Convert JoinedRow to Row for Result
+	// Convert JoinedRow back to Row
 	rows := make([]data.Row, len(joinedRows))
-	for i, joinedRow := range joinedRows {
-		rows[i] = data.NewRow(joinedRow.Data)
+	for i, jr := range joinedRows {
+		rows[i] = data.NewRow(jr.Data)
 	}
 
-	return &Result{
-		Columns:  columns,
-		Metadata: metadata,
-		Rows:     rows,
-		Message:  fmt.Sprintf("Returned %d rows", len(rows)),
+	return &IntermediateResult{
+		Rows: rows,
+		Metadata: map[string]interface{}{
+			"join_type":   node.JoinType,
+			"left_rows":   len(leftResult.Rows),
+			"right_rows":  len(rightResult.Rows),
+			"result_rows": len(rows),
+		},
 	}, nil
+}
+
+// extractTableName extracts table name from a plan node
+func extractTableName(node plan.Node) string {
+	switch n := node.(type) {
+	case *plan.ScanNode:
+		return n.TableName
+	case *plan.SelectNode:
+		return n.TableName
+	default:
+		// For other node types, use the node type as a placeholder
+		return fmt.Sprintf("temp_%s", node.NodeType())
+	}
+}
+
+// createTempTable creates an in-memory table from rows for JOIN operations
+func createTempTable(tableName string, rows []data.Row) *schema.Table {
+	if len(rows) == 0 {
+		return &schema.Table{
+			Name: tableName,
+			Rows: []data.Row{},
+			Schema: &schema.TableSchema{
+				Columns: []schema.Column{},
+			},
+		}
+	}
+
+	// Infer schema from first row
+	var columns []schema.Column
+	for colName := range rows[0].Data {
+		columns = append(columns, schema.Column{
+			Name: colName,
+			Type: schema.ColumnTypeText, // Generic type for temp tables
+		})
+	}
+
+	return &schema.Table{
+		Name: tableName,
+		Rows: rows,
+		Schema: &schema.TableSchema{
+			Columns: columns,
+		},
+	}
 }
