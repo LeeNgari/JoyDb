@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
+	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
@@ -14,7 +15,8 @@ func TestQueryLifecycleEvents(t *testing.T) {
 	defer teardownTestDB(t, db)
 
 	// Create engine with mock observer
-	registry := manager.NewRegistry("../../databases")
+	storageEng := storageEngine.NewJSONEngine()
+	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}
 	eng.AddObserver(observer)
@@ -74,7 +76,8 @@ func TestEventDataContent(t *testing.T) {
 	db := setupTestDB(t)
 	defer teardownTestDB(t, db)
 
-	registry := manager.NewRegistry("../../databases")
+	storageEng := storageEngine.NewJSONEngine()
+	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}
 	eng.AddObserver(observer)
@@ -125,7 +128,8 @@ func TestMultipleQueries(t *testing.T) {
 	db := setupTestDB(t)
 	defer teardownTestDB(t, db)
 
-	registry := manager.NewRegistry("../../databases")
+	storageEng := storageEngine.NewJSONEngine()
+	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}
 	eng.AddObserver(observer)

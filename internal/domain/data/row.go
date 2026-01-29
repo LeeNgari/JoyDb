@@ -11,13 +11,14 @@ type Row struct {
 	Data map[string]interface{}
 	// mu is a placeholder for future row-level locking implementation
 	// Currently unused but reserved for fine-grained concurrency control
-	mu sync.Mutex
+	mu *sync.Mutex
 }
 
 // NewRow creates a new Row with the given data
 func NewRow(data map[string]interface{}) Row {
 	return Row{
 		Data: data,
+		mu:   &sync.Mutex{},
 	}
 }
 
@@ -29,6 +30,7 @@ func (r Row) Copy() Row {
 	}
 	return Row{
 		Data: copy,
+		mu:   &sync.Mutex{},
 	}
 }
 

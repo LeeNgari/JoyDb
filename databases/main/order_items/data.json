@@ -308,10 +308,10 @@
     "quantity": 2
   },
   {
-    "id": 45,
-    "order_id": 3,
-    "price": 30,
-    "product_id": 10,
+    "id": 46,
+    "order_id": 21,
+    "price": 150,
+    "product_id": 21,
     "quantity": 1
   }
 ]

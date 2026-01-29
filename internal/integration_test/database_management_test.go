@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
+	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
@@ -18,7 +19,8 @@ func TestDatabaseManagement(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// 2. Initialize Engine with no DB selected
-	registry := manager.NewRegistry(tmpDir)
+	storageEng := storageEngine.NewJSONEngine()
+	registry := manager.NewRegistry(tmpDir, storageEng)
 	eng := engine.New(nil, registry)
 
 	// 3. Create Database 'db1'

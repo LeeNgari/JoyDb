@@ -29,8 +29,8 @@ func ExecuteJoin(
 	if tx != nil {
 		slog.Debug("ExecuteJoin operation", "type", joinType, "tx_id", tx.ID)
 	}
-	// Validate join condition
-	if err := validateJoinCondition(leftTable, rightTable, leftColumn, rightColumn); err != nil {
+	// Validate join condition and resolve qualified names
+	if err := validateJoinCondition(leftTable, rightTable, &leftColumn, &rightColumn); err != nil {
 		return nil, err
 	}
 
@@ -67,7 +67,7 @@ func ExecuteJoin(
 	return results, nil
 }
 
-// executeInnerJoin performs INNER JOIN 
+// executeInnerJoin performs INNER JOIN
 func executeInnerJoin(
 	leftTable *schema.Table,
 	rightTable *schema.Table,

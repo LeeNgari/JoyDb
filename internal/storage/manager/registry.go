@@ -9,22 +9,23 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
-	"github.com/leengari/mini-rdbms/internal/storage/loader"
-	"github.com/leengari/mini-rdbms/internal/storage/writer"
+	"github.com/leengari/mini-rdbms/internal/storage/engine"
 )
 
 // Registry manages loaded databases in a thread-safe way
 type Registry struct {
-	mu       sync.RWMutex
-	loaded   map[string]*schema.Database
-	basePath string
+	mu            sync.RWMutex
+	loaded        map[string]*schema.Database
+	basePath      string
+	storageEngine engine.StorageEngine
 }
 
-// NewRegistry creates a new database registry
-func NewRegistry(basePath string) *Registry {
+// NewRegistry creates a new database registry with the given storage engine
+func NewRegistry(basePath string, storageEngine engine.StorageEngine) *Registry {
 	return &Registry{
-		loaded:   make(map[string]*schema.Database),
-		basePath: basePath,
+		loaded:        make(map[string]*schema.Database),
+		basePath:      basePath,
+		storageEngine: storageEngine,
 	}
 }
 
@@ -38,9 +39,9 @@ func (r *Registry) Get(name string) (*schema.Database, error) {
 		return db, nil
 	}
 
-	// Load from disk
+	// Load from disk using storage engine
 	dbPath := filepath.Join(r.basePath, name)
-	db, err := loader.LoadDatabase(dbPath)
+	db, err := r.storageEngine.LoadDatabase(dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +64,7 @@ func (r *Registry) Create(name string) error {
 		return fmt.Errorf("database '%s' already exists (loaded)", name)
 	}
 
-	return CreateDatabase(name, r.basePath)
+	return r.storageEngine.CreateDatabase(name, r.basePath)
 }
 
 // Drop unloads and deletes a database
@@ -72,7 +73,7 @@ func (r *Registry) Drop(name string) error {
 	defer r.mu.Unlock()
 
 	delete(r.loaded, name)
-	return DropDatabase(name, r.basePath)
+	return r.storageEngine.DropDatabase(name, r.basePath)
 }
 
 // Rename saves, unloads, and renames a database
@@ -85,14 +86,14 @@ func (r *Registry) Rename(oldName, newName string) error {
 		// Create a transaction for the save operation
 		tx := transaction.NewTransaction()
 		defer tx.Close()
-		
-		if err := writer.SaveDatabase(db, tx); err != nil {
+
+		if err := r.storageEngine.SaveDatabase(db, tx); err != nil {
 			return fmt.Errorf("failed to save database before rename: %w", err)
 		}
 		delete(r.loaded, oldName)
 	}
 
-	return RenameDatabase(oldName, newName, r.basePath)
+	return r.storageEngine.RenameDatabase(oldName, newName, r.basePath)
 }
 
 // SaveAll saves all currently loaded databases
@@ -101,7 +102,7 @@ func (r *Registry) SaveAll(tx *transaction.Transaction) {
 	defer r.mu.RUnlock()
 
 	for _, db := range r.loaded {
-		if err := writer.SaveDatabase(db, tx); err != nil {
+		if err := r.storageEngine.SaveDatabase(db, tx); err != nil {
 			slog.Error("failed to save database", "name", db.Name, "error", err)
 		}
 	}
@@ -109,5 +110,5 @@ func (r *Registry) SaveAll(tx *transaction.Transaction) {
 
 // List returns a list of all available databases
 func (r *Registry) List() ([]string, error) {
-	return ListDatabases(r.basePath)
+	return r.storageEngine.ListDatabases(r.basePath)
 }

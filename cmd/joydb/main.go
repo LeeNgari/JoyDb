@@ -14,6 +14,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
 	"github.com/leengari/mini-rdbms/internal/network"
 	"github.com/leengari/mini-rdbms/internal/repl"
+	"github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
@@ -38,8 +39,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create Database Registry
-	registry := manager.NewRegistry(basePath)
+	// Create storage engine (currently JSON, can be swapped for binary)
+	storageEngine := engine.NewJSONEngine()
+
+	// Create Database Registry with storage engine
+	registry := manager.NewRegistry(basePath, storageEngine)
 
 	// Save all loaded databases on shutdown
 	defer func() {
@@ -90,7 +94,7 @@ func ensureDatabaseSeeded(basePath string, seedFS fs.FS, dbName string) error {
 		// Note: embedded paths will be like "main/meta.json"
 		// We want to extract "main/..." to "databases/main/..."
 		// Since we passed "databases.Content" which contains "main", the paths start with "main"
-		
+
 		// If we are seeding "main", and the FS has "main/...", we can just join basePath and path
 		targetPath := filepath.Join(basePath, path)
 
