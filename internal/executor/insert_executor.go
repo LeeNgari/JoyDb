@@ -18,7 +18,8 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 	}
 
 	return &IntermediateResult{
-		Rows: []data.Row{},
+		Rows:   []data.Row{},
+		Schema: nil,
 		Metadata: map[string]interface{}{
 			"operation":     "INSERT",
 			"rows_affected": 1,

@@ -19,7 +19,8 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 	}
 
 	return &IntermediateResult{
-		Rows: []data.Row{},
+		Rows:   []data.Row{},
+		Schema: nil,
 		Metadata: map[string]interface{}{
 			"operation":     "DELETE",
 			"rows_affected": rowsAffected,

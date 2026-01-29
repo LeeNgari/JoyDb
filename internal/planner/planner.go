@@ -62,7 +62,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 				Table:  f.Table,
 				Column: f.Value,
 			}
-		}		
+		}
 	}
 
 	// 4. Build tree structure
@@ -81,9 +81,11 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	// 5. Build JOINs as tree children
 	if len(stmt.Joins) > 0 {
 		// Create base scan node for left table
+		// Note: We don't push down the full filter if there are joins,
+		// because the filter likely contains columns from other tables.
 		leftScan := &plan.ScanNode{
 			TableName:   tableName,
-			Predicate:   pred,
+			Predicate:   nil,
 			Transaction: tx,
 		}
 		leftScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
@@ -91,7 +93,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 
 		// Build JOIN tree
 		currentNode := plan.Node(leftScan)
-		
+
 		for _, joinClause := range stmt.Joins {
 			// Validate join table
 			joinTableName := joinClause.RightTable.Value
@@ -243,11 +245,11 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 		Updates:     data.NewRow(updates),
 		Transaction: tx,
 	}
-	
+
 	// Attach metadata
 	node.Metadata()["table"] = tableName
 	node.Metadata()["has_predicate"] = pred != nil
-	
+
 	return node, nil
 }
 
@@ -274,11 +276,11 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.
 		Predicate:   pred,
 		Transaction: tx,
 	}
-	
+
 	// Attach metadata
 	node.Metadata()["table"] = tableName
 	node.Metadata()["has_predicate"] = pred != nil
-	
+
 	return node, nil
 }
 

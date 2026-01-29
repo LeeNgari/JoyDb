@@ -19,7 +19,8 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 	}
 
 	return &IntermediateResult{
-		Rows: []data.Row{},
+		Rows:   []data.Row{},
+		Schema: nil,
 		Metadata: map[string]interface{}{
 			"operation":     "UPDATE",
 			"rows_affected": rowsAffected,

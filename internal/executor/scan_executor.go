@@ -21,7 +21,8 @@ func executeScan(node *plan.ScanNode, ctx *ExecutionContext) (*IntermediateResul
 	}
 
 	return &IntermediateResult{
-		Rows: rows,
+		Rows:   rows,
+		Schema: table.Schema,
 		Metadata: map[string]interface{}{
 			"table":     node.TableName,
 			"scan_type": "sequential",

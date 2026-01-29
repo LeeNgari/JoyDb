@@ -28,9 +28,9 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 	leftTableName := extractTableName(node.Left())
 	rightTableName := extractTableName(node.Right())
 
-	// Create temporary in-memory tables from child results
-	leftTable := createTempTable(leftTableName, leftResult.Rows)
-	rightTable := createTempTable(rightTableName, rightResult.Rows)
+	// Create temporary in-memory tables from child results using the propagated schema
+	leftTable := createTempTable(leftTableName, leftResult.Rows, leftResult.Schema)
+	rightTable := createTempTable(rightTableName, rightResult.Rows, rightResult.Schema)
 
 	// Execute JOIN using existing join operations
 	joinedRows, err := join.ExecuteJoin(
@@ -39,12 +39,29 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 		node.LeftOnCol,
 		node.RightOnCol,
 		node.JoinType,
-		nil,  // No additional predicate at this level
-		nil,  // No projection at this level
+		nil, // No additional predicate at this level
+		nil, // No projection at this level
 		ctx.Transaction,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("JOIN execution failed: %w", err)
+	}
+
+	// Build the schema for the joined result (qualified names)
+	joinedSchema := &schema.TableSchema{
+		Columns: make([]schema.Column, 0, len(leftTable.Schema.Columns)+len(rightTable.Schema.Columns)),
+	}
+	for _, col := range leftTable.Schema.Columns {
+		joinedSchema.Columns = append(joinedSchema.Columns, schema.Column{
+			Name: fmt.Sprintf("%s.%s", leftTableName, col.Name),
+			Type: col.Type,
+		})
+	}
+	for _, col := range rightTable.Schema.Columns {
+		joinedSchema.Columns = append(joinedSchema.Columns, schema.Column{
+			Name: fmt.Sprintf("%s.%s", rightTableName, col.Name),
+			Type: col.Type,
+		})
 	}
 
 	// Convert JoinedRow back to Row
@@ -54,7 +71,8 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 	}
 
 	return &IntermediateResult{
-		Rows: rows,
+		Rows:   rows,
+		Schema: joinedSchema,
 		Metadata: map[string]interface{}{
 			"join_type":   node.JoinType,
 			"left_rows":   len(leftResult.Rows),
@@ -71,38 +89,32 @@ func extractTableName(node plan.Node) string {
 		return n.TableName
 	case *plan.SelectNode:
 		return n.TableName
+	case *plan.JoinNode:
+		// Recursive join names can be complex, use a placeholder
+		return fmt.Sprintf("join_%p", n)
 	default:
-		// For other node types, use the node type as a placeholder
-		return fmt.Sprintf("temp_%s", node.NodeType())
+		return "temp_table"
 	}
 }
 
-// createTempTable creates an in-memory table from rows for JOIN operations
-func createTempTable(tableName string, rows []data.Row) *schema.Table {
-	if len(rows) == 0 {
-		return &schema.Table{
-			Name: tableName,
-			Rows: []data.Row{},
-			Schema: &schema.TableSchema{
-				Columns: []schema.Column{},
-			},
+// createTempTable creates an in-memory table from rows and explicit schema
+func createTempTable(tableName string, rows []data.Row, tableSchema *schema.TableSchema) *schema.Table {
+	if tableSchema == nil {
+		// Fallback for nodes that don't provide schema (should be fixed in all nodes)
+		tableSchema = &schema.TableSchema{Columns: []schema.Column{}}
+		if len(rows) > 0 {
+			for colName := range rows[0].Data {
+				tableSchema.Columns = append(tableSchema.Columns, schema.Column{
+					Name: colName,
+					Type: schema.ColumnTypeText,
+				})
+			}
 		}
 	}
 
-	// Infer schema from first row
-	var columns []schema.Column
-	for colName := range rows[0].Data {
-		columns = append(columns, schema.Column{
-			Name: colName,
-			Type: schema.ColumnTypeText, // Generic type for temp tables
-		})
-	}
-
 	return &schema.Table{
-		Name: tableName,
-		Rows: rows,
-		Schema: &schema.TableSchema{
-			Columns: columns,
-		},
+		Name:   tableName,
+		Rows:   rows,
+		Schema: tableSchema,
 	}
 }

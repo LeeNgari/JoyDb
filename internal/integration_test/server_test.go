@@ -12,6 +12,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/network"
+	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
@@ -37,7 +38,8 @@ func TestServerJSON(t *testing.T) {
 	port := 54321
 
 	basePath := filepath.Dir(testDBPath)
-	registry := manager.NewRegistry(basePath)
+	storageEng := storageEngine.NewJSONEngine()
+	registry := manager.NewRegistry(basePath, storageEng)
 
 	// Start server in goroutine
 	go network.Start(port, registry)

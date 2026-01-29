@@ -140,10 +140,10 @@
     "username": "user20"
   },
   {
-    "age": 12,
-    "email": "bob@exmple.com",
-    "id": 101,
+    "age": 25,
+    "email": "tester@joydb.com",
+    "id": 102,
     "is_active": true,
-    "username": "bob"
+    "username": "tester"
   }
 ]

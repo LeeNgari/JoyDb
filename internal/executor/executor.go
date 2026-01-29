@@ -29,6 +29,7 @@ type Result struct {
 // Used for composing results from child nodes during tree walking
 type IntermediateResult struct {
 	Rows     []data.Row             // Result rows
+	Schema   *schema.TableSchema    // Schema of the result (for join planning)
 	Metadata map[string]interface{} // Execution metadata
 }
 
