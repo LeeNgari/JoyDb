@@ -1,26 +1,27 @@
 package executor
 
 import (
-	"fmt"
-
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
-// executeInsert handles INSERT plans
-func executeInsert(node *plan.InsertNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
-	table, ok := db.Tables[node.TableName]
+// executeInsertNode handles INSERT using tree-walking pattern
+func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*IntermediateResult, error) {
+	table, ok := ctx.Database.Tables[node.TableName]
 	if !ok {
-		return nil, fmt.Errorf("table not found: %s", node.TableName)
+		return nil, newTableNotFoundError(node.TableName)
 	}
 
 	// Insert the row using domain model
-	if err := table.Insert(node.Row, tx); err != nil {
+	if err := table.Insert(node.Row, ctx.Transaction); err != nil {
 		return nil, err
 	}
 
-	return &Result{
-		Message: "INSERT 1",
+	return &IntermediateResult{
+		Rows: []data.Row{},
+		Metadata: map[string]interface{}{
+			"operation":     "INSERT",
+			"rows_affected": 1,
+		},
 	}, nil
 }

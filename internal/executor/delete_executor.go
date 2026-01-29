@@ -1,28 +1,28 @@
 package executor
 
 import (
-	"fmt"
-
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
-// executeDelete handles DELETE plans
-func executeDelete(node *plan.DeleteNode, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
-	table, ok := db.Tables[node.TableName]
+// executeDeleteNode handles DELETE using tree-walking pattern
+func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*IntermediateResult, error) {
+	table, ok := ctx.Database.Tables[node.TableName]
 	if !ok {
-		return nil, fmt.Errorf("table not found: %s", node.TableName)
+		return nil, newTableNotFoundError(node.TableName)
 	}
 
 	// Use domain model to delete
-	rowsAffected, err := table.Delete(node.Predicate, tx)
+	rowsAffected, err := table.Delete(node.Predicate, ctx.Transaction)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Result{
-		Message:      fmt.Sprintf("DELETE %d", rowsAffected),
-		RowsAffected: rowsAffected,
+	return &IntermediateResult{
+		Rows: []data.Row{},
+		Metadata: map[string]interface{}{
+			"operation":     "DELETE",
+			"rows_affected": rowsAffected,
+		},
 	}, nil
 }

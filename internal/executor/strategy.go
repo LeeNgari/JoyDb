@@ -38,11 +38,10 @@ func DefaultExecutionConfig() *ExecutionConfig {
 }
 
 // DefaultStrategy is a naive implementation
-// Scaffold: Not integrated with executor
+// Integrated with tree-walking executor
 type DefaultStrategy struct{}
 
-func (ds *DefaultStrategy) Execute(node plan.Node, ctx *ExecutionContext) (*Result, error) {
-	// Scaffold: Not implemented
-	// Future: Implement strategy pattern here
-	return nil, nil
+func (ds *DefaultStrategy) Execute(node plan.Node, ctx *ExecutionContext) (*IntermediateResult, error) {
+	// Delegate to the recursive tree walker (implemented in executor.go)
+	return executeNode(node, ctx)
 }
