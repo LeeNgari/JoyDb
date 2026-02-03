@@ -142,9 +142,9 @@ func (w *WAL) Commit(txID uint64) (uint64, error) {
 		return 0, fmt.Errorf("failed to write Commit record: %w", err)
 	}
 
-	// Fsync to ensure durability
-	if err := w.file.Sync(); err != nil {
-		return 0, fmt.Errorf("failed to fsync after commit: %w", err)
+	// Flush buffer and fsync to ensure durability
+	if err := w.flushAndSync(); err != nil {
+		return 0, fmt.Errorf("failed to sync after commit: %w", err)
 	}
 
 	// Update flushed LSN
@@ -201,9 +201,9 @@ func (w *WAL) WriteCheckpoint(tables []TableChecksum, databaseCRC32 uint32) (uin
 		return 0, fmt.Errorf("failed to write Checkpoint record: %w", err)
 	}
 
-	// Fsync to ensure checkpoint is durable
-	if err := w.file.Sync(); err != nil {
-		return 0, fmt.Errorf("failed to fsync after checkpoint: %w", err)
+	// Flush buffer and fsync to ensure checkpoint is durable
+	if err := w.flushAndSync(); err != nil {
+		return 0, fmt.Errorf("failed to sync after checkpoint: %w", err)
 	}
 
 	// Update flushed LSN and checkpoint LSN
@@ -251,26 +251,26 @@ func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error)
 		Length:     uint32(alignedLen),
 		LSN:        lsn,
 		CRC32:      crc,
-		FileOffset: uint32(w.currentOffset),
+		FileOffset: w.currentOffset,
 	}
 
 	// Encode header
 	headerBytes := encodeHeader(header)
 
-	// Write header
-	if _, err := w.file.Write(headerBytes); err != nil {
+	// Write header to buffered writer
+	if _, err := w.buf.Write(headerBytes); err != nil {
 		return 0, fmt.Errorf("failed to write header: %w", err)
 	}
 
-	// Write payload
-	if _, err := w.file.Write(payload); err != nil {
+	// Write payload to buffered writer
+	if _, err := w.buf.Write(payload); err != nil {
 		return 0, fmt.Errorf("failed to write payload: %w", err)
 	}
 
 	// Write padding if needed
 	if paddingLen > 0 {
 		padding := make([]byte, paddingLen)
-		if _, err := w.file.Write(padding); err != nil {
+		if _, err := w.buf.Write(padding); err != nil {
 			return 0, fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
@@ -281,14 +281,14 @@ func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error)
 	return lsn, nil
 }
 
-// encodeHeader encodes a WALRecordHeader to bytes (24 bytes)
+// encodeHeader encodes a WALRecordHeader to bytes (32 bytes)
 func encodeHeader(h WALRecordHeader) []byte {
 	buf := make([]byte, RecordHeaderSize)
 
-	// Type (1 byte)
+	// Type (1 byte) at offset 0
 	buf[0] = byte(h.Type)
 
-	// Padding (1 byte) - already zero
+	// Padding (1 byte) at offset 1 - already zero
 
 	// Length (4 bytes) at offset 2
 	ByteOrder.PutUint32(buf[2:6], h.Length)
@@ -299,10 +299,10 @@ func encodeHeader(h WALRecordHeader) []byte {
 	// CRC32 (4 bytes) at offset 14
 	ByteOrder.PutUint32(buf[14:18], h.CRC32)
 
-	// FileOffset (4 bytes) at offset 18
-	ByteOrder.PutUint32(buf[18:22], h.FileOffset)
+	// FileOffset (8 bytes) at offset 18
+	ByteOrder.PutUint64(buf[18:26], h.FileOffset)
 
-	// Remaining 2 bytes are padding (already zero)
+	// Remaining 6 bytes are padding at offset 26 (already zero)
 
 	return buf
 }

@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"sync"
@@ -9,10 +10,11 @@ import (
 
 // WAL represents a Write-Ahead Log for crash recovery
 type WAL struct {
-	file    *os.File   // WAL file handle
-	mu      sync.Mutex // Protects concurrent access
-	walPath string     // Path to WAL file
-	dbName  string     // Database name this WAL belongs to
+	file    *os.File      // WAL file handle
+	buf     *bufio.Writer // Buffered writer to reduce syscalls
+	mu      sync.Mutex    // Protects concurrent access
+	walPath string        // Path to WAL file
+	dbName  string        // Database name this WAL belongs to
 
 	// LSN tracking
 	nextLSN        uint64 // Next LSN to assign
@@ -42,6 +44,7 @@ func NewWAL(walPath string, dbName string) (*WAL, error) {
 
 	wal := &WAL{
 		file:       file,
+		buf:        bufio.NewWriterSize(file, WriteBufferSize),
 		walPath:    walPath,
 		dbName:     dbName,
 		activeTxns: make(map[uint64]*TxnState),
@@ -101,8 +104,8 @@ func (w *WAL) writeFileHeader() error {
 
 	// Reserved padding (6 bytes) - already zeroed
 
-	// Write to file
-	n, err := w.file.Write(buf)
+	// Write to buffered writer
+	n, err := w.buf.Write(buf)
 	if err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
@@ -110,7 +113,10 @@ func (w *WAL) writeFileHeader() error {
 		return fmt.Errorf("incomplete header write: wrote %d of %d bytes", n, FileHeaderSize)
 	}
 
-	// Sync header to disk
+	// Flush buffer and sync header to disk (critical for file header)
+	if err := w.buf.Flush(); err != nil {
+		return fmt.Errorf("failed to flush header: %w", err)
+	}
 	if err := w.file.Sync(); err != nil {
 		return fmt.Errorf("failed to sync header: %w", err)
 	}
@@ -119,13 +125,20 @@ func (w *WAL) writeFileHeader() error {
 	return nil
 }
 
-// Close syncs and closes the WAL file
+// Close flushes, syncs and closes the WAL file
 func (w *WAL) Close() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	if w.file == nil {
 		return nil
+	}
+
+	// Flush buffered data
+	if w.buf != nil {
+		if err := w.buf.Flush(); err != nil {
+			return fmt.Errorf("failed to flush buffer on close: %w", err)
+		}
 	}
 
 	// Sync before closing to ensure durability
@@ -135,10 +148,11 @@ func (w *WAL) Close() error {
 
 	err := w.file.Close()
 	w.file = nil
+	w.buf = nil
 	return err
 }
 
-// Sync forces an fsync on the WAL file and updates flushedLSN
+// Sync flushes the buffer and forces an fsync on the WAL file
 func (w *WAL) Sync() error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -147,6 +161,14 @@ func (w *WAL) Sync() error {
 		return nil
 	}
 
+	// Flush buffered data first
+	if w.buf != nil {
+		if err := w.buf.Flush(); err != nil {
+			return fmt.Errorf("failed to flush buffer: %w", err)
+		}
+	}
+
+	// Fsync to disk
 	if err := w.file.Sync(); err != nil {
 		return err
 	}
@@ -156,6 +178,20 @@ func (w *WAL) Sync() error {
 		w.flushedLSN = w.nextLSN - 1
 	}
 
+	return nil
+}
+
+// flushAndSync flushes buffer and syncs to disk, updating flushedLSN
+// Must be called with mutex held
+func (w *WAL) flushAndSync() error {
+	if w.buf != nil {
+		if err := w.buf.Flush(); err != nil {
+			return fmt.Errorf("failed to flush buffer: %w", err)
+		}
+	}
+	if err := w.file.Sync(); err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
+	}
 	return nil
 }
 

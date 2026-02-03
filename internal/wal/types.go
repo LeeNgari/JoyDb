@@ -32,6 +32,21 @@ var ByteOrder = binary.LittleEndian
 const RecordAlignment = 8
 
 // ===========================================================================
+// SAFETY LIMITS
+// ===========================================================================
+
+// MaxRecordSize is the maximum allowed size for a single WAL record (4MB)
+// This prevents OOM attacks from corrupted Length fields during recovery
+const MaxRecordSize = 4 * 1024 * 1024
+
+// MinRecordSize is the minimum valid record size (header only, no payload)
+const MinRecordSize = RecordHeaderSize
+
+// WriteBufferSize is the size of the bufio.Writer buffer (32KB)
+// This reduces syscalls by batching small writes
+const WriteBufferSize = 32 * 1024
+
+// ===========================================================================
 // WAL FILE HEADER
 // ===========================================================================
 
@@ -99,25 +114,27 @@ func (rt RecordType) String() string {
 // ===========================================================================
 
 // WALRecordHeader is the common header for all WAL records
-// Fixed size: 24 bytes (aligned to 8-byte boundary)
+// Fixed size: 32 bytes (aligned to 8-byte boundary)
 //
 // Binary layout:
-// ┌─────────┬─────────┬─────────┬─────────┬──────────┬──────────┐
-// │ Type(1) │ Pad(1)  │ Len(4)  │ LSN(8)  │ CRC32(4) │ Offset(4)│ (was PrevLSN, now padding)
-// │  uint8  │ reserved│ uint32  │ uint64  │  uint32  │ reserved │
-// └─────────┴─────────┴─────────┴─────────┴──────────┴──────────┘
+// ┌─────────┬─────────┬──────────┬─────────┬──────────┬────────────┬─────────┐
+// │ Type(1) │ Pad(1)  │ Length(4)│ LSN(8)  │ CRC32(4) │ FileOff(8) │ Pad(6)  │
+// │  uint8  │ reserved│  uint32  │ uint64  │  uint32  │   uint64   │ reserved│
+// └─────────┴─────────┴──────────┴─────────┴──────────┴────────────┴─────────┘
+// Offsets: 0        1         2          6         14         18          26
 type WALRecordHeader struct {
-	Type       RecordType // Type of record (1 byte)
-	_          uint8      // Padding for alignment
-	Length     uint32     // Total record length including header and padding
-	LSN        uint64     // Log Sequence Number - monotonically increasing
-	CRC32      uint32     // CRC32 checksum of payload (after header, before padding)
-	FileOffset uint32     // Byte offset in WAL file where this record starts
+	Type       RecordType // Type of record (1 byte) - offset 0
+	_          uint8      // Padding for alignment (1 byte) - offset 1
+	Length     uint32     // Total record length including header and padding - offset 2
+	LSN        uint64     // Log Sequence Number - monotonically increasing - offset 6
+	CRC32      uint32     // CRC32 checksum of payload (after header, before padding) - offset 14
+	FileOffset uint64     // Byte offset in WAL file where this record starts - offset 18
+	_          [6]byte    // Padding to reach 32 bytes - offset 26
 }
 
 // RecordHeaderSize is the fixed size of the WAL record header in bytes
-// Computed: 1 + 1 + 4 + 8 + 4 + 4 = 24 bytes (aligned to 8-byte boundary)
-const RecordHeaderSize = 24
+// Computed: 1 + 1 + 4 + 8 + 4 + 8 + 6 = 32 bytes (aligned to 8-byte boundary)
+const RecordHeaderSize = 32
 
 // AlignTo8 rounds up a size to the next 8-byte boundary
 func AlignTo8(size int) int {
@@ -192,14 +209,20 @@ type DeleteRecord struct {
 
 // CheckpointRecord marks a point where the database state was persisted to disk
 // It includes checksums of all JSON files to detect external corruption
+//
+// Payload binary layout:
+// ┌──────────────────┬──────────────────┬────────────────┬─────────────┬───────────────┬────────────┬─────────────────┐
+// │ CheckpointLSN(8) │ CheckpointOff(8) │ FlushedLSN(8)  │ Timestamp(8)│ DatabaseCRC(4)│ TableCnt(4)│ Tables (var)    │
+// └──────────────────┴──────────────────┴────────────────┴─────────────┴───────────────┴────────────┴─────────────────┘
 type CheckpointRecord struct {
 	Header           WALRecordHeader
-	CheckpointLSN    uint64          // LSN at which checkpoint was taken
-	CheckpointOffset uint64          // Byte offset in WAL file of this checkpoint
-	LastFlushedLSN   uint64          // Last LSN guaranteed to be fsynced
-	Timestamp        int64           // Unix timestamp of checkpoint
-	Tables           []TableChecksum // Checksums of each table's JSON files
-	DatabaseCRC32    uint32          // Checksum of database meta.json
+	CheckpointLSN    uint64          // LSN at which checkpoint was taken (offset 0)
+	CheckpointOffset uint64          // Byte offset in WAL file of this checkpoint (offset 8)
+	LastFlushedLSN   uint64          // Last LSN guaranteed to be fsynced (offset 16)
+	Timestamp        int64           // Unix timestamp of checkpoint (offset 24)
+	DatabaseCRC32    uint32          // Checksum of database meta.json (offset 32)
+	TableCount       uint32          // Number of tables (offset 36)
+	Tables           []TableChecksum // Checksums of each table's JSON files (offset 40+)
 }
 
 // TableChecksum stores the checksum of a table's JSON files at checkpoint time
