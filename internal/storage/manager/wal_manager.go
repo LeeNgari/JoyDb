@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
@@ -15,17 +16,26 @@ import (
 // WALManager bridges the WAL package with the storage layer
 // It handles transaction lifecycle and logging operations
 type WALManager struct {
-	wal     *wal.WAL
-	dbPath  string
-	dbName  string
-	enabled bool
+	wal          *wal.WAL
+	checkpointer *wal.AsyncCheckpointer
+	db           *schema.Database
+	dbPath       string
+	dbName       string
+	enabled      bool
 }
 
 // NewWALManager creates a new WAL manager for a database
 // If enabled is false, all operations become no-ops
-func NewWALManager(dbPath, dbName string, enabled bool) (*WALManager, error) {
+func NewWALManager(
+	db *schema.Database,
+	dbPath, dbName string,
+	enabled bool,
+	checkpointInterval time.Duration,
+	saveFunc func() error,
+) (*WALManager, error) {
 	if !enabled {
 		return &WALManager{
+			db:      db,
 			dbPath:  dbPath,
 			dbName:  dbName,
 			enabled: false,
@@ -38,19 +48,57 @@ func NewWALManager(dbPath, dbName string, enabled bool) (*WALManager, error) {
 		return nil, fmt.Errorf("failed to create WAL: %w", err)
 	}
 
-	slog.Info("WAL initialized", "database", dbName, "path", walPath)
-
-	return &WALManager{
+	wm := &WALManager{
 		wal:     w,
+		db:      db,
 		dbPath:  dbPath,
 		dbName:  dbName,
 		enabled: true,
-	}, nil
+	}
+
+	// Setup async checkpointer
+	// The closure captures 'wm' and 'db' (via wm.db or directly)
+	checkpointAction := func() error {
+		// 1. Save database (flush to disk) if saveFunc provided
+		if saveFunc != nil {
+			if err := saveFunc(); err != nil {
+				slog.Error("AsyncCheckpoint: failed to save database", "db", dbName, "error", err)
+				return err
+			}
+		}
+
+		// 2. Write checkpoint to WAL
+		// We use the db instance stored in WALManager
+		if err := wm.WriteCheckpoint(wm.db); err != nil {
+			slog.Error("AsyncCheckpoint: failed to write checkpoint", "db", dbName, "error", err)
+			return err
+		}
+
+		return nil
+	}
+
+	wm.checkpointer = wal.NewAsyncCheckpointer(checkpointInterval, checkpointAction)
+	wm.checkpointer.Start()
+
+	slog.Info("WAL initialized", "database", dbName, "path", walPath, "checkpoint_interval", checkpointInterval)
+
+	return wm, nil
 }
 
 // IsEnabled returns whether WAL is enabled
 func (m *WALManager) IsEnabled() bool {
 	return m.enabled && m.wal != nil
+}
+
+// AsyncCheckpoint triggers an asynchronous checkpoint and returns a channel that will receive any error
+func (m *WALManager) AsyncCheckpoint() <-chan error {
+	if !m.IsEnabled() || m.checkpointer == nil {
+		ch := make(chan error, 1)
+		ch <- nil
+		close(ch)
+		return ch
+	}
+	return m.checkpointer.RequestCheckpoint()
 }
 
 // BeginTransaction logs a transaction begin to WAL
@@ -177,26 +225,54 @@ func (m *WALManager) WriteCheckpoint(db *schema.Database) error {
 		return nil
 	}
 
+	checksums, dbCRC, err := m.calculateChecksums(db)
+	if err != nil {
+		return err
+	}
+
+	lsn, err := m.wal.WriteCheckpoint(checksums, dbCRC)
+	if err != nil {
+		return fmt.Errorf("WAL WriteCheckpoint failed: %w", err)
+	}
+
+	slog.Info("WAL: Checkpoint written", "database", m.dbName, "tables", len(checksums), "lsn", lsn)
+	return nil
+}
+
+// calculateChecksums calculates CRCs for all tables and the database metadata
+func (m *WALManager) calculateChecksums(db *schema.Database) ([]wal.TableChecksum, uint32, error) {
 	// Calculate checksums for all tables
-	tables := make([]wal.TableChecksum, 0, len(db.Tables))
+	// Use RLock to iterate tables safely and snapshot paths
+	db.RLock()
+	type tableInfo struct {
+		Name string
+		Path string
+	}
+	infos := make([]tableInfo, 0, len(db.Tables))
 	for name, table := range db.Tables {
-		dataPath := filepath.Join(table.Path, "data.json")
-		metaPath := filepath.Join(table.Path, "meta.json")
+		infos = append(infos, tableInfo{Name: name, Path: table.Path})
+	}
+	db.RUnlock()
+
+	tables := make([]wal.TableChecksum, 0, len(infos))
+	for _, info := range infos {
+		dataPath := filepath.Join(info.Path, "data.json")
+		metaPath := filepath.Join(info.Path, "meta.json")
 
 		dataCRC, err := wal.CalculateFileCRC32(dataPath)
 		if err != nil {
-			slog.Warn("Failed to calculate data.json CRC", "table", name, "error", err)
+			slog.Warn("Failed to calculate data.json CRC", "table", info.Name, "error", err)
 			continue
 		}
 
 		metaCRC, err := wal.CalculateFileCRC32(metaPath)
 		if err != nil {
-			slog.Warn("Failed to calculate meta.json CRC", "table", name, "error", err)
+			slog.Warn("Failed to calculate meta.json CRC", "table", info.Name, "error", err)
 			continue
 		}
 
 		tables = append(tables, wal.TableChecksum{
-			TableName: name,
+			TableName: info.Name,
 			DataCRC32: dataCRC,
 			MetaCRC32: metaCRC,
 		})
@@ -210,17 +286,16 @@ func (m *WALManager) WriteCheckpoint(db *schema.Database) error {
 		dbCRC = 0
 	}
 
-	lsn, err := m.wal.WriteCheckpoint(tables, dbCRC)
-	if err != nil {
-		return fmt.Errorf("WAL WriteCheckpoint failed: %w", err)
-	}
-
-	slog.Info("WAL: Checkpoint written", "database", m.dbName, "tables", len(tables), "lsn", lsn)
-	return nil
+	return tables, dbCRC, nil
 }
 
 // Recover performs WAL recovery and returns operations to replay
 func (m *WALManager) Recover() (*wal.RecoveryResult, error) {
+	return m.RecoverWithProgress(nil)
+}
+
+// RecoverWithProgress performs WAL recovery with a progress callback
+func (m *WALManager) RecoverWithProgress(callback wal.ProgressCallback) (*wal.RecoveryResult, error) {
 	if !m.IsEnabled() {
 		return nil, nil
 	}
@@ -232,7 +307,7 @@ func (m *WALManager) Recover() (*wal.RecoveryResult, error) {
 	}
 	defer recoveryMgr.Close()
 
-	result, err := recoveryMgr.Recover()
+	result, err := recoveryMgr.RecoverWithProgress(callback)
 	if err != nil {
 		return nil, fmt.Errorf("WAL recovery failed: %w", err)
 	}
@@ -255,11 +330,16 @@ func (m *WALManager) Sync() error {
 	return m.wal.Sync()
 }
 
-// Close closes the WAL file
+// Close closes the WAL file and stops the checkpointer
 func (m *WALManager) Close() error {
 	if !m.IsEnabled() {
 		return nil
 	}
+
+	if m.checkpointer != nil {
+		m.checkpointer.Stop()
+	}
+
 	slog.Info("WAL: Closing", "database", m.dbName)
 	return m.wal.Close()
 }

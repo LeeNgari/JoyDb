@@ -233,20 +233,19 @@ func (w *WAL) verifyActiveTxn(txID uint64) error {
 // writeRecord writes a complete WAL record (header + payload + padding)
 // Must be called with mutex held
 func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error) {
-	// Allocate LSN
 	lsn := w.allocateLSN()
+	header := w.buildRecordHeader(recordType, payload, lsn)
+	return lsn, w.writeRecordData(header, payload)
+}
 
-	// Calculate CRC32 of payload
+// buildRecordHeader constructs the record header
+func (w *WAL) buildRecordHeader(recordType RecordType, payload []byte, lsn uint64) WALRecordHeader {
 	crc := crc32.ChecksumIEEE(payload)
-
-	// Calculate total length with alignment
 	payloadLen := len(payload)
 	totalLen := RecordHeaderSize + payloadLen
 	alignedLen := AlignTo8(totalLen)
-	paddingLen := alignedLen - totalLen
 
-	// Build header
-	header := WALRecordHeader{
+	return WALRecordHeader{
 		Type:       recordType,
 		Length:     uint32(alignedLen),
 		LSN:        lsn,
@@ -254,32 +253,36 @@ func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error)
 		FileOffset: w.currentOffset,
 		PayloadLen: uint32(payloadLen),
 	}
+}
 
+// writeRecordData writes the header and payload to the buffer
+func (w *WAL) writeRecordData(header WALRecordHeader, payload []byte) error {
 	// Encode header
 	headerBytes := encodeHeader(header)
 
-	// Write header to buffered writer
+	// Write header
 	if _, err := w.buf.Write(headerBytes); err != nil {
-		return 0, fmt.Errorf("failed to write header: %w", err)
+		return fmt.Errorf("failed to write header: %w", err)
 	}
 
-	// Write payload to buffered writer
+	// Write payload
 	if _, err := w.buf.Write(payload); err != nil {
-		return 0, fmt.Errorf("failed to write payload: %w", err)
+		return fmt.Errorf("failed to write payload: %w", err)
 	}
 
-	// Write padding if needed
+	// Calculate padding
+	paddingLen := int(header.Length) - RecordHeaderSize - int(header.PayloadLen)
 	if paddingLen > 0 {
 		padding := make([]byte, paddingLen)
 		if _, err := w.buf.Write(padding); err != nil {
-			return 0, fmt.Errorf("failed to write padding: %w", err)
+			return fmt.Errorf("failed to write padding: %w", err)
 		}
 	}
 
 	// Update current offset
-	w.currentOffset += uint64(alignedLen)
+	w.currentOffset += uint64(header.Length)
 
-	return lsn, nil
+	return nil
 }
 
 // encodeHeader encodes a WALRecordHeader to bytes (32 bytes)

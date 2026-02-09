@@ -112,17 +112,26 @@ func (r *WALReader) ReadFileHeader() (*WALFileHeader, error) {
 // ReadNextRecord reads the next WAL record from the current position
 // Returns io.EOF when end of file is reached
 func (r *WALReader) ReadNextRecord() (WALRecord, error) {
+	header, payload, err := r.readAndValidate()
+	if err != nil {
+		return nil, err
+	}
+	return r.decodeRecord(header, payload)
+}
+
+// readAndValidate reads the header and payload, validates them, and returns valid data
+func (r *WALReader) readAndValidate() (WALRecordHeader, []byte, error) {
 	// Read header bytes
 	headerBuf := make([]byte, RecordHeaderSize)
 	n, err := io.ReadFull(r.file, headerBuf)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
 		if n == 0 {
-			return nil, io.EOF
+			return WALRecordHeader{}, nil, io.EOF
 		}
-		return nil, fmt.Errorf("incomplete header at offset %d: read %d bytes", r.currentPos, n)
+		return WALRecordHeader{}, nil, fmt.Errorf("incomplete header at offset %d: read %d bytes", r.currentPos, n)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to read header at offset %d: %w", r.currentPos, err)
+		return WALRecordHeader{}, nil, fmt.Errorf("failed to read header at offset %d: %w", r.currentPos, err)
 	}
 
 	// Decode header
@@ -130,13 +139,13 @@ func (r *WALReader) ReadNextRecord() (WALRecord, error) {
 
 	// Validate header (safety checks)
 	if err := r.validateHeader(header); err != nil {
-		return nil, err
+		return WALRecordHeader{}, nil, err
 	}
 
 	// Calculate payload size (total length - header size)
 	payloadSize := int(header.Length) - RecordHeaderSize
 	if payloadSize < 0 {
-		return nil, fmt.Errorf("invalid payload size %d at offset %d", payloadSize, r.currentPos)
+		return WALRecordHeader{}, nil, fmt.Errorf("invalid payload size %d at offset %d", payloadSize, r.currentPos)
 	}
 
 	// Read payload
@@ -144,10 +153,10 @@ func (r *WALReader) ReadNextRecord() (WALRecord, error) {
 	if payloadSize > 0 {
 		n, err = io.ReadFull(r.file, payload)
 		if err != nil {
-			return nil, fmt.Errorf("failed to read payload at offset %d: %w", r.currentPos, err)
+			return WALRecordHeader{}, nil, fmt.Errorf("failed to read payload at offset %d: %w", r.currentPos, err)
 		}
 		if n != payloadSize {
-			return nil, fmt.Errorf("incomplete payload: read %d of %d bytes", n, payloadSize)
+			return WALRecordHeader{}, nil, fmt.Errorf("incomplete payload: read %d of %d bytes", n, payloadSize)
 		}
 	}
 
@@ -157,22 +166,21 @@ func (r *WALReader) ReadNextRecord() (WALRecord, error) {
 
 	// Validate actual payload size vs read payload size (which includes padding)
 	if actualPayloadSize > payloadSize {
-		return nil, fmt.Errorf("payload length %d exceeds aligned size %d at offset %d",
+		return WALRecordHeader{}, nil, fmt.Errorf("payload length %d exceeds aligned size %d at offset %d",
 			actualPayloadSize, payloadSize, r.currentPos)
 	}
 
 	// Verify CRC32 of actual payload (excluding padding)
 	if actualPayloadSize > 0 {
 		if err := verifyCRC32(payload[:actualPayloadSize], header.CRC32); err != nil {
-			return nil, fmt.Errorf("CRC mismatch at offset %d: %w", r.currentPos, err)
+			return WALRecordHeader{}, nil, fmt.Errorf("CRC mismatch at offset %d: %w", r.currentPos, err)
 		}
 	}
 
 	// Update position
 	r.currentPos += uint64(header.Length)
 
-	// Decode payload based on record type
-	return r.decodeRecord(header, payload[:actualPayloadSize])
+	return header, payload[:actualPayloadSize], nil
 }
 
 // ReadRecordAt reads a WAL record at the specified file offset

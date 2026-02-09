@@ -34,7 +34,7 @@ func SaveTable(t *schema.Table, tx *transaction.Transaction) error {
 	meta := metadata.TableMeta{
 		Name:         tableName,
 		LastInsertID: t.LastInsertID,
-		RowCount:     int64(len(t.Rows)), 
+		RowCount:     int64(len(t.Rows)),
 		Columns:      make([]metadata.ColumnMeta, len(t.Schema.Columns)),
 	}
 
@@ -105,28 +105,34 @@ func SaveDatabase(db *schema.Database, tx *transaction.Transaction) error {
 		slog.Debug("SaveDatabase operation", "database", db.Name, "tx_id", tx.ID)
 	}
 
-	// 1. Save all tables first
+	// Snapshot tables and table names under read lock to avoid blocking
+	db.RLock()
+	tables := make([]*schema.Table, 0, len(db.Tables))
+	tableNames := make([]string, 0, len(db.Tables))
 	for name, table := range db.Tables {
+		tables = append(tables, table)
+		tableNames = append(tableNames, name)
+	}
+	db.RUnlock()
+
+	// 1. Save all tables first (using the snapshot)
+	for _, table := range tables {
 		if err := SaveTable(table, tx); err != nil {
 			slog.Error("failed to save table during database save",
-				slog.String("table", name),
+				slog.String("table", table.Name),
 				slog.Any("error", err),
 			)
-			return fmt.Errorf("failed to save table %s: %w", name, err)
+			return fmt.Errorf("failed to save table %s: %w", table.Name, err)
 		}
 	}
 
-	// 2. Build table list from current state
-	tableNames := make([]string, 0, len(db.Tables))
-	for name := range db.Tables {
-		tableNames = append(tableNames, name)
-	}
-	sort.Strings(tableNames) 
+	// 2. Sort table list for metadata
+	sort.Strings(tableNames)
 
 	// 3. Create database metadata
 	dbMeta := metadata.DatabaseMeta{
 		Name:    db.Name,
-		Version: 1, 
+		Version: 1,
 		Tables:  tableNames,
 	}
 
@@ -151,7 +157,7 @@ func SaveDatabase(db *schema.Database, tx *transaction.Transaction) error {
 	slog.Info("Database saved successfully",
 		slog.String("name", db.Name),
 		slog.String("path", db.Path),
-		slog.Int("table_count", len(db.Tables)),
+		slog.Int("table_count", len(tables)),
 	)
 
 	return nil

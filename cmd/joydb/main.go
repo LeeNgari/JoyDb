@@ -23,6 +23,7 @@ func main() {
 	port := flag.Int("port", 4444, "Port to listen on")
 	noWAL := flag.Bool("no-wal", false, "Disable Write-Ahead Logging (reduces durability)")
 	walSyncInterval := flag.Duration("wal-sync-interval", 0, "Interval between WAL fsyncs (0 = sync on every commit, e.g., '100ms', '1s')")
+	checkpointInterval := flag.Duration("checkpoint-interval", 5*time.Second, "Interval between automatic checkpoints (e.g., '5s', '1m')")
 	flag.Parse()
 
 	logger, closeFn := logging.SetupLogger()
@@ -40,6 +41,7 @@ func main() {
 			// TODO: Wire this into WALManager for periodic fsync
 			slog.Info("WAL sync interval configured", "interval", *walSyncInterval)
 		}
+		slog.Info("Checkpoint interval configured", "interval", *checkpointInterval)
 	} else {
 		slog.Warn("WAL disabled - data may be lost on crash")
 	}
@@ -57,7 +59,7 @@ func main() {
 	storageEngine := engine.NewJSONEngine()
 
 	// Create Database Registry with storage engine and WAL configuration
-	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled)
+	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval)
 
 	// Close all WAL managers and save databases on shutdown
 	defer func() {

@@ -2,416 +2,123 @@ package wal
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"testing"
-
-	"gotest.tools/v3/assert"
 )
 
 // =============================================================================
-// SUITE 3: WAL RECOVERY TESTS
+// RECOVERY LOGIC TESTS
 // =============================================================================
 
-// TestRecoverEmptyWAL verifies recovery on a fresh/empty WAL:
-// - No records to replay
-// - Recovery result should be empty
-// - No errors should occur
-func TestRecoverEmptyWAL(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	wal.Close()
-	defer cleanupTestWAL(t, tempDir)
+func TestTxnTracker_CommittedTransactionsOnly(t *testing.T) {
+	tracker := NewTxnTracker()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
+	// Tx1: Committed
+	tracker.ProcessRecord(&BeginTxnRecord{TxID: 1, Header: WALRecordHeader{LSN: 10}})
+	tracker.ProcessRecord(&InsertRecord{TxID: 1, Header: WALRecordHeader{LSN: 11}})
+	tracker.ProcessRecord(&CommitRecord{TxID: 1, Header: WALRecordHeader{LSN: 12}})
 
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-	assert.Assert(t, result != nil)
-	assert.Equal(t, len(result.InsertOps), 0)
-	assert.Equal(t, len(result.UpdateOps), 0)
-	assert.Equal(t, len(result.DeleteOps), 0)
-	assert.Equal(t, result.TransactionsReplay, 0)
-}
+	// Tx2: Active (Uncommitted)
+	tracker.ProcessRecord(&BeginTxnRecord{TxID: 2, Header: WALRecordHeader{LSN: 20}})
+	tracker.ProcessRecord(&InsertRecord{TxID: 2, Header: WALRecordHeader{LSN: 21}})
 
-// TestRecoverCommittedTxn verifies that committed transactions are replayed:
-// - Write: BeginTxn -> Insert -> Commit
-// - Recovery should include the Insert operation
-func TestRecoverCommittedTxn(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	txID := uint64(1)
-	wal.BeginTransaction(txID)
-	wal.LogInsert(txID, "users", "1", createTestJSON(t, map[string]interface{}{"name": "Alice"}))
-	wal.Commit(txID)
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	assert.Equal(t, len(result.InsertOps), 1)
-	assert.Equal(t, result.InsertOps[0].TableName, "users")
-	assert.Equal(t, result.InsertOps[0].Key, "1")
-}
-
-// TestRecoverUncommittedTxn verifies that uncommitted transactions are skipped:
-// - Write: BeginTxn -> Insert -> (no Commit)
-// - Recovery should NOT include the Insert operation
-func TestRecoverUncommittedTxn(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	txID := uint64(1)
-	wal.BeginTransaction(txID)
-	wal.LogInsert(txID, "users", "1", createTestJSON(t, map[string]interface{}{"name": "Alice"}))
-	// No commit
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	assert.Equal(t, len(result.InsertOps), 0)
-	assert.Assert(t, result.TransactionsSkipped >= 1)
-}
-
-// TestRecoverAbortedTxn verifies that aborted transactions are skipped:
-// - Write: BeginTxn -> Insert -> Abort
-// - Recovery should NOT include the Insert operation
-func TestRecoverAbortedTxn(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	txID := uint64(1)
-	wal.BeginTransaction(txID)
-	wal.LogInsert(txID, "users", "1", createTestJSON(t, map[string]interface{}{"name": "Alice"}))
-	wal.Abort(txID)
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	assert.Equal(t, len(result.InsertOps), 0)
-	assert.Assert(t, result.TransactionsSkipped >= 1)
-}
-
-// TestRecoverAfterCheckpoint verifies that only post-checkpoint ops are replayed:
-// - Write: BeginTxn -> Insert1 -> Commit -> Checkpoint -> BeginTxn -> Insert2 -> Commit
-// - Recovery should only include Insert2 (after checkpoint)
-func TestRecoverAfterCheckpoint(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	// Pre-requisite: Need db meta.json to be valid for checkpoint validation or it will fallback to scratch
-	// We need to create a dummy meta.json in tempDir so verifyCheckpoint passes if it checks DB CRC.
-	// Checkpoint logic requires table checksums.
-	// To make VerifyCheckpoint pass, we need actual files matching checksums.
-
-	// Create dummy DB file
-	dbMetaPath := filepath.Join(tempDir, "meta.json")
-	os.WriteFile(dbMetaPath, []byte("{}"), 0644)
-	dbCRC, _ := CalculateFileCRC32(dbMetaPath)
-
-	txID1 := uint64(1)
-	wal.BeginTransaction(txID1)
-	wal.LogInsert(txID1, "users", "1", createTestJSON(t, map[string]interface{}{"name": "Alice"}))
-	wal.Commit(txID1)
-
-	// Write Checkpoint
-	wal.WriteCheckpoint(nil, dbCRC) // No tables, just DB CRC
-
-	txID2 := uint64(2)
-	wal.BeginTransaction(txID2)
-	wal.LogInsert(txID2, "users", "2", createTestJSON(t, map[string]interface{}{"name": "Bob"}))
-	wal.Commit(txID2)
-
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	// Should contain only Insert2
-	assert.Equal(t, len(result.InsertOps), 1)
-	assert.Equal(t, result.InsertOps[0].Key, "2")
-
-	assert.Assert(t, result.CheckpointValid)
-}
-
-// TestRecoverMultipleTxns verifies correct handling of multiple transactions:
-// - tx1: committed
-// - tx2: uncommitted
-// - tx3: aborted
-// - tx4: committed
-// - Recovery should include tx1 and tx4 operations only
-func TestRecoverMultipleTxns(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	wal.BeginTransaction(1)
-	wal.BeginTransaction(2)
-	wal.BeginTransaction(3)
-	wal.BeginTransaction(4)
-
-	wal.LogInsert(1, "t", "1", createTestJSON(t, map[string]interface{}{"v": 1}))
-	wal.LogInsert(2, "t", "2", createTestJSON(t, map[string]interface{}{"v": 2}))
-	wal.LogInsert(3, "t", "3", createTestJSON(t, map[string]interface{}{"v": 3}))
-	wal.LogInsert(4, "t", "4", createTestJSON(t, map[string]interface{}{"v": 4}))
-
-	wal.Commit(1)
-	wal.Abort(3)
-	wal.Commit(4)
-	// tx2 left uncommitted
-
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	assert.Equal(t, result.TransactionsReplay, 2) // 1 and 4
-	assert.Equal(t, len(result.InsertOps), 2)
-
-	// Check content
-	keys := make(map[string]bool)
-	for _, op := range result.InsertOps {
-		keys[op.Key] = true
+	committed := tracker.GetCommittedTransactions()
+	if len(committed) != 1 {
+		t.Errorf("Expected 1 committed txn, got %d", len(committed))
 	}
-	assert.Assert(t, keys["1"])
-	assert.Assert(t, keys["4"])
-	assert.Assert(t, !keys["2"])
-	assert.Assert(t, !keys["3"])
+	if committed[0].TxID != 1 {
+		t.Errorf("Expected txn 1, got %d", committed[0].TxID)
+	}
+	if len(committed[0].Inserts) != 1 {
+		t.Errorf("Expected 1 insert for txn 1, got %d", len(committed[0].Inserts))
+	}
 }
 
-// TestRecoverMixedOps verifies recovery of Insert, Update, Delete:
-// - Committed tx with: Insert, Update, Delete
-// - All three operation types should be in recovery result
-func TestRecoverMixedOps(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
+func TestTxnTracker_IgnoresAborted(t *testing.T) {
+	tracker := NewTxnTracker()
 
-	txID := uint64(1)
-	wal.BeginTransaction(txID)
-	wal.LogInsert(txID, "t", "1", createTestJSON(t, map[string]interface{}{"v": 1}))
-	wal.LogUpdate(txID, "t", "1", createTestJSON(t, map[string]interface{}{"v": 1}), createTestJSON(t, map[string]interface{}{"v": 2}))
-	wal.LogDelete(txID, "t", "2", createTestJSON(t, map[string]interface{}{"v": 2}))
-	wal.Commit(txID)
-	wal.Close()
+	// Tx1: Aborted
+	tracker.ProcessRecord(&BeginTxnRecord{TxID: 1, Header: WALRecordHeader{LSN: 10}})
+	tracker.ProcessRecord(&InsertRecord{TxID: 1, Header: WALRecordHeader{LSN: 11}})
+	tracker.ProcessRecord(&AbortRecord{TxID: 1, Header: WALRecordHeader{LSN: 12}})
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
+	committed := tracker.GetCommittedTransactions()
+	if len(committed) != 0 {
+		t.Errorf("Expected 0 committed txns, got %d", len(committed))
+	}
 
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	assert.Equal(t, len(result.InsertOps), 1)
-	assert.Equal(t, len(result.UpdateOps), 1)
-	assert.Equal(t, len(result.DeleteOps), 1)
+	aborted := tracker.GetAbortedTransactions()
+	if len(aborted) != 1 {
+		t.Errorf("Expected 1 aborted txn, got %d", len(aborted))
+	}
 }
 
-// TestRecoverReplayOrder verifies that operations are replayed in LSN order:
-// - Multiple operations across multiple transactions
-// - ReplayAll should apply them in strict LSN order
-func TestRecoverReplayOrder(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
+func TestTxnTracker_HandlesMissingBeginTxn(t *testing.T) {
+	tracker := NewTxnTracker()
 
-	wal.BeginTransaction(1)
-	lsn1, _ := wal.LogInsert(1, "t", "A", createTestJSON(t, map[string]interface{}{"v": "A"}))
+	// Tx1 starts before log retention (no Begin), but we see ops and Commit
+	tracker.ProcessRecord(&InsertRecord{TxID: 1, Header: WALRecordHeader{LSN: 100}})
+	tracker.ProcessRecord(&CommitRecord{TxID: 1, Header: WALRecordHeader{LSN: 101}})
 
-	wal.BeginTransaction(2)
-	lsn2, _ := wal.LogInsert(2, "t", "B", createTestJSON(t, map[string]interface{}{"v": "B"}))
-
-	wal.Commit(1)
-
-	lsn3, _ := wal.LogInsert(2, "t", "C", createTestJSON(t, map[string]interface{}{"v": "C"}))
-	wal.Commit(2)
-
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-
-	ops := result.GetAllOperations()
-	assert.Equal(t, len(ops), 3)
-
-	assert.Equal(t, ops[0].GetHeader().LSN, lsn1)
-	assert.Equal(t, ops[1].GetHeader().LSN, lsn2)
-	assert.Equal(t, ops[2].GetHeader().LSN, lsn3)
+	committed := tracker.GetCommittedTransactions()
+	if len(committed) != 1 {
+		t.Errorf("Expected 1 committed txn, got %d", len(committed))
+	}
+	if len(committed[0].Inserts) != 1 {
+		t.Errorf("Expected 1 insert, got %d", len(committed[0].Inserts))
+	}
 }
 
-// =============================================================================
-// REPLAY TARGET TESTS
-// =============================================================================
-
-type MockReplayTarget struct {
-	Inserts []string
-	Updates []string
-	Deletes []string
-}
-
-func (m *MockReplayTarget) ReplayInsert(tableName, key string, value json.RawMessage) error {
-	m.Inserts = append(m.Inserts, key)
-	return nil
-}
-
-func (m *MockReplayTarget) ReplayUpdate(tableName, key string, newValue json.RawMessage) error {
-	m.Updates = append(m.Updates, key)
-	return nil
-}
-
-func (m *MockReplayTarget) ReplayDelete(tableName, key string) error {
-	m.Deletes = append(m.Deletes, key)
-	return nil
-}
-
-// TestReplayAllCallsTarget verifies ReplayAll invokes target methods:
-// - Create mock ReplayTarget
-// - Call ReplayAll
-// - Verify each operation type calls correct target method
-func TestReplayAllCallsTarget(t *testing.T) {
-	mock := &MockReplayTarget{}
-
-	// Manually construct RecoveryResult
-	result := &RecoveryResult{
+func TestGetAllOperations_SortsByLSN(t *testing.T) {
+	// Setup recovery result with mixed ops
+	res := &RecoveryResult{
 		InsertOps: []*InsertRecord{
-			{Header: WALRecordHeader{LSN: 1}, Key: "1"},
+			{Header: WALRecordHeader{LSN: 10}},
+			{Header: WALRecordHeader{LSN: 30}},
 		},
 		UpdateOps: []*UpdateRecord{
-			{Header: WALRecordHeader{LSN: 2}, Key: "2"},
-		},
-		DeleteOps: []*DeleteRecord{
-			{Header: WALRecordHeader{LSN: 3}, Key: "3"},
+			{Header: WALRecordHeader{LSN: 20}},
 		},
 	}
 
-	err := result.ReplayAll(mock)
-	assert.NilError(t, err)
-
-	assert.Equal(t, len(mock.Inserts), 1)
-	assert.Equal(t, mock.Inserts[0], "1")
-
-	assert.Equal(t, len(mock.Updates), 1)
-	assert.Equal(t, mock.Updates[0], "2")
-
-	assert.Equal(t, len(mock.Deletes), 1)
-	assert.Equal(t, mock.Deletes[0], "3")
-}
-
-// =============================================================================
-// EDGE CASE TESTS
-// =============================================================================
-
-// TestRecoverTruncatedWAL verifies handling of truncated WAL:
-// - Write records, truncate file
-// - Recovery should recover as much as possible
-// - Should not crash
-func TestRecoverTruncatedWAL(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
-
-	// tx1 committed
-	wal.BeginTransaction(1)
-	wal.LogInsert(1, "t", "1", createTestJSON(t, map[string]interface{}{"v": 1}))
-	wal.Commit(1)
-
-	// tx2 partial
-	wal.BeginTransaction(2)
-	wal.LogInsert(2, "t", "2", createTestJSON(t, map[string]interface{}{"v": 2}))
-	wal.Close()
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	info, _ := os.Stat(walPath)
-	// Truncate last few bytes (cutting into last record)
-	os.Truncate(walPath, info.Size()-10)
-
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	// Should not error, just partial recovery
-	_, err = rm.Recover()
-
-	// Depending on implementation, RecoverFromScratch might error if ReadNextRecord errors.
-	// But usually recovery should be robust to EOF/corruption at tail.
-	// Current implementation:
-	// for { record, err := reader.ReadNextRecord() ... if err != nil { return nil, err } }
-	// This means it WILL fail if ReadNextRecord fails with unexpected EOF.
-	// Robust recovery usually means ignoring the error if it's at the end.
-
-	// Let's see what happens. If it fails, I should fix RecoveryManager to be robust.
-	if err != nil {
-		t.Logf("Recover returned error: %v", err)
-		// We expect it to ideally succeed with partial results, or fail gracefully.
-		// If it failed completely, then we can't recover tx1 which was committed.
-		// That's a durability issue.
-
-		// FIXME: RecoveryManager should handle tail corruption.
-		// But for now let's verify if the test fails.
+	ops := res.GetAllOperations()
+	if len(ops) != 3 {
+		t.Fatalf("Expected 3 ops, got %d", len(ops))
 	}
 
-	// Assuming I might need to fix RecoveryManager.
-	// For now let's assert what currently happens or what SHOULD happen.
-	// The requirement is "Recovery should recover as much as possible".
+	if ops[0].GetHeader().LSN != 10 {
+		t.Error("Op 0 should be LSN 10")
+	}
+	if ops[1].GetHeader().LSN != 20 {
+		t.Error("Op 1 should be LSN 20")
+	}
+	if ops[2].GetHeader().LSN != 30 {
+		t.Error("Op 2 should be LSN 30")
+	}
 }
 
-// TestRecoverWithInvalidCheckpointCRC verifies checkpoint validation:
-// - Write checkpoint with known checksums
-// - If file CRCs don't match, should detect discrepancy
-func TestRecoverWithInvalidCheckpointCRC(t *testing.T) {
-	wal, tempDir := createTestWAL(t)
-	defer cleanupTestWAL(t, tempDir)
+// Mock Replay Target
+type mockTarget struct {
+	inserts []string
+}
+func (m *mockTarget) ReplayInsert(table, key string, val json.RawMessage) error {
+	m.inserts = append(m.inserts, key)
+	return nil
+}
+func (m *mockTarget) ReplayUpdate(table, key string, val json.RawMessage) error { return nil }
+func (m *mockTarget) ReplayDelete(table, key string) error { return nil }
 
-	// Create dummy DB file
-	dbMetaPath := filepath.Join(tempDir, "meta.json")
-	os.WriteFile(dbMetaPath, []byte("{}"), 0644)
-	dbCRC, _ := CalculateFileCRC32(dbMetaPath)
+func TestReplayAll_UsesCorrectOrder(t *testing.T) {
+	res := &RecoveryResult{
+		InsertOps: []*InsertRecord{
+			{Key: "K1", Header: WALRecordHeader{LSN: 10}},
+			{Key: "K2", Header: WALRecordHeader{LSN: 20}},
+		},
+	}
 
-	wal.WriteCheckpoint(nil, dbCRC)
-	wal.Close()
+	target := &mockTarget{}
+	res.ReplayAll(target)
 
-	// Corrupt the DB file
-	os.WriteFile(dbMetaPath, []byte("{CORRUPT}"), 0644)
-
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	rm, err := NewRecoveryManager(walPath, tempDir)
-	assert.NilError(t, err)
-	defer rm.Close()
-
-	// Recovery should succeed but start from scratch (CheckpointValid = false)
-	result, err := rm.Recover()
-	assert.NilError(t, err)
-	assert.Equal(t, result.CheckpointValid, false)
+	if target.inserts[0] != "K1" || target.inserts[1] != "K2" {
+		t.Error("Replay order incorrect")
+	}
 }

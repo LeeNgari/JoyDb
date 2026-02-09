@@ -6,36 +6,48 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/storage/engine"
+	"github.com/leengari/mini-rdbms/internal/wal"
 )
 
 // Registry manages loaded databases in a thread-safe way
 type Registry struct {
-	mu            sync.RWMutex
-	loaded        map[string]*schema.Database
-	walManagers   map[string]*WALManager // Per-database WAL managers
-	basePath      string
-	storageEngine engine.StorageEngine
-	walEnabled    bool // Whether WAL is enabled globally
+	mu                 sync.RWMutex
+	loaded             map[string]*schema.Database
+	walManagers        map[string]*WALManager // Per-database WAL managers
+	basePath           string
+	storageEngine      engine.StorageEngine
+	walEnabled         bool          // Whether WAL is enabled globally
+	checkpointInterval time.Duration // Interval for auto-checkpoints
 }
 
 // NewRegistry creates a new database registry with the given storage engine
 func NewRegistry(basePath string, storageEngine engine.StorageEngine) *Registry {
-	return NewRegistryWithWAL(basePath, storageEngine, true) // WAL enabled by default
+	return NewRegistryWithWAL(basePath, storageEngine, true, 5*time.Second) // WAL enabled by default, 5s checkpoint
 }
 
 // NewRegistryWithWAL creates a new database registry with explicit WAL configuration
-func NewRegistryWithWAL(basePath string, storageEngine engine.StorageEngine, walEnabled bool) *Registry {
+func NewRegistryWithWAL(
+	basePath string,
+	storageEngine engine.StorageEngine,
+	walEnabled bool,
+	checkpointInterval time.Duration,
+) *Registry {
+	if checkpointInterval == 0 {
+		checkpointInterval = 5 * time.Second
+	}
 	return &Registry{
-		loaded:        make(map[string]*schema.Database),
-		walManagers:   make(map[string]*WALManager),
-		basePath:      basePath,
-		storageEngine: storageEngine,
-		walEnabled:    walEnabled,
+		loaded:             make(map[string]*schema.Database),
+		walManagers:        make(map[string]*WALManager),
+		basePath:           basePath,
+		storageEngine:      storageEngine,
+		walEnabled:         walEnabled,
+		checkpointInterval: checkpointInterval,
 	}
 }
 
@@ -73,7 +85,13 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 	// Initialize WAL manager if enabled
 	var walMgr *WALManager
 	if r.walEnabled {
-		walMgr, err = NewWALManager(dbPath, name, true)
+		// Create save callback for checkpointer
+		// We pass nil transaction as this is internal/system save
+		saveFunc := func() error {
+			return r.storageEngine.SaveDatabase(db, nil)
+		}
+
+		walMgr, err = NewWALManager(db, dbPath, name, true, r.checkpointInterval, saveFunc)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create WAL manager: %w", err)
 		}
@@ -81,8 +99,17 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 		// Check if WAL file exists and needs recovery
 		walPath := filepath.Join(dbPath, name+".wal")
 		if _, statErr := os.Stat(walPath); statErr == nil {
-			// WAL file exists - perform recovery
-			result, recoverErr := walMgr.Recover()
+			// WAL file exists - perform recovery with progress logging
+			progressCallback := func(p wal.RecoveryProgress) {
+				slog.Info("Recovery progress",
+					"database", name,
+					"phase", p.Phase,
+					"percentage", p.Percentage(),
+					"processed", p.ProcessedRecords,
+				)
+			}
+
+			result, recoverErr := walMgr.RecoverWithProgress(progressCallback)
 			if recoverErr != nil {
 				walMgr.Close()
 				return nil, nil, fmt.Errorf("WAL recovery failed (refusing to start): %w", recoverErr)
@@ -178,17 +205,25 @@ func (r *Registry) SaveAll(tx *transaction.Transaction) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	for name, db := range r.loaded {
-		if err := r.storageEngine.SaveDatabase(db, tx); err != nil {
-			slog.Error("failed to save database", "name", db.Name, "error", err)
-			continue
-		}
+	errChs := make([]<-chan error, 0)
 
-		// Write checkpoint after successful save
-		if walMgr, ok := r.walManagers[name]; ok {
-			if err := walMgr.WriteCheckpoint(db); err != nil {
-				slog.Error("failed to write checkpoint", "name", name, "error", err)
+	for name, db := range r.loaded {
+		wm, hasWAL := r.walManagers[name]
+		if hasWAL && wm.IsEnabled() {
+			// Checkpoint (which includes SaveDatabase)
+			errChs = append(errChs, wm.AsyncCheckpoint())
+		} else {
+			// Just save synchronously
+			if err := r.storageEngine.SaveDatabase(db, tx); err != nil {
+				slog.Error("failed to save database", "name", name, "error", err)
 			}
+		}
+	}
+
+	// Wait for all async checkpoints
+	for _, ch := range errChs {
+		if err := <-ch; err != nil {
+			slog.Error("SaveAll: checkpoint failed", "error", err)
 		}
 	}
 }
