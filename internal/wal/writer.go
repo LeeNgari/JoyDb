@@ -252,6 +252,7 @@ func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error)
 		LSN:        lsn,
 		CRC32:      crc,
 		FileOffset: w.currentOffset,
+		PayloadLen: uint32(payloadLen),
 	}
 
 	// Encode header
@@ -302,7 +303,10 @@ func encodeHeader(h WALRecordHeader) []byte {
 	// FileOffset (8 bytes) at offset 18
 	ByteOrder.PutUint64(buf[18:26], h.FileOffset)
 
-	// Remaining 6 bytes are padding at offset 26 (already zero)
+	// PayloadLen (4 bytes) at offset 26
+	ByteOrder.PutUint32(buf[26:30], h.PayloadLen)
+
+	// Remaining 2 bytes are padding at offset 30 (already zero)
 
 	return buf
 }

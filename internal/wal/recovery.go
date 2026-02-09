@@ -220,10 +220,11 @@ func (rm *RecoveryManager) RecoverFromScratch() (*RecoveryResult, error) {
 func (rm *RecoveryManager) collectCommittedOps(tracker *TxnTracker, result *RecoveryResult) {
 	committed := tracker.GetCommittedTransactions()
 	uncommitted := tracker.GetUncommittedTransactions()
+	aborted := tracker.GetAbortedTransactions()
 
 	result.TransactionsReplay = len(committed)
-	result.TransactionsSkipped = len(uncommitted)
-	result.TransactionsFound = len(committed) + len(uncommitted)
+	result.TransactionsSkipped = len(uncommitted) + len(aborted)
+	result.TransactionsFound = len(committed) + len(uncommitted) + len(aborted)
 
 	for _, txn := range committed {
 		result.InsertOps = append(result.InsertOps, txn.Inserts...)
