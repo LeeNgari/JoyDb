@@ -129,11 +129,12 @@ type WALRecordHeader struct {
 	LSN        uint64     // Log Sequence Number - monotonically increasing - offset 6
 	CRC32      uint32     // CRC32 checksum of payload (after header, before padding) - offset 14
 	FileOffset uint64     // Byte offset in WAL file where this record starts - offset 18
-	_          [6]byte    // Padding to reach 32 bytes - offset 26
+	PayloadLen uint32     // Length of payload (before padding) - offset 26
+	_          [2]byte    // Padding to reach 32 bytes - offset 30
 }
 
 // RecordHeaderSize is the fixed size of the WAL record header in bytes
-// Computed: 1 + 1 + 4 + 8 + 4 + 8 + 6 = 32 bytes (aligned to 8-byte boundary)
+// Computed: 1 + 1 + 4 + 8 + 4 + 8 + 4 + 2 = 32 bytes (aligned to 8-byte boundary)
 const RecordHeaderSize = 32
 
 // AlignTo8 rounds up a size to the next 8-byte boundary

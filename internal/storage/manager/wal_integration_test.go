@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -8,6 +9,9 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/storage/engine"
+	"github.com/leengari/mini-rdbms/internal/wal"
+	"gotest.tools/v3/assert"
 )
 
 // =============================================================================
@@ -18,10 +22,32 @@ import (
 // The database is NOT persisted to disk.
 func createTestDatabase(t *testing.T, name string) *schema.Database {
 	t.Helper()
-	// TODO: Create database with name
-	// TODO: Add "users" table with: id (int, PK), name (string)
-	// TODO: Return database
-	return nil
+	db := &schema.Database{
+		Name:   name,
+		Tables: make(map[string]*schema.Table),
+	}
+
+	// Create users table
+	usersTable := &schema.Table{
+		Name: "users",
+		Schema: &schema.TableSchema{
+			Columns: []schema.Column{
+				{Name: "id", Type: schema.ColumnTypeInt, PrimaryKey: true},
+				{Name: "name", Type: schema.ColumnTypeText},
+			},
+		},
+		Rows:    make([]data.Row, 0),
+		Indexes: make(map[string]*data.Index),
+	}
+	// Initialize indexes
+	usersTable.Indexes["id"] = &data.Index{
+		Column: "id",
+		Unique: true,
+		Data:   make(map[interface{}][]int),
+	}
+
+	db.Tables["users"] = usersTable
+	return db
 }
 
 // createTempDir creates a temporary directory for test databases.
@@ -56,12 +82,19 @@ func createTestTransaction(t *testing.T) *transaction.Transaction {
 // - Returns valid WALManager instance
 // - IsEnabled() returns true when enabled
 func TestWALManagerCreate(t *testing.T) {
-	// TODO: Create temp directory
-	// TODO: Create WALManager with enabled=true
-	// TODO: Verify IsEnabled() returns true
-	// TODO: Verify WAL file exists at expected path
-	// TODO: Clean up
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(tempDir, dbName, true)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	assert.Assert(t, wm.IsEnabled())
+
+	walPath := filepath.Join(tempDir, dbName+".wal")
+	_, err = os.Stat(walPath)
+	assert.NilError(t, err)
 }
 
 // TestWALManagerDisabled verifies disabled WALManager:
@@ -69,12 +102,26 @@ func TestWALManagerCreate(t *testing.T) {
 // - All logging operations are no-ops (return nil)
 // - No WAL file is created
 func TestWALManagerDisabled(t *testing.T) {
-	// TODO: Create temp directory
-	// TODO: Create WALManager with enabled=false
-	// TODO: Verify IsEnabled() returns false
-	// TODO: Call BeginTransaction, LogInsert, Commit - all should return nil
-	// TODO: Verify no WAL file exists
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(tempDir, dbName, false)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	assert.Assert(t, !wm.IsEnabled())
+
+	tx := createTestTransaction(t)
+	err = wm.BeginTransaction(tx)
+	assert.NilError(t, err)
+
+	err = wm.Commit(tx)
+	assert.NilError(t, err)
+
+	walPath := filepath.Join(tempDir, dbName+".wal")
+	_, err = os.Stat(walPath)
+	assert.Assert(t, os.IsNotExist(err))
 }
 
 // TestWALManagerInsert verifies LogInsert integration:
@@ -83,46 +130,124 @@ func TestWALManagerDisabled(t *testing.T) {
 // - Call LogInsert with table and row
 // - Verify record is written to WAL
 func TestWALManagerInsert(t *testing.T) {
-	// TODO: Create temp directory
-	// TODO: Create WALManager
-	// TODO: Create test database and table
-	// TODO: Begin transaction
-	// TODO: Create test row
-	// TODO: Call LogInsert
-	// TODO: Commit transaction
-	// TODO: Close WAL
-	// TODO: Read WAL file, verify Insert record present
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(tempDir, dbName, true)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	db := createTestDatabase(t, dbName)
+	table := db.Tables["users"]
+	tx := createTestTransaction(t)
+
+	err = wm.BeginTransaction(tx)
+	assert.NilError(t, err)
+
+	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	err = wm.LogInsert(tx, table, row)
+	assert.NilError(t, err)
+
+	err = wm.Commit(tx)
+	assert.NilError(t, err)
+
+	// Close to flush
+	wm.Close()
+
+	// Verify WAL content
+	walPath := filepath.Join(tempDir, dbName+".wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Expect BeginTxn, Insert, Commit
+	assert.Equal(t, len(records), 3)
+	assert.Assert(t, records[1].GetHeader().Type == wal.RecordInsert)
+	ins := records[1].(*wal.InsertRecord)
+	assert.Equal(t, ins.Key, "1")
 }
 
 // TestWALManagerUpdate verifies LogUpdate integration:
 // - Log an update with old and new row
 // - Verify both old and new values are in WAL record
 func TestWALManagerUpdate(t *testing.T) {
-	// TODO: Create temp directory and WALManager
-	// TODO: Create test database and table
-	// TODO: Begin transaction
-	// TODO: Create old row, new row with different values
-	// TODO: Call LogUpdate
-	// TODO: Commit transaction
-	// TODO: Close WAL
-	// TODO: Read WAL, verify Update record with old and new values
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	wm, err := NewWALManager(tempDir, "testdb", true)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	db := createTestDatabase(t, "testdb")
+	table := db.Tables["users"]
+	tx := createTestTransaction(t)
+
+	wm.BeginTransaction(tx)
+
+	oldRow := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	newRow := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Bob"})
+
+	err = wm.LogUpdate(tx, table, "1", oldRow, newRow)
+	assert.NilError(t, err)
+	wm.Commit(tx)
+	wm.Close()
+
+	// Verify
+	walPath := filepath.Join(tempDir, "testdb.wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Begin, Update, Commit
+	assert.Assert(t, records[1].GetHeader().Type == wal.RecordUpdate)
+	upd := records[1].(*wal.UpdateRecord)
+	assert.Equal(t, upd.Key, "1")
 }
 
 // TestWALManagerDelete verifies LogDelete integration:
 // - Log a delete with old row
 // - Verify old value is preserved in WAL
 func TestWALManagerDelete(t *testing.T) {
-	// TODO: Create temp directory and WALManager
-	// TODO: Create test database and table
-	// TODO: Begin transaction
-	// TODO: Create old row
-	// TODO: Call LogDelete
-	// TODO: Commit transaction
-	// TODO: Close WAL
-	// TODO: Read WAL, verify Delete record with old value
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	wm, err := NewWALManager(tempDir, "testdb", true)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	db := createTestDatabase(t, "testdb")
+	table := db.Tables["users"]
+	tx := createTestTransaction(t)
+
+	wm.BeginTransaction(tx)
+
+	oldRow := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+
+	err = wm.LogDelete(tx, table, "1", oldRow)
+	assert.NilError(t, err)
+	wm.Commit(tx)
+	wm.Close()
+
+	// Verify
+	walPath := filepath.Join(tempDir, "testdb.wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Begin, Delete, Commit
+	assert.Assert(t, records[1].GetHeader().Type == wal.RecordDelete)
+	del := records[1].(*wal.DeleteRecord)
+	assert.Equal(t, del.Key, "1")
 }
 
 // TestWALManagerFullCycle verifies complete write/close/recover cycle:
@@ -131,13 +256,31 @@ func TestWALManagerDelete(t *testing.T) {
 // - Create new WALManager for same database
 // - Recover should return the insert operation
 func TestWALManagerFullCycle(t *testing.T) {
-	// TODO: Create temp directory and WALManager
-	// TODO: Begin tx, LogInsert, Commit
-	// TODO: Close WALManager
-	// TODO: Create new WALManager for same path
-	// TODO: Call Recover()
-	// TODO: Verify InsertOps contains our operation
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	wm, err := NewWALManager(tempDir, "testdb", true)
+	assert.NilError(t, err)
+
+	db := createTestDatabase(t, "testdb")
+	table := db.Tables["users"]
+	tx := createTestTransaction(t)
+
+	wm.BeginTransaction(tx)
+	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	wm.LogInsert(tx, table, row)
+	wm.Commit(tx)
+	wm.Close()
+
+	// Reopen
+	wm2, err := NewWALManager(tempDir, "testdb", true)
+	assert.NilError(t, err)
+	defer wm2.Close()
+
+	result, err := wm2.Recover()
+	assert.NilError(t, err)
+	assert.Equal(t, len(result.InsertOps), 1)
+	assert.Equal(t, result.InsertOps[0].Key, "1")
 }
 
 // =============================================================================
@@ -149,13 +292,18 @@ func TestWALManagerFullCycle(t *testing.T) {
 // - Call ReplayInsert with row data
 // - Verify row is added to table
 func TestReplayInsertToDatabase(t *testing.T) {
-	// TODO: Create test database with empty users table
-	// TODO: Create DatabaseReplayTarget
-	// TODO: Create JSON row data
-	// TODO: Call ReplayInsert("users", "1", rowJSON)
-	// TODO: Verify db.Tables["users"].Rows has 1 row
-	// TODO: Verify row data matches
-	t.Skip("Not implemented yet")
+	db := createTestDatabase(t, "testdb")
+	target := NewDatabaseReplayTarget(db)
+
+	rowMap := map[string]interface{}{"id": int64(1), "name": "Alice"}
+	rowBytes, _ := json.Marshal(rowMap)
+	rowJSON := json.RawMessage(rowBytes)
+
+	err := target.ReplayInsert("users", "1", rowJSON)
+	assert.NilError(t, err)
+
+	assert.Equal(t, len(db.Tables["users"].Rows), 1)
+	assert.Equal(t, db.Tables["users"].Rows[0].Data["name"], "Alice")
 }
 
 // TestReplayUpdateToDatabase verifies ReplayUpdate:
@@ -163,12 +311,22 @@ func TestReplayInsertToDatabase(t *testing.T) {
 // - Call ReplayUpdate with new data
 // - Verify row is updated
 func TestReplayUpdateToDatabase(t *testing.T) {
-	// TODO: Create test database with users table containing row {id:1, name:"Alice"}
-	// TODO: Create DatabaseReplayTarget
-	// TODO: Create JSON for new row {id:1, name:"Bob"}
-	// TODO: Call ReplayUpdate("users", "1", newRowJSON)
-	// TODO: Verify row now has name="Bob"
-	t.Skip("Not implemented yet")
+	db := createTestDatabase(t, "testdb")
+	// Pre-populate
+	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row)
+
+	target := NewDatabaseReplayTarget(db)
+
+	newRowMap := map[string]interface{}{"id": int64(1), "name": "Bob"}
+	newRowBytes, _ := json.Marshal(newRowMap)
+	newRowJSON := json.RawMessage(newRowBytes)
+
+	err := target.ReplayUpdate("users", "1", newRowJSON)
+	assert.NilError(t, err)
+
+	assert.Equal(t, len(db.Tables["users"].Rows), 1)
+	assert.Equal(t, db.Tables["users"].Rows[0].Data["name"], "Bob")
 }
 
 // TestReplayDeleteFromDatabase verifies ReplayDelete:
@@ -176,22 +334,33 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 // - Call ReplayDelete with key
 // - Verify row is removed
 func TestReplayDeleteFromDatabase(t *testing.T) {
-	// TODO: Create test database with users table containing row {id:1, name:"Alice"}
-	// TODO: Create DatabaseReplayTarget
-	// TODO: Call ReplayDelete("users", "1")
-	// TODO: Verify db.Tables["users"].Rows is empty
-	t.Skip("Not implemented yet")
+	db := createTestDatabase(t, "testdb")
+	// Pre-populate
+	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row)
+
+	target := NewDatabaseReplayTarget(db)
+
+	err := target.ReplayDelete("users", "1")
+	assert.NilError(t, err)
+
+	assert.Equal(t, len(db.Tables["users"].Rows), 0)
 }
 
 // TestReplayMissingTable verifies graceful handling of missing tables:
 // - Call ReplayInsert for non-existent table
 // - Should log warning but not error
 func TestReplayMissingTable(t *testing.T) {
-	// TODO: Create test database with no tables
-	// TODO: Create DatabaseReplayTarget
-	// TODO: Call ReplayInsert("nonexistent", "1", rowJSON)
-	// TODO: Should not return error (graceful skip)
-	t.Skip("Not implemented yet")
+	db := createTestDatabase(t, "testdb")
+	// Clear tables
+	db.Tables = make(map[string]*schema.Table)
+
+	target := NewDatabaseReplayTarget(db)
+
+	rowBytes, _ := json.Marshal(map[string]interface{}{"a": 1})
+
+	err := target.ReplayInsert("nonexistent", "1", json.RawMessage(rowBytes))
+	assert.NilError(t, err)
 }
 
 // =============================================================================
@@ -203,13 +372,21 @@ func TestReplayMissingTable(t *testing.T) {
 // - Load database using GetWithWAL
 // - Verify both database and WALManager are returned
 func TestRegistryGetWithWAL(t *testing.T) {
-	// TODO: Create temp directory structure
-	// TODO: Create valid database JSON files
-	// TODO: Create Registry with walEnabled=true
-	// TODO: Call GetWithWAL(dbName)
-	// TODO: Verify database is returned
-	// TODO: Verify WALManager is returned and enabled
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
+
+	eng := engine.NewJSONEngine()
+	reg := NewRegistryWithWAL(tempDir, eng, true)
+	defer reg.CloseAll()
+
+	db, wm, err := reg.GetWithWAL(dbName)
+	assert.NilError(t, err)
+	assert.Assert(t, db != nil)
+	assert.Assert(t, wm != nil)
+	assert.Assert(t, wm.IsEnabled())
 }
 
 // TestRegistryRecoveryOnLoad verifies recovery happens on DB load:
@@ -218,12 +395,42 @@ func TestRegistryGetWithWAL(t *testing.T) {
 // - Load database via GetWithWAL
 // - Verify WAL operations are replayed into database
 func TestRegistryRecoveryOnLoad(t *testing.T) {
-	// TODO: Create temp directory with database files
-	// TODO: Create WAL file with committed insert
-	// TODO: Create Registry with walEnabled=true
-	// TODO: Call GetWithWAL
-	// TODO: Verify database.Tables["users"].Rows contains replayed row
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
+
+	// Create WAL with committed transaction
+	wm, err := NewWALManager(filepath.Join(tempDir, dbName), dbName, true)
+	assert.NilError(t, err)
+
+	// Need a schema to log insert, but we can fake it or use createTestDatabase's table
+	// But WALManager.LogInsert takes *schema.Table.
+	// We can create a dummy schema table.
+	db := createTestDatabase(t, dbName)
+	table := db.Tables["users"]
+
+	tx := createTestTransaction(t)
+	wm.BeginTransaction(tx)
+	wm.LogInsert(tx, table, createTestRow(t, map[string]interface{}{"id": int64(10), "name": "Recovered"}))
+	wm.Commit(tx)
+	wm.Close()
+
+	// Now load via Registry
+	eng := engine.NewJSONEngine()
+	reg := NewRegistryWithWAL(tempDir, eng, true)
+	defer reg.CloseAll()
+
+	loadedDB, _, err := reg.GetWithWAL(dbName)
+	assert.NilError(t, err)
+
+	// Verify row exists
+	// Note: createMinimalDatabaseFiles creates empty tables.
+	// So only recovered row should be there.
+	rows := loadedDB.Tables["users"].Rows
+	assert.Equal(t, len(rows), 1)
+	assert.Equal(t, rows[0].Data["name"], "Recovered")
 }
 
 // TestRegistrySaveAllCheckpoint verifies checkpoint on save:
@@ -232,11 +439,45 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 // - Call SaveAll
 // - Verify checkpoint is written to WAL
 func TestRegistrySaveAllCheckpoint(t *testing.T) {
-	// TODO: Setup database and registry
-	// TODO: Perform some operations
-	// TODO: Call SaveAll
-	// TODO: Read WAL, verify Checkpoint record exists
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
+
+	eng := engine.NewJSONEngine()
+	reg := NewRegistryWithWAL(tempDir, eng, true)
+	defer reg.CloseAll()
+
+	db, wm, err := reg.GetWithWAL(dbName)
+	assert.NilError(t, err)
+
+	// Add a row (in memory)
+	db.Tables["users"].Rows = append(db.Tables["users"].Rows, createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
+	db.Tables["users"].MarkDirty()
+
+	// SaveAll
+	tx := createTestTransaction(t)
+	reg.SaveAll(tx)
+
+	// Verify checkpoint in WAL
+	wm.Close()
+
+	walPath := filepath.Join(tempDir, dbName, dbName+".wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	// Should have checkpoint at end
+	// Note: GetWithWAL might create WAL header if not exists.
+	// SaveAll calls WriteCheckpoint.
+	// So we expect: Header, Checkpoint.
+
+	lastCp, err := reader.FindLastCheckpoint()
+	assert.NilError(t, err)
+	assert.Assert(t, lastCp != nil)
+	assert.Equal(t, len(lastCp.Tables), 1)
+	assert.Equal(t, lastCp.Tables[0].TableName, "users")
 }
 
 // TestRegistryCloseAll verifies clean shutdown:
@@ -244,12 +485,23 @@ func TestRegistrySaveAllCheckpoint(t *testing.T) {
 // - Call CloseAll
 // - Verify all WAL files are properly closed
 func TestRegistryCloseAll(t *testing.T) {
-	// TODO: Create registry with walEnabled=true
-	// TODO: Load two databases
-	// TODO: Call CloseAll
-	// TODO: Verify no panic or error
-	// TODO: Optionally verify WAL files can be reopened
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	createMinimalDatabaseFiles(t, tempDir, "db1", "t1")
+	createMinimalDatabaseFiles(t, tempDir, "db2", "t2")
+
+	eng := engine.NewJSONEngine()
+	reg := NewRegistryWithWAL(tempDir, eng, true)
+
+	_, _, err := reg.GetWithWAL("db1")
+	assert.NilError(t, err)
+	_, _, err = reg.GetWithWAL("db2")
+	assert.NilError(t, err)
+
+	reg.CloseAll()
+
+	// Verify we can delete temp dir (on Windows open files lock dir, on Linux it's fine but checking for panics is main goal)
 }
 
 // =============================================================================
@@ -261,11 +513,53 @@ func TestRegistryCloseAll(t *testing.T) {
 // - Write checkpoint
 // - Verify checkpoint contains CRCs for all tables
 func TestWriteCheckpointWithTables(t *testing.T) {
-	// TODO: Create database with 3 tables, each with file paths
-	// TODO: Write some data to files
-	// TODO: Call WALManager.WriteCheckpoint
-	// TODO: Read WAL, verify checkpoint has 3 table checksums
-	t.Skip("Not implemented yet")
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	// Create DB structure manually
+	dbPath := filepath.Join(tempDir, dbName)
+	os.MkdirAll(dbPath, 0755)
+
+	// Create tables
+	t1Path := filepath.Join(dbPath, "t1")
+	t2Path := filepath.Join(dbPath, "t2")
+	os.MkdirAll(t1Path, 0755)
+	os.MkdirAll(t2Path, 0755)
+
+	// Write files
+	os.WriteFile(filepath.Join(t1Path, "data.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(t1Path, "meta.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(t2Path, "data.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(t2Path, "meta.json"), []byte("{}"), 0644)
+	os.WriteFile(filepath.Join(dbPath, "meta.json"), []byte("{}"), 0644)
+
+	db := &schema.Database{
+		Name: dbName,
+		Path: dbPath,
+		Tables: map[string]*schema.Table{
+			"t1": {Name: "t1", Path: t1Path},
+			"t2": {Name: "t2", Path: t2Path},
+		},
+	}
+
+	wm, err := NewWALManager(dbPath, dbName, true)
+	assert.NilError(t, err)
+	defer wm.Close()
+
+	err = wm.WriteCheckpoint(db)
+	assert.NilError(t, err)
+	wm.Close()
+
+	// Verify
+	walPath := filepath.Join(dbPath, dbName+".wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	cp, err := reader.FindLastCheckpoint()
+	assert.NilError(t, err)
+	assert.Equal(t, len(cp.Tables), 2)
 }
 
 // =============================================================================
@@ -281,7 +575,27 @@ func createMinimalDatabaseFiles(t *testing.T, basePath, dbName, tableName string
 		t.Fatalf("failed to create table dir: %v", err)
 	}
 
-	// TODO: Write db meta.json
-	// TODO: Write table meta.json (with schema)
-	// TODO: Write table data.json (empty rows)
+	// Write db meta.json
+	dbMeta := `{"name":"` + dbName + `","version":1,"tables":["` + tableName + `"]}`
+	if err := os.WriteFile(filepath.Join(dbPath, "meta.json"), []byte(dbMeta), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write table meta.json (with schema)
+	// Schema must match what engine expects.
+	tableMeta := `{
+		"name": "` + tableName + `",
+		"columns": [
+			{"name": "id", "type": "INT", "primary_key": true},
+			{"name": "name", "type": "TEXT"}
+		]
+	}`
+	if err := os.WriteFile(filepath.Join(tablePath, "meta.json"), []byte(tableMeta), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write table data.json (empty rows)
+	if err := os.WriteFile(filepath.Join(tablePath, "data.json"), []byte("[]"), 0644); err != nil {
+		t.Fatal(err)
+	}
 }

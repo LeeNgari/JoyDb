@@ -152,13 +152,13 @@ func (r *WALReader) ReadNextRecord() (WALRecord, error) {
 	}
 
 	// Calculate actual payload size (before padding)
-	// The payload includes padding bytes at the end to reach alignment
-	actualPayloadSize := payloadSize
-	// Remove padding bytes from CRC calculation
-	unalignedSize := RecordHeaderSize + payloadSize
-	paddingSize := int(header.Length) - unalignedSize
-	if paddingSize > 0 {
-		actualPayloadSize = payloadSize - paddingSize
+	// Use PayloadLen from header which stores the exact payload length
+	actualPayloadSize := int(header.PayloadLen)
+
+	// Validate actual payload size vs read payload size (which includes padding)
+	if actualPayloadSize > payloadSize {
+		return nil, fmt.Errorf("payload length %d exceeds aligned size %d at offset %d",
+			actualPayloadSize, payloadSize, r.currentPos)
 	}
 
 	// Verify CRC32 of actual payload (excluding padding)
@@ -210,6 +210,7 @@ func decodeHeader(buf []byte) WALRecordHeader {
 		LSN:        ByteOrder.Uint64(buf[6:14]),
 		CRC32:      ByteOrder.Uint32(buf[14:18]),
 		FileOffset: ByteOrder.Uint64(buf[18:26]),
+		PayloadLen: ByteOrder.Uint32(buf[26:30]),
 	}
 }
 
