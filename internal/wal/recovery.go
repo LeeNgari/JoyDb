@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 )
 
 // ===========================================================================
@@ -49,6 +50,26 @@ type RecoveryResult struct {
 	LastFlushedLSN uint64 // Last flushed LSN
 }
 
+// RecoveryProgress represents the progress of WAL recovery
+type RecoveryProgress struct {
+	Phase            string        // "Scanning" / "Replaying"
+	TotalRecords     int64         // Total records to process (estimated)
+	ProcessedRecords int64         // Records processed so far
+	EstimatedTime    time.Duration // Time elapsed
+	StartTime        time.Time
+}
+
+// Percentage returns the completion percentage
+func (p RecoveryProgress) Percentage() int {
+	if p.TotalRecords == 0 {
+		return 0
+	}
+	return int(float64(p.ProcessedRecords) / float64(p.TotalRecords) * 100)
+}
+
+// ProgressCallback is a function called to report progress
+type ProgressCallback func(progress RecoveryProgress)
+
 // RecoveryManager handles WAL recovery operations
 type RecoveryManager struct {
 	walPath string     // Path to WAL file
@@ -85,7 +106,16 @@ func (rm *RecoveryManager) Close() error {
 // Recover performs full WAL recovery
 // Returns the operations that need to be replayed to restore state
 func (rm *RecoveryManager) Recover() (*RecoveryResult, error) {
+	return rm.RecoverWithProgress(nil)
+}
+
+// RecoverWithProgress performs recovery with progress reporting
+func (rm *RecoveryManager) RecoverWithProgress(callback ProgressCallback) (*RecoveryResult, error) {
 	// Find last checkpoint
+	if callback != nil {
+		callback(RecoveryProgress{Phase: "Finding Checkpoint", StartTime: time.Now()})
+	}
+
 	lastCheckpoint, err := rm.reader.FindLastCheckpoint()
 	if err != nil {
 		return nil, fmt.Errorf("failed to find last checkpoint: %w", err)
@@ -97,18 +127,18 @@ func (rm *RecoveryManager) Recover() (*RecoveryResult, error) {
 		valid, verifyErr := rm.VerifyCheckpoint(lastCheckpoint)
 		if verifyErr == nil && valid {
 			// Checkpoint valid - recover from checkpoint
-			return rm.RecoverFromCheckpoint(lastCheckpoint)
+			return rm.RecoverFromCheckpoint(lastCheckpoint, callback)
 		}
 		// Checkpoint invalid - fall through to scratch recovery
 	}
 
 	// No checkpoint or invalid checkpoint - recover from scratch
-	return rm.RecoverFromScratch()
+	return rm.RecoverFromScratch(callback)
 }
 
 // RecoverFromCheckpoint recovers starting from a checkpoint
 // Only replays transactions committed after the checkpoint
-func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord) (*RecoveryResult, error) {
+func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord, callback ProgressCallback) (*RecoveryResult, error) {
 	result := &RecoveryResult{
 		LastCheckpoint:  checkpoint,
 		CheckpointValid: true,
@@ -124,10 +154,19 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord) (
 		return nil, fmt.Errorf("failed to seek past checkpoint: %w", err)
 	}
 
+	startTime := time.Now()
+	if callback != nil {
+		callback(RecoveryProgress{
+			Phase:     "Scanning WAL (from checkpoint)",
+			StartTime: startTime,
+		})
+	}
+
 	// Use transaction tracker for analysis and redo
 	tracker := NewTxnTracker()
 
 	// Scan all records after checkpoint
+	processed := int64(0)
 	for {
 		record, err := rm.reader.ReadNextRecord()
 		if err == io.EOF {
@@ -138,6 +177,17 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord) (
 		}
 
 		result.RecordsScanned++
+		processed++
+
+		// Report progress periodically
+		if callback != nil && processed%1000 == 0 {
+			callback(RecoveryProgress{
+				Phase:            "Scanning WAL (from checkpoint)",
+				ProcessedRecords: processed,
+				StartTime:        startTime,
+				EstimatedTime:    time.Since(startTime),
+			})
+		}
 
 		// Track highest LSN
 		header := record.GetHeader()
@@ -161,7 +211,7 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord) (
 
 // RecoverFromScratch recovers from the beginning of the WAL
 // Used when no checkpoint exists or JSON files are corrupted
-func (rm *RecoveryManager) RecoverFromScratch() (*RecoveryResult, error) {
+func (rm *RecoveryManager) RecoverFromScratch(callback ProgressCallback) (*RecoveryResult, error) {
 	result := &RecoveryResult{
 		CheckpointValid: false,
 		InsertOps:       []*InsertRecord{},
@@ -176,10 +226,19 @@ func (rm *RecoveryManager) RecoverFromScratch() (*RecoveryResult, error) {
 		return nil, fmt.Errorf("failed to read WAL file header: %w", err)
 	}
 
+	startTime := time.Now()
+	if callback != nil {
+		callback(RecoveryProgress{
+			Phase:     "Scanning WAL (full)",
+			StartTime: startTime,
+		})
+	}
+
 	// Use transaction tracker for analysis and redo
 	tracker := NewTxnTracker()
 
 	// Scan all records from beginning
+	processed := int64(0)
 	for {
 		record, err := rm.reader.ReadNextRecord()
 		if err == io.EOF {
@@ -190,6 +249,17 @@ func (rm *RecoveryManager) RecoverFromScratch() (*RecoveryResult, error) {
 		}
 
 		result.RecordsScanned++
+		processed++
+
+		// Report progress periodically
+		if callback != nil && processed%1000 == 0 {
+			callback(RecoveryProgress{
+				Phase:            "Scanning WAL (full)",
+				ProcessedRecords: processed,
+				StartTime:        startTime,
+				EstimatedTime:    time.Since(startTime),
+			})
+		}
 
 		// Track highest LSN
 		header := record.GetHeader()
@@ -220,10 +290,11 @@ func (rm *RecoveryManager) RecoverFromScratch() (*RecoveryResult, error) {
 func (rm *RecoveryManager) collectCommittedOps(tracker *TxnTracker, result *RecoveryResult) {
 	committed := tracker.GetCommittedTransactions()
 	uncommitted := tracker.GetUncommittedTransactions()
+	aborted := tracker.GetAbortedTransactions()
 
 	result.TransactionsReplay = len(committed)
-	result.TransactionsSkipped = len(uncommitted)
-	result.TransactionsFound = len(committed) + len(uncommitted)
+	result.TransactionsSkipped = len(uncommitted) + len(aborted)
+	result.TransactionsFound = len(committed) + len(uncommitted) + len(aborted)
 
 	for _, txn := range committed {
 		result.InsertOps = append(result.InsertOps, txn.Inserts...)

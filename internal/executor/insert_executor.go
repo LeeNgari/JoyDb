@@ -12,8 +12,16 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
+	// Log to WAL before successful insert (WAL-first execution)
+	if ctx.WALManager != nil {
+		if err := ctx.WALManager.LogInsert(ctx.Transaction, table, node.Row); err != nil {
+			return nil, err
+		}
+	}
+
 	// Insert the row using domain model
 	if err := table.Insert(node.Row, ctx.Transaction); err != nil {
+		// If table insert fails, the engine will call WALManager.Abort(tx)
 		return nil, err
 	}
 

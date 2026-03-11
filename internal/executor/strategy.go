@@ -4,6 +4,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // ExecutionStrategy defines how a plan node is executed
@@ -17,6 +18,7 @@ type ExecutionContext struct {
 	Database    *schema.Database
 	Transaction *transaction.Transaction
 	Config      *ExecutionConfig
+	WALManager  *manager.WALManager // WAL manager for logging DML operations
 }
 
 // ExecutionConfig holds execution parameters

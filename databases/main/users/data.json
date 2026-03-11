@@ -145,5 +145,12 @@
     "id": 102,
     "is_active": true,
     "username": "tester"
+  },
+  {
+    "age": 12,
+    "email": "lee@gmail.com",
+    "id": 110,
+    "is_active": true,
+    "username": "leebaraka"
   }
 ]

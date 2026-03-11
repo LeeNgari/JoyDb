@@ -27,5 +27,11 @@
     "email": "updated@example.com",
     "id": 888,
     "username": "implicit"
+  },
+  {
+    "email": "vrahss@gmail.com",
+    "id": 890,
+    "is_active": true,
+    "username": "rahs"
   }
 ]
