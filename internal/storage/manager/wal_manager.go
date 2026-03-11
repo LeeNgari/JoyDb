@@ -188,6 +188,53 @@ func (m *WALManager) LogDelete(tx *transaction.Transaction, table *schema.Table,
 	return nil
 }
 
+// LogCreateTable logs a CREATE TABLE operation to WAL
+func (m *WALManager) LogCreateTable(tx *transaction.Transaction, tableName string, tableSchema *schema.TableSchema) error {
+	if !m.IsEnabled() {
+		return nil
+	}
+
+	schemaBytes := wal.EncodeTableSchema(tableSchema)
+	lsn, err := m.wal.LogCreateTable(tx.TxID, tableName, schemaBytes)
+	if err != nil {
+		return fmt.Errorf("WAL LogCreateTable failed: %w", err)
+	}
+
+	slog.Debug("WAL: LogCreateTable", "txID", tx.TxID, "table", tableName, "lsn", lsn)
+	return nil
+}
+
+// LogDropTable logs a DROP TABLE operation to WAL
+func (m *WALManager) LogDropTable(tx *transaction.Transaction, tableName string) error {
+	if !m.IsEnabled() {
+		return nil
+	}
+
+	lsn, err := m.wal.LogDropTable(tx.TxID, tableName)
+	if err != nil {
+		return fmt.Errorf("WAL LogDropTable failed: %w", err)
+	}
+
+	slog.Debug("WAL: LogDropTable", "txID", tx.TxID, "table", tableName, "lsn", lsn)
+	return nil
+}
+
+// LogAlterTable logs an ALTER TABLE operation to WAL
+func (m *WALManager) LogAlterTable(tx *transaction.Transaction, tableName string, alterOp uint8, col schema.Column) error {
+	if !m.IsEnabled() {
+		return nil
+	}
+
+	colDesc := wal.EncodeColumn(col)
+	lsn, err := m.wal.LogAlterTable(tx.TxID, tableName, alterOp, colDesc)
+	if err != nil {
+		return fmt.Errorf("WAL LogAlterTable failed: %w", err)
+	}
+
+	slog.Debug("WAL: LogAlterTable", "txID", tx.TxID, "table", tableName, "op", alterOp, "lsn", lsn)
+	return nil
+}
+
 // Commit commits a transaction and fsyncs the WAL
 func (m *WALManager) Commit(tx *transaction.Transaction) error {
 	if !m.IsEnabled() {
@@ -455,5 +502,54 @@ func (t *DatabaseReplayTarget) ReplayDelete(tableName, key string) error {
 	}
 
 	slog.Warn("Replay: row not found for delete", "table", tableName, "key", key)
+	return nil
+}
+
+// ReplayCreateTable applies a CREATE TABLE operation during recovery
+func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte) error {
+	s, err := wal.DecodeTableSchema(schemaBytes)
+	if err != nil {
+		return fmt.Errorf("failed to decode table schema during replay: %w", err)
+	}
+
+	// Create new table instance
+	table := &schema.Table{
+		Name:    name,
+		Schema:  s,
+		Rows:    []data.Row{},
+		Indexes: make(map[string]*data.Index),
+	}
+
+	t.db.Lock()
+	defer t.db.Unlock()
+
+	// Add to database
+	if t.db.Tables == nil {
+		t.db.Tables = make(map[string]*schema.Table)
+	}
+	t.db.Tables[name] = table
+
+	slog.Debug("Replay: CreateTable", "table", name)
+	return nil
+}
+
+// ReplayDropTable applies a DROP TABLE operation during recovery
+func (t *DatabaseReplayTarget) ReplayDropTable(name string) error {
+	t.db.Lock()
+	defer t.db.Unlock()
+
+	if t.db.Tables != nil {
+		delete(t.db.Tables, name)
+	}
+
+	slog.Debug("Replay: DropTable", "table", name)
+	return nil
+}
+
+// ReplayAlterTable applies an ALTER TABLE operation during recovery
+func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc []byte) error {
+	// Full implementation will be in a future phase
+	// For Phase 0, we just log and ignore to satisfy the interface
+	slog.Warn("Replay: AlterTable not yet implemented, ignoring", "table", name, "op", op)
 	return nil
 }

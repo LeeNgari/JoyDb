@@ -85,6 +85,9 @@ const (
 	RecordCommit
 	RecordAbort
 	RecordCheckpoint
+	RecordCreateTable // = 8
+	RecordDropTable   // = 9
+	RecordAlterTable  // = 10
 )
 
 // String returns a human-readable name for the record type
@@ -104,6 +107,12 @@ func (rt RecordType) String() string {
 		return "Abort"
 	case RecordCheckpoint:
 		return "Checkpoint"
+	case RecordCreateTable:
+		return "CreateTable"
+	case RecordDropTable:
+		return "DropTable"
+	case RecordAlterTable:
+		return "AlterTable"
 	default:
 		return "Unknown"
 	}
@@ -277,10 +286,51 @@ type WALRecord interface {
 }
 
 // Implement WALRecord interface for all record types
-func (r BeginTxnRecord) GetHeader() WALRecordHeader   { return r.Header }
-func (r InsertRecord) GetHeader() WALRecordHeader     { return r.Header }
-func (r UpdateRecord) GetHeader() WALRecordHeader     { return r.Header }
-func (r DeleteRecord) GetHeader() WALRecordHeader     { return r.Header }
-func (r CommitRecord) GetHeader() WALRecordHeader     { return r.Header }
-func (r AbortRecord) GetHeader() WALRecordHeader      { return r.Header }
-func (r CheckpointRecord) GetHeader() WALRecordHeader { return r.Header }
+func (r BeginTxnRecord) GetHeader() WALRecordHeader    { return r.Header }
+func (r InsertRecord) GetHeader() WALRecordHeader      { return r.Header }
+func (r UpdateRecord) GetHeader() WALRecordHeader      { return r.Header }
+func (r DeleteRecord) GetHeader() WALRecordHeader      { return r.Header }
+func (r CommitRecord) GetHeader() WALRecordHeader      { return r.Header }
+func (r AbortRecord) GetHeader() WALRecordHeader       { return r.Header }
+func (r CheckpointRecord) GetHeader() WALRecordHeader  { return r.Header }
+func (r CreateTableRecord) GetHeader() WALRecordHeader { return r.Header }
+func (r DropTableRecord) GetHeader() WALRecordHeader   { return r.Header }
+func (r AlterTableRecord) GetHeader() WALRecordHeader  { return r.Header }
+
+// ===========================================================================
+// DDL RECORDS (Data Definition Language)
+// ===========================================================================
+
+// CreateTableRecord logs a CREATE TABLE DDL operation
+// Payload: TxID(8) + TableNameLen(2) + TableName + SchemaLen(4) + Schema
+type CreateTableRecord struct {
+	Header    WALRecordHeader
+	TxID      uint64
+	TableName string
+	Schema    []byte // binary-encoded TableSchema (see schema_encoder.go)
+}
+
+// DropTableRecord logs a DROP TABLE DDL operation
+// Payload: TxID(8) + TableNameLen(2) + TableName
+type DropTableRecord struct {
+	Header    WALRecordHeader
+	TxID      uint64
+	TableName string
+}
+
+// AlterTableRecord logs an ALTER TABLE DDL operation
+// Payload: TxID(8) + TableNameLen(2) + TableName + AlterOp(1) + ColDescLen(4) + ColDesc
+type AlterTableRecord struct {
+	Header    WALRecordHeader
+	TxID      uint64
+	TableName string
+	AlterOp   uint8  // 0x01=ADD_COLUMN, 0x02=DROP_COLUMN, 0x03=RENAME_COLUMN
+	ColDesc   []byte // binary-encoded Column descriptor
+}
+
+// AlterOp constants for AlterTableRecord
+const (
+	AlterOpAddColumn    uint8 = 0x01
+	AlterOpDropColumn   uint8 = 0x02
+	AlterOpRenameColumn uint8 = 0x03
+)

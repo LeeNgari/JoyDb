@@ -189,3 +189,76 @@ func (s *UseDatabaseStatement) TokenLiteral() string { return "USE" }
 func (s *UseDatabaseStatement) String() string {
 	return "USE " + s.Name
 }
+
+// ===========================================================================
+// DDL STATEMENTS (TABLES)
+// ===========================================================================
+
+// ColumnDef represents a column definition in a CREATE TABLE statement
+type ColumnDef struct {
+	Name          string
+	Type          string // "INT", "TEXT", "FLOAT", "BOOL", "DATE", "TIME", "EMAIL"
+	PrimaryKey    bool
+	NotNull       bool
+	Unique        bool
+	AutoIncrement bool
+}
+
+// String returns a string representation of the column definition
+func (c *ColumnDef) String() string {
+	var out bytes.Buffer
+	out.WriteString(c.Name)
+	out.WriteString(" ")
+	out.WriteString(c.Type)
+	
+	if c.PrimaryKey {
+		out.WriteString(" PRIMARY KEY")
+	}
+	if c.AutoIncrement {
+		out.WriteString(" AUTO_INCREMENT")
+	}
+	if c.Unique {
+		out.WriteString(" UNIQUE")
+	}
+	if c.NotNull {
+		out.WriteString(" NOT NULL")
+	}
+	
+	return out.String()
+}
+
+// CreateTableStatement: CREATE TABLE name (col1 type1, ...)
+type CreateTableStatement struct {
+	TableName string
+	Columns   []*ColumnDef
+}
+
+func (s *CreateTableStatement) statementNode()       {}
+func (s *CreateTableStatement) TokenLiteral() string { return "CREATE" }
+func (s *CreateTableStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("CREATE TABLE ")
+	out.WriteString(s.TableName)
+	out.WriteString(" (")
+	
+	for i, col := range s.Columns {
+		out.WriteString(col.String())
+		if i < len(s.Columns)-1 {
+			out.WriteString(", ")
+		}
+	}
+	
+	out.WriteString(")")
+	return out.String()
+}
+
+// DropTableStatement: DROP TABLE name
+type DropTableStatement struct {
+	TableName string
+}
+
+func (s *DropTableStatement) statementNode()       {}
+func (s *DropTableStatement) TokenLiteral() string { return "DROP" }
+func (s *DropTableStatement) String() string {
+	return "DROP TABLE " + s.TableName
+}

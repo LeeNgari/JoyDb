@@ -2,16 +2,31 @@ package parser
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/parser/lexer"
 )
 
-// parseCreate parses CREATE DATABASE statement
+// parseCreate parses CREATE DATABASE or CREATE TABLE statement
 func (p *Parser) parseCreate() (ast.Statement, error) {
+	// Check what we are creating
+	if p.peekTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.peekTok.Literal) == "TABLE" {
+		stmt := p.parseCreateTable()
+		if stmt == nil {
+			return nil, fmt.Errorf("failed to parse CREATE TABLE statement")
+		}
+		
+		// Optional semicolon
+		if p.peekTok.Type == lexer.SEMICOLON {
+			p.nextToken()
+		}
+		return stmt, nil
+	}
+
 	// Expect DATABASE token
 	if !p.expectPeek(lexer.DATABASE) {
-		return nil, fmt.Errorf("expected DATABASE after CREATE, got %s", p.peekTok.Literal)
+		return nil, fmt.Errorf("expected DATABASE or TABLE after CREATE, got %s", p.peekTok.Literal)
 	}
 
 	// Expect identifier (database name)
@@ -31,11 +46,25 @@ func (p *Parser) parseCreate() (ast.Statement, error) {
 	return stmt, nil
 }
 
-// parseDrop parses DROP DATABASE statement
+// parseDrop parses DROP DATABASE or DROP TABLE statement
 func (p *Parser) parseDrop() (ast.Statement, error) {
+	// Check what we are dropping
+	if p.peekTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.peekTok.Literal) == "TABLE" {
+		stmt := p.parseDropTable()
+		if stmt == nil {
+			return nil, fmt.Errorf("failed to parse DROP TABLE statement")
+		}
+		
+		// Optional semicolon
+		if p.peekTok.Type == lexer.SEMICOLON {
+			p.nextToken()
+		}
+		return stmt, nil
+	}
+
 	// Expect DATABASE token
 	if !p.expectPeek(lexer.DATABASE) {
-		return nil, fmt.Errorf("expected DATABASE after DROP, got %s", p.peekTok.Literal)
+		return nil, fmt.Errorf("expected DATABASE or TABLE after DROP, got %s", p.peekTok.Literal)
 	}
 
 	// Expect identifier (database name)

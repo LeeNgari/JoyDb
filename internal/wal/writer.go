@@ -185,6 +185,69 @@ func (w *WAL) Abort(txID uint64) (uint64, error) {
 	return lsn, nil
 }
 
+// LogCreateTable writes a CreateTable record to the WAL
+// schemaBytes is the binary-encoded TableSchema from EncodeTableSchema()
+// Returns the LSN assigned to this record
+func (w *WAL) LogCreateTable(txID uint64, tableName string, schemaBytes []byte) (uint64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.verifyActiveTxn(txID); err != nil {
+		return 0, err
+	}
+
+	payload := w.encodeCreateTablePayload(txID, tableName, schemaBytes)
+
+	lsn, err := w.writeRecord(RecordCreateTable, payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to write CreateTable record: %w", err)
+	}
+
+	return lsn, nil
+}
+
+// LogDropTable writes a DropTable record to the WAL
+// Returns the LSN assigned to this record
+func (w *WAL) LogDropTable(txID uint64, tableName string) (uint64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.verifyActiveTxn(txID); err != nil {
+		return 0, err
+	}
+
+	payload := w.encodeDropTablePayload(txID, tableName)
+
+	lsn, err := w.writeRecord(RecordDropTable, payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to write DropTable record: %w", err)
+	}
+
+	return lsn, nil
+}
+
+// LogAlterTable writes an AlterTable record to the WAL
+// alterOp is one of AlterOpAddColumn, AlterOpDropColumn, AlterOpRenameColumn
+// colDesc is the binary-encoded Column descriptor from EncodeColumn()
+// Returns the LSN assigned to this record
+func (w *WAL) LogAlterTable(txID uint64, tableName string, alterOp uint8, colDesc []byte) (uint64, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if err := w.verifyActiveTxn(txID); err != nil {
+		return 0, err
+	}
+
+	payload := w.encodeAlterTablePayload(txID, tableName, alterOp, colDesc)
+
+	lsn, err := w.writeRecord(RecordAlterTable, payload)
+	if err != nil {
+		return 0, fmt.Errorf("failed to write AlterTable record: %w", err)
+	}
+
+	return lsn, nil
+}
+
 // WriteCheckpoint writes a Checkpoint record to the WAL
 // This should be called after successfully persisting all dirty tables to JSON
 // Returns the LSN assigned to this record
@@ -478,6 +541,70 @@ func (w *WAL) encodeCheckpointPayload(tables []TableChecksum, databaseCRC32 uint
 		ByteOrder.PutUint32(buf[offset:], t.MetaCRC32)
 		offset += 4
 	}
+
+	return buf
+}
+
+// encodeCreateTablePayload encodes the payload for a CreateTable record
+// Format: TxID(8) + TableNameLen(2) + TableName + SchemaLen(4) + Schema
+func (w *WAL) encodeCreateTablePayload(txID uint64, tableName string, schemaBytes []byte) []byte {
+	size := 8 + 2 + len(tableName) + 4 + len(schemaBytes)
+	buf := make([]byte, size)
+	offset := 0
+
+	ByteOrder.PutUint64(buf[offset:], txID)
+	offset += 8
+
+	ByteOrder.PutUint16(buf[offset:], uint16(len(tableName)))
+	offset += 2
+	copy(buf[offset:], tableName)
+	offset += len(tableName)
+
+	ByteOrder.PutUint32(buf[offset:], uint32(len(schemaBytes)))
+	offset += 4
+	copy(buf[offset:], schemaBytes)
+
+	return buf
+}
+
+// encodeDropTablePayload encodes the payload for a DropTable record
+// Format: TxID(8) + TableNameLen(2) + TableName
+func (w *WAL) encodeDropTablePayload(txID uint64, tableName string) []byte {
+	size := 8 + 2 + len(tableName)
+	buf := make([]byte, size)
+	offset := 0
+
+	ByteOrder.PutUint64(buf[offset:], txID)
+	offset += 8
+
+	ByteOrder.PutUint16(buf[offset:], uint16(len(tableName)))
+	offset += 2
+	copy(buf[offset:], tableName)
+
+	return buf
+}
+
+// encodeAlterTablePayload encodes the payload for an AlterTable record
+// Format: TxID(8) + TableNameLen(2) + TableName + AlterOp(1) + ColDescLen(4) + ColDesc
+func (w *WAL) encodeAlterTablePayload(txID uint64, tableName string, alterOp uint8, colDesc []byte) []byte {
+	size := 8 + 2 + len(tableName) + 1 + 4 + len(colDesc)
+	buf := make([]byte, size)
+	offset := 0
+
+	ByteOrder.PutUint64(buf[offset:], txID)
+	offset += 8
+
+	ByteOrder.PutUint16(buf[offset:], uint16(len(tableName)))
+	offset += 2
+	copy(buf[offset:], tableName)
+	offset += len(tableName)
+
+	buf[offset] = alterOp
+	offset++
+
+	ByteOrder.PutUint32(buf[offset:], uint32(len(colDesc)))
+	offset += 4
+	copy(buf[offset:], colDesc)
 
 	return buf
 }
