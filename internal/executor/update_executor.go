@@ -35,15 +35,9 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		table.RUnlock()
 	}
 
-	// Use domain model to update
-	rowsAffected, err := table.Update(node.Predicate, node.Updates, ctx.Transaction)
-	if err != nil {
-		return nil, err
-	}
-
-	// Log to WAL after successful update
+	// Log to WAL before successful update (WAL-first execution)
 	// Compute new row by applying updates to old row (safer than index lookup)
-	if ctx.WALManager != nil && rowsAffected > 0 {
+	if ctx.WALManager != nil && len(oldRowInfos) > 0 {
 		for _, info := range oldRowInfos {
 			// Compute the new row by applying updates to old row
 			newRow := info.oldRow.Copy()
@@ -55,6 +49,13 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 				return nil, err
 			}
 		}
+	}
+
+	// Use domain model to update
+	rowsAffected, err := table.Update(node.Predicate, node.Updates, ctx.Transaction)
+	if err != nil {
+		// If table update fails, the engine will call WALManager.Abort(tx)
+		return nil, err
 	}
 
 	return &IntermediateResult{

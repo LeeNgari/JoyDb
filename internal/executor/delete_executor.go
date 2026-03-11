@@ -24,14 +24,8 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 		table.RUnlock()
 	}
 
-	// Use domain model to delete
-	rowsAffected, err := table.Delete(node.Predicate, ctx.Transaction)
-	if err != nil {
-		return nil, err
-	}
-
-	// Log to WAL after successful delete
-	if ctx.WALManager != nil && rowsAffected > 0 {
+	// Log to WAL before successful delete (WAL-first execution)
+	if ctx.WALManager != nil && len(oldRows) > 0 {
 		for _, oldRow := range oldRows {
 			key, keyErr := table.GetPrimaryKeyValue(oldRow)
 			if keyErr == nil {
@@ -40,6 +34,13 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 				}
 			}
 		}
+	}
+
+	// Use domain model to delete
+	rowsAffected, err := table.Delete(node.Predicate, ctx.Transaction)
+	if err != nil {
+		// If table delete fails, the engine will call WALManager.Abort(tx)
+		return nil, err
 	}
 
 	return &IntermediateResult{
