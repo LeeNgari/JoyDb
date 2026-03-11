@@ -3,6 +3,7 @@ package wal
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -53,14 +54,30 @@ func NewWAL(walPath string, dbName string) (*WAL, error) {
 	}
 
 	if fileExists {
-		// TODO: Scan existing WAL to recover state (nextLSN, flushedLSN, activeTxns, currentOffset)
-		// For now, seek to end
-		offset, err := file.Seek(0, os.SEEK_END)
+		// Scan existing WAL to recover state
+		state, err := ScanWALState(walPath)
 		if err != nil {
 			file.Close()
-			return nil, fmt.Errorf("failed to seek to end of WAL: %w", err)
+			return nil, fmt.Errorf("failed to scan WAL state: %w", err)
 		}
-		wal.currentOffset = uint64(offset)
+
+		wal.nextLSN = state.MaxLSN + 1
+		wal.flushedLSN = state.MaxLSN // Everything read from disk is flushed
+		wal.lastCheckpoint = state.LastCheckpointLSN
+		wal.activeTxns = state.ActiveTxns
+		wal.currentOffset = state.CurrentOffset
+
+		slog.Info("WAL state recovered",
+			"nextLSN", wal.nextLSN,
+			"activeTxns", len(wal.activeTxns),
+			"lastCheckpoint", wal.lastCheckpoint,
+			"offset", wal.currentOffset)
+
+		// Seek to the end of valid data
+		if _, err := file.Seek(int64(wal.currentOffset), os.SEEK_SET); err != nil {
+			file.Close()
+			return nil, fmt.Errorf("failed to seek to recovered offset: %w", err)
+		}
 	} else {
 		// Write file header for new WAL
 		if err := wal.writeFileHeader(); err != nil {

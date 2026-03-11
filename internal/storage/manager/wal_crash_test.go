@@ -32,7 +32,7 @@ func TestCrashBeforeCommit(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(tempDir, dbName, true)
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, dbName)
@@ -46,7 +46,7 @@ func TestCrashBeforeCommit(t *testing.T) {
 	wm.Close()
 
 	// Recover
-	wm2, err := NewWALManager(tempDir, dbName, true)
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -66,7 +66,7 @@ func TestCrashAfterCommit(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(tempDir, dbName, true)
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, dbName)
@@ -81,7 +81,7 @@ func TestCrashAfterCommit(t *testing.T) {
 	wm.Close()
 
 	// Recover
-	wm2, err := NewWALManager(tempDir, dbName, true)
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -101,7 +101,7 @@ func TestCrashMidTransaction(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(tempDir, dbName, true)
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, dbName)
@@ -116,7 +116,7 @@ func TestCrashMidTransaction(t *testing.T) {
 	wm.Close()
 
 	// Recover
-	wm2, err := NewWALManager(tempDir, dbName, true)
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -140,7 +140,7 @@ func TestCrashAfterCheckpoint(t *testing.T) {
 	// Need files for checkpoint
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
-	wm, err := NewWALManager(filepath.Join(tempDir, dbName), dbName, true)
+	wm, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, dbName)
@@ -188,7 +188,7 @@ func TestCrashAfterCheckpoint(t *testing.T) {
 	wm.Close()
 
 	// Recover
-	wm2, err := NewWALManager(filepath.Join(tempDir, dbName), dbName, true)
+	wm2, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -208,7 +208,7 @@ func TestCorruptedWALTail(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(tempDir, dbName, true)
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, dbName)
@@ -232,7 +232,7 @@ func TestCorruptedWALTail(t *testing.T) {
 	truncateFile(t, walPath, 10) // Cut off last few bytes
 
 	// Recover
-	wm2, err := NewWALManager(tempDir, dbName, true)
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -271,7 +271,7 @@ func TestMultipleTransactionsCrash(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(tempDir, "testdb", true)
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, "testdb")
@@ -295,7 +295,7 @@ func TestMultipleTransactionsCrash(t *testing.T) {
 
 	wm.Close()
 
-	wm2, err := NewWALManager(tempDir, "testdb", true)
+	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -328,7 +328,7 @@ func TestRecoveryRestoresData(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, "testdb", "users")
 
 	eng := engine.NewJSONEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 
 	// Load
 	db, wm, err := reg.GetWithWAL("testdb")
@@ -348,7 +348,7 @@ func TestRecoveryRestoresData(t *testing.T) {
 	reg.CloseAll()
 
 	// New Registry
-	reg2 := NewRegistryWithWAL(tempDir, eng, true)
+	reg2 := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg2.CloseAll()
 
 	// Load (triggers recovery)
@@ -371,7 +371,7 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, "testdb", "users")
 
 	eng := engine.NewJSONEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 
 	db, wm, _ := reg.GetWithWAL("testdb")
 
@@ -410,7 +410,7 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	reg.CloseAll() // Crash
 
 	// Recover
-	reg2 := NewRegistryWithWAL(tempDir, eng, true)
+	reg2 := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg2.CloseAll()
 
 	db2, _, err := reg2.GetWithWAL("testdb")
@@ -432,7 +432,7 @@ func TestRecoveryIndexRebuild(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, "testdb", "users")
 
 	eng := engine.NewJSONEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 	db, wm, _ := reg.GetWithWAL("testdb")
 
 	// Ensure index exists
@@ -446,7 +446,7 @@ func TestRecoveryIndexRebuild(t *testing.T) {
 	reg.CloseAll()
 
 	// Recover
-	reg2 := NewRegistryWithWAL(tempDir, eng, true)
+	reg2 := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg2.CloseAll()
 	db2, _, _ := reg2.GetWithWAL("testdb")
 
@@ -490,11 +490,11 @@ func TestCrashWithEmptyWAL(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(tempDir, "testdb", true)
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil)
 	assert.NilError(t, err)
 	wm.Close() // Empty WAL created
 
-	wm2, err := NewWALManager(tempDir, "testdb", true)
+	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -512,7 +512,7 @@ func TestCrashDuringCheckpoint(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	createMinimalDatabaseFiles(t, tempDir, "testdb", "users")
-	wm, err := NewWALManager(filepath.Join(tempDir, "testdb"), "testdb", true)
+	wm, err := NewWALManager(nil, filepath.Join(tempDir, "testdb"), "testdb", true, 0, nil)
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, "testdb")
@@ -530,7 +530,7 @@ func TestCrashDuringCheckpoint(t *testing.T) {
 	f.Write([]byte{byte(wal.RecordCheckpoint), 0, 0, 0}) // Partial header
 	f.Close()
 
-	wm2, err := NewWALManager(filepath.Join(tempDir, "testdb"), "testdb", true)
+	wm2, err := NewWALManager(nil, filepath.Join(tempDir, "testdb"), "testdb", true, 0, nil)
 	assert.NilError(t, err)
 	defer wm2.Close()
 
