@@ -40,10 +40,15 @@ type RecoveryResult struct {
 	TransactionsReplay  int // Transactions replayed (committed after checkpoint)
 	TransactionsSkipped int // Transactions skipped (uncommitted or aborted)
 
-	// Operations to replay
+	// DML operations to replay
 	InsertOps []*InsertRecord // Insert operations to replay
 	UpdateOps []*UpdateRecord // Update operations to replay
 	DeleteOps []*DeleteRecord // Delete operations to replay
+
+	// DDL operations to replay (applied before DML)
+	CreateTableOps []*CreateTableRecord // CREATE TABLE operations to replay
+	DropTableOps   []*DropTableRecord   // DROP TABLE operations to replay
+	AlterTableOps  []*AlterTableRecord  // ALTER TABLE operations to replay
 
 	// State after recovery
 	NextLSN        uint64 // Next LSN to use after recovery
@@ -145,6 +150,9 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord, c
 		InsertOps:       []*InsertRecord{},
 		UpdateOps:       []*UpdateRecord{},
 		DeleteOps:       []*DeleteRecord{},
+		CreateTableOps:  []*CreateTableRecord{},
+		DropTableOps:    []*DropTableRecord{},
+		AlterTableOps:   []*AlterTableRecord{},
 		NextLSN:         checkpoint.CheckpointLSN + 1,
 	}
 
@@ -217,6 +225,9 @@ func (rm *RecoveryManager) RecoverFromScratch(callback ProgressCallback) (*Recov
 		InsertOps:       []*InsertRecord{},
 		UpdateOps:       []*UpdateRecord{},
 		DeleteOps:       []*DeleteRecord{},
+		CreateTableOps:  []*CreateTableRecord{},
+		DropTableOps:    []*DropTableRecord{},
+		AlterTableOps:   []*AlterTableRecord{},
 		NextLSN:         1,
 	}
 
@@ -300,6 +311,9 @@ func (rm *RecoveryManager) collectCommittedOps(tracker *TxnTracker, result *Reco
 		result.InsertOps = append(result.InsertOps, txn.Inserts...)
 		result.UpdateOps = append(result.UpdateOps, txn.Updates...)
 		result.DeleteOps = append(result.DeleteOps, txn.Deletes...)
+		result.CreateTableOps = append(result.CreateTableOps, txn.CreateTables...)
+		result.DropTableOps = append(result.DropTableOps, txn.DropTables...)
+		result.AlterTableOps = append(result.AlterTableOps, txn.AlterTables...)
 	}
 }
 
@@ -375,6 +389,10 @@ type TxnRecoveryState struct {
 	Inserts  []*InsertRecord
 	Updates  []*UpdateRecord
 	Deletes  []*DeleteRecord
+	// DDL operations within this transaction
+	CreateTables []*CreateTableRecord
+	DropTables   []*DropTableRecord
+	AlterTables  []*AlterTableRecord
 }
 
 // NewTxnTracker creates a new transaction tracker
@@ -399,6 +417,12 @@ func (t *TxnTracker) ProcessRecord(record WALRecord) error {
 		return t.CommitTransaction(rec)
 	case *AbortRecord:
 		return t.AbortTransaction(rec)
+	case *CreateTableRecord:
+		return t.AddCreateTable(rec)
+	case *DropTableRecord:
+		return t.AddDropTable(rec)
+	case *AlterTableRecord:
+		return t.AddAlterTable(rec)
 	case *CheckpointRecord:
 		// Checkpoints don't affect transaction tracking
 	}
@@ -408,12 +432,15 @@ func (t *TxnTracker) ProcessRecord(record WALRecord) error {
 // BeginTransaction records a transaction start
 func (t *TxnTracker) BeginTransaction(record *BeginTxnRecord) {
 	t.transactions[record.TxID] = &TxnRecoveryState{
-		TxID:     record.TxID,
-		State:    TxnActive,
-		BeginLSN: record.Header.LSN,
-		Inserts:  []*InsertRecord{},
-		Updates:  []*UpdateRecord{},
-		Deletes:  []*DeleteRecord{},
+		TxID:         record.TxID,
+		State:        TxnActive,
+		BeginLSN:     record.Header.LSN,
+		Inserts:      []*InsertRecord{},
+		Updates:      []*UpdateRecord{},
+		Deletes:      []*DeleteRecord{},
+		CreateTables: []*CreateTableRecord{},
+		DropTables:   []*DropTableRecord{},
+		AlterTables:  []*AlterTableRecord{},
 	}
 }
 
@@ -424,12 +451,15 @@ func (t *TxnTracker) getOrCreateTxn(txID uint64, lsn uint64) *TxnRecoveryState {
 	if !exists {
 		// Transaction started before our recovery point
 		txn = &TxnRecoveryState{
-			TxID:     txID,
-			State:    TxnActive,
-			BeginLSN: lsn, // Best guess
-			Inserts:  []*InsertRecord{},
-			Updates:  []*UpdateRecord{},
-			Deletes:  []*DeleteRecord{},
+			TxID:         txID,
+			State:        TxnActive,
+			BeginLSN:     lsn, // Best guess
+			Inserts:      []*InsertRecord{},
+			Updates:      []*UpdateRecord{},
+			Deletes:      []*DeleteRecord{},
+			CreateTables: []*CreateTableRecord{},
+			DropTables:   []*DropTableRecord{},
+			AlterTables:  []*AlterTableRecord{},
 		}
 		t.transactions[txID] = txn
 	}
@@ -479,10 +509,43 @@ func (t *TxnTracker) AbortTransaction(record *AbortRecord) error {
 	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
 	txn.State = TxnAborted
 	txn.EndLSN = record.Header.LSN
-	// Clear operations - they won't be replayed
+	// Clear all operations - they won't be replayed
 	txn.Inserts = nil
 	txn.Updates = nil
 	txn.Deletes = nil
+	txn.CreateTables = nil
+	txn.DropTables = nil
+	txn.AlterTables = nil
+	return nil
+}
+
+// AddCreateTable adds a CREATE TABLE operation to a transaction
+func (t *TxnTracker) AddCreateTable(record *CreateTableRecord) error {
+	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
+	if txn.State != TxnActive {
+		return fmt.Errorf("cannot add CreateTable to non-active transaction %d", record.TxID)
+	}
+	txn.CreateTables = append(txn.CreateTables, record)
+	return nil
+}
+
+// AddDropTable adds a DROP TABLE operation to a transaction
+func (t *TxnTracker) AddDropTable(record *DropTableRecord) error {
+	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
+	if txn.State != TxnActive {
+		return fmt.Errorf("cannot add DropTable to non-active transaction %d", record.TxID)
+	}
+	txn.DropTables = append(txn.DropTables, record)
+	return nil
+}
+
+// AddAlterTable adds an ALTER TABLE operation to a transaction
+func (t *TxnTracker) AddAlterTable(record *AlterTableRecord) error {
+	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
+	if txn.State != TxnActive {
+		return fmt.Errorf("cannot add AlterTable to non-active transaction %d", record.TxID)
+	}
+	txn.AlterTables = append(txn.AlterTables, record)
 	return nil
 }
 
@@ -530,24 +593,44 @@ func (t *TxnTracker) GetAbortedTransactions() []*TxnRecoveryState {
 // ReplayTarget is an interface for replaying WAL operations
 // This will be implemented by the storage layer (e.g., Engine)
 type ReplayTarget interface {
-	// ReplayInsert applies an insert operation
+	// DML replay methods
 	ReplayInsert(tableName string, key string, value json.RawMessage) error
-
-	// ReplayUpdate applies an update operation
 	ReplayUpdate(tableName string, key string, newValue json.RawMessage) error
-
-	// ReplayDelete applies a delete operation
 	ReplayDelete(tableName string, key string) error
+
+	// DDL replay methods
+	ReplayCreateTable(name string, schemaBytes []byte) error
+	ReplayDropTable(name string) error
+	ReplayAlterTable(name string, op uint8, colDesc []byte) error
 }
 
-// ReplayAll replays all operations in the recovery result to the target
-// Operations are replayed in LSN order for correctness
+// ReplayAll replays all operations in the recovery result to the target.
+// DDL operations (CREATE/DROP/ALTER TABLE) are applied first in LSN order,
+// then DML operations (INSERT/UPDATE/DELETE) in LSN order.
+// This ordering is critical: rows can only be inserted into tables that exist.
 func (result *RecoveryResult) ReplayAll(target ReplayTarget) error {
-	// Get all operations sorted by LSN
-	ops := result.GetAllOperations()
+	// Step 1: Replay DDL in LSN order (schema must exist before row data)
+	ddlOps := result.GetAllDDLOperations()
+	for _, op := range ddlOps {
+		switch rec := op.(type) {
+		case *CreateTableRecord:
+			if err := target.ReplayCreateTable(rec.TableName, rec.Schema); err != nil {
+				return fmt.Errorf("failed to replay CreateTable at LSN %d: %w", rec.Header.LSN, err)
+			}
+		case *DropTableRecord:
+			if err := target.ReplayDropTable(rec.TableName); err != nil {
+				return fmt.Errorf("failed to replay DropTable at LSN %d: %w", rec.Header.LSN, err)
+			}
+		case *AlterTableRecord:
+			if err := target.ReplayAlterTable(rec.TableName, rec.AlterOp, rec.ColDesc); err != nil {
+				return fmt.Errorf("failed to replay AlterTable at LSN %d: %w", rec.Header.LSN, err)
+			}
+		}
+	}
 
-	// Replay in order
-	for _, op := range ops {
+	// Step 2: Replay DML in LSN order
+	dmlOps := result.GetAllDMLOperations()
+	for _, op := range dmlOps {
 		switch rec := op.(type) {
 		case *InsertRecord:
 			if err := target.ReplayInsert(rec.TableName, rec.Key, rec.Value); err != nil {
@@ -567,10 +650,47 @@ func (result *RecoveryResult) ReplayAll(target ReplayTarget) error {
 	return nil
 }
 
-// GetAllOperations returns all operations sorted by LSN
-func (result *RecoveryResult) GetAllOperations() []WALRecord {
-	// Combine all operations
+// GetAllDDLOperations returns all DDL operations sorted by LSN
+func (result *RecoveryResult) GetAllDDLOperations() []WALRecord {
+	ops := make([]WALRecord, 0, len(result.CreateTableOps)+len(result.DropTableOps)+len(result.AlterTableOps))
+	for _, op := range result.CreateTableOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.DropTableOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.AlterTableOps {
+		ops = append(ops, op)
+	}
+	sort.Slice(ops, func(i, j int) bool {
+		return ops[i].GetHeader().LSN < ops[j].GetHeader().LSN
+	})
+	return ops
+}
+
+// GetAllDMLOperations returns all DML operations sorted by LSN
+func (result *RecoveryResult) GetAllDMLOperations() []WALRecord {
 	ops := make([]WALRecord, 0, len(result.InsertOps)+len(result.UpdateOps)+len(result.DeleteOps))
+	for _, op := range result.InsertOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.UpdateOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.DeleteOps {
+		ops = append(ops, op)
+	}
+	sort.Slice(ops, func(i, j int) bool {
+		return ops[i].GetHeader().LSN < ops[j].GetHeader().LSN
+	})
+	return ops
+}
+
+// GetAllOperations returns all DML+DDL operations sorted by LSN (for backward compat/logging)
+func (result *RecoveryResult) GetAllOperations() []WALRecord {
+	ops := make([]WALRecord, 0,
+		len(result.InsertOps)+len(result.UpdateOps)+len(result.DeleteOps)+
+			len(result.CreateTableOps)+len(result.DropTableOps)+len(result.AlterTableOps))
 
 	for _, op := range result.InsertOps {
 		ops = append(ops, op)
@@ -581,12 +701,19 @@ func (result *RecoveryResult) GetAllOperations() []WALRecord {
 	for _, op := range result.DeleteOps {
 		ops = append(ops, op)
 	}
+	for _, op := range result.CreateTableOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.DropTableOps {
+		ops = append(ops, op)
+	}
+	for _, op := range result.AlterTableOps {
+		ops = append(ops, op)
+	}
 
-	// Sort by LSN for correct replay order
 	sort.Slice(ops, func(i, j int) bool {
 		return ops[i].GetHeader().LSN < ops[j].GetHeader().LSN
 	})
-
 	return ops
 }
 
@@ -608,6 +735,12 @@ func getTxIDFromRecord(r WALRecord) uint64 {
 	case *CommitRecord:
 		return rec.TxID
 	case *AbortRecord:
+		return rec.TxID
+	case *CreateTableRecord:
+		return rec.TxID
+	case *DropTableRecord:
+		return rec.TxID
+	case *AlterTableRecord:
 		return rec.TxID
 	default:
 		return 0

@@ -119,15 +119,15 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventPlanEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", planNode)})
 
-	// Determine if this is a DML operation (needs WAL logging)
-	isDML := false
+	// Determine if this is a mutating operation (needs WAL logging)
+	needsWAL := false
 	switch planNode.(type) {
-	case *plan.InsertNode, *plan.UpdateNode, *plan.DeleteNode:
-		isDML = true
+	case *plan.InsertNode, *plan.UpdateNode, *plan.DeleteNode, *plan.CreateTableNode, *plan.DropTableNode:
+		needsWAL = true
 	}
 
-	// 6. Begin WAL transaction only for DML operations
-	if e.walManager != nil && isDML {
+	// 6. Begin WAL transaction only for mutating operations
+	if e.walManager != nil && needsWAL {
 		if err := e.walManager.BeginTransaction(tx); err != nil {
 			return nil, fmt.Errorf("WAL begin failed: %w", err)
 		}
@@ -136,13 +136,13 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	// 7. Execute with WAL (will be nil for SELECT, so no logging happens)
 	e.notify(Event{Type: EventExecStart, TxID: tx.ID})
 	var walMgr *manager.WALManager
-	if isDML {
+	if needsWAL {
 		walMgr = e.walManager
 	}
 	result, err := executor.ExecuteWithWAL(planNode, e.db, tx, walMgr)
 	if err != nil {
-		// Abort WAL transaction on execution error (only if DML)
-		if e.walManager != nil && isDML {
+		// Abort WAL transaction on execution error (only if it needs WAL)
+		if e.walManager != nil && needsWAL {
 			e.walManager.Abort(tx)
 		}
 		return nil, fmt.Errorf("execution error: %w", err)
@@ -152,8 +152,8 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		"rows_returned": len(result.Rows),
 	}})
 
-	// 8. Commit WAL transaction on success (only for DML)
-	if e.walManager != nil && isDML {
+	// 8. Commit WAL transaction on success
+	if e.walManager != nil && needsWAL {
 		if err := e.walManager.Commit(tx); err != nil {
 			return nil, fmt.Errorf("WAL commit failed: %w", err)
 		}

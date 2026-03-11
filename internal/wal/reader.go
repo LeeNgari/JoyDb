@@ -236,8 +236,8 @@ func (r *WALReader) validateHeader(h WALRecordHeader) error {
 			h.Length, MinRecordSize, r.currentPos)
 	}
 
-	// Check Type is valid (1-7)
-	if h.Type < RecordBeginTxn || h.Type > RecordCheckpoint {
+	// Check Type is valid (1-10)
+	if h.Type < RecordBeginTxn || h.Type > RecordAlterTable {
 		return fmt.Errorf("invalid record type %d at offset %d (possible corruption)",
 			h.Type, r.currentPos)
 	}
@@ -281,6 +281,12 @@ func (r *WALReader) decodeRecord(header WALRecordHeader, payload []byte) (WALRec
 		return decodeAbortPayload(header, payload)
 	case RecordCheckpoint:
 		return decodeCheckpointPayload(header, payload)
+	case RecordCreateTable:
+		return decodeCreateTablePayload(header, payload)
+	case RecordDropTable:
+		return decodeDropTablePayload(header, payload)
+	case RecordAlterTable:
+		return decodeAlterTablePayload(header, payload)
 	default:
 		return nil, fmt.Errorf("unknown record type: %d", header.Type)
 	}
@@ -341,7 +347,7 @@ func decodeInsertPayload(header WALRecordHeader, payload []byte) (*InsertRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		Value:     value,
+		Value:     json.RawMessage(value),
 	}, nil
 }
 
@@ -390,8 +396,8 @@ func decodeUpdatePayload(header WALRecordHeader, payload []byte) (*UpdateRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		OldValue:  oldValue,
-		NewValue:  newValue,
+		OldValue:  json.RawMessage(oldValue),
+		NewValue:  json.RawMessage(newValue),
 	}, nil
 }
 
@@ -433,7 +439,7 @@ func decodeDeletePayload(header WALRecordHeader, payload []byte) (*DeleteRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		OldValue:  oldValue,
+		OldValue:  json.RawMessage(oldValue),
 	}, nil
 }
 
@@ -641,7 +647,7 @@ func decodeString(data []byte, offset int) (string, int, error) {
 }
 
 // decodeBytes reads a length-prefixed byte slice (4-byte length prefix)
-func decodeBytes(data []byte, offset int) (json.RawMessage, int, error) {
+func decodeBytes(data []byte, offset int) ([]byte, int, error) {
 	if offset+4 > len(data) {
 		return nil, 0, fmt.Errorf("not enough data for bytes length at offset %d", offset)
 	}
@@ -657,5 +663,102 @@ func decodeBytes(data []byte, offset int) (json.RawMessage, int, error) {
 	b := make([]byte, length)
 	copy(b, data[offset:offset+length])
 
-	return json.RawMessage(b), offset + length, nil
+	return b, offset + length, nil
+}
+
+// ===========================================================================
+// DDL RECORD DECODERS
+// ===========================================================================
+
+// decodeCreateTablePayload decodes a CreateTable record payload
+// Format: TxID(8) + TableNameLen(2) + TableName + SchemaLen(4) + Schema
+func decodeCreateTablePayload(header WALRecordHeader, payload []byte) (*CreateTableRecord, error) {
+	if len(payload) < 8 {
+		return nil, fmt.Errorf("CreateTable payload too short: %d bytes", len(payload))
+	}
+
+	offset := 0
+
+	txID := ByteOrder.Uint64(payload[offset:])
+	offset += 8
+
+	tableName, newOffset, err := decodeString(payload, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TableName: %w", err)
+	}
+	offset = newOffset
+
+	schemaBytes, _, err := decodeBytes(payload, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode Schema: %w", err)
+	}
+
+	return &CreateTableRecord{
+		Header:    header,
+		TxID:      txID,
+		TableName: tableName,
+		Schema:    schemaBytes,
+	}, nil
+}
+
+// decodeDropTablePayload decodes a DropTable record payload
+// Format: TxID(8) + TableNameLen(2) + TableName
+func decodeDropTablePayload(header WALRecordHeader, payload []byte) (*DropTableRecord, error) {
+	if len(payload) < 8 {
+		return nil, fmt.Errorf("DropTable payload too short: %d bytes", len(payload))
+	}
+
+	offset := 0
+
+	txID := ByteOrder.Uint64(payload[offset:])
+	offset += 8
+
+	tableName, _, err := decodeString(payload, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TableName: %w", err)
+	}
+
+	return &DropTableRecord{
+		Header:    header,
+		TxID:      txID,
+		TableName: tableName,
+	}, nil
+}
+
+// decodeAlterTablePayload decodes an AlterTable record payload
+// Format: TxID(8) + TableNameLen(2) + TableName + AlterOp(1) + ColDescLen(4) + ColDesc
+func decodeAlterTablePayload(header WALRecordHeader, payload []byte) (*AlterTableRecord, error) {
+	if len(payload) < 8 {
+		return nil, fmt.Errorf("AlterTable payload too short: %d bytes", len(payload))
+	}
+
+	offset := 0
+
+	txID := ByteOrder.Uint64(payload[offset:])
+	offset += 8
+
+	tableName, newOffset, err := decodeString(payload, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode TableName: %w", err)
+	}
+	offset = newOffset
+
+	if offset+1 > len(payload) {
+		return nil, fmt.Errorf("AlterTable payload too short for AlterOp")
+	}
+	alterOp := payload[offset]
+	offset++
+
+	colDesc, _, err := decodeBytes(payload, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode ColDesc: %w", err)
+	}
+
+	return &AlterTableRecord{
+		Header:    header,
+		TxID:      txID,
+		TableName: tableName,
+		AlterOp:   alterOp,
+		ColDesc:   colDesc,
+	}, nil
 }

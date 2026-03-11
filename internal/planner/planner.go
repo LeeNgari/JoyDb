@@ -25,6 +25,10 @@ func Plan(stmt ast.Statement, db *schema.Database, tx *transaction.Transaction) 
 		return planUpdate(s, db, tx)
 	case *ast.DeleteStatement:
 		return planDelete(s, db, tx)
+	case *ast.CreateTableStatement:
+		return planCreateTable(s, db, tx)
+	case *ast.DropTableStatement:
+		return planDropTable(s, db, tx)
 	default:
 		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
 	}
@@ -282,6 +286,57 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.
 	node.Metadata()["has_predicate"] = pred != nil
 
 	return node, nil
+}
+
+func planCreateTable(stmt *ast.CreateTableStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	// Convert AST ColumnDef to schema.Column
+	columns := make([]schema.Column, len(stmt.Columns))
+	for i, astCol := range stmt.Columns {
+		// Convert type string to enum type
+		var colType schema.ColumnType
+		switch astCol.Type {
+		case "INT":
+			colType = schema.ColumnTypeInt
+		case "FLOAT":
+			colType = schema.ColumnTypeFloat
+		case "TEXT":
+			colType = schema.ColumnTypeText
+		case "BOOL":
+			colType = schema.ColumnTypeBool
+		case "DATE":
+			colType = schema.ColumnTypeDate
+		case "TIME":
+			colType = schema.ColumnTypeTime
+		case "EMAIL":
+			colType = schema.ColumnTypeEmail
+		default:
+			// Default to TEXT if unknown, or return error? We'll use TEXT for now
+			// as the lexer only recognizes a specific set of keywords
+			colType = schema.ColumnTypeText
+		}
+
+		columns[i] = schema.Column{
+			Name:          astCol.Name,
+			Type:          colType,
+			PrimaryKey:    astCol.PrimaryKey,
+			NotNull:       astCol.NotNull,
+			Unique:        astCol.Unique,
+			AutoIncrement: astCol.AutoIncrement,
+		}
+	}
+
+	return &plan.CreateTableNode{
+		TableName:   stmt.TableName,
+		Columns:     columns,
+		Transaction: tx,
+	}, nil
+}
+
+func planDropTable(stmt *ast.DropTableStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	return &plan.DropTableNode{
+		TableName:   stmt.TableName,
+		Transaction: tx,
+	}, nil
 }
 
 func findColumnInSchema(table *schema.Table, colName string) *schema.Column {

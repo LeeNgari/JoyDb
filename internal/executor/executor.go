@@ -70,6 +70,10 @@ func ExecuteWithWAL(node plan.Node, db *schema.Database, tx *transaction.Transac
 		return formatUpdateResult(intermediate), nil
 	case *plan.DeleteNode:
 		return formatDeleteResult(intermediate), nil
+	case *plan.CreateTableNode:
+		return formatDDLResult(intermediate), nil
+	case *plan.DropTableNode:
+		return formatDDLResult(intermediate), nil
 	default:
 		return nil, fmt.Errorf("unsupported plan node type: %T", node)
 	}
@@ -98,6 +102,10 @@ func executeNode(node plan.Node, ctx *ExecutionContext) (*IntermediateResult, er
 		return executeUpdateNode(n, ctx)
 	case *plan.DeleteNode:
 		return executeDeleteNode(n, ctx)
+	case *plan.CreateTableNode:
+		return executeCreateTable(n, ctx)
+	case *plan.DropTableNode:
+		return executeDropTable(n, ctx)
 	default:
 		return nil, fmt.Errorf("unsupported plan node type: %T", node)
 	}
@@ -111,4 +119,17 @@ func findColumnInSchema(table *schema.Table, colName string) *schema.Column {
 		}
 	}
 	return nil
+}
+
+// formatDDLResult formats the result for a DDL operation
+func formatDDLResult(intermediate *IntermediateResult) *Result {
+	msg := ""
+	if intermediate.Metadata != nil {
+		if m, ok := intermediate.Metadata["message"].(string); ok {
+			msg = m
+		}
+	}
+	return &Result{
+		Message: msg,
+	}
 }

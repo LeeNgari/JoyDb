@@ -2,6 +2,7 @@ package plan
 
 import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
@@ -201,4 +202,51 @@ func (n *DeleteNode) Metadata() map[string]any {
 
 func (n *DeleteNode) NodeType() string {
 	return "DELETE"
+}
+
+// ===========================================================================
+// DDL NODES
+// ===========================================================================
+
+// CreateTableNode represents a CREATE TABLE execution plan node
+type CreateTableNode struct {
+	TableName   string
+	Columns     []schema.Column
+	Transaction *transaction.Transaction
+	metadata    map[string]any
+}
+
+func (n *CreateTableNode) Children() []Node { return nil }
+func (n *CreateTableNode) NodeType() string { return "CREATE_TABLE" }
+func (n *CreateTableNode) Metadata() map[string]any {
+	if n.metadata != nil {
+		return n.metadata
+	}
+	// Extract column names for display
+	colNames := make([]string, len(n.Columns))
+	for i, c := range n.Columns {
+		colNames[i] = c.Name
+	}
+	return map[string]any{
+		"table":   n.TableName,
+		"columns": colNames,
+	}
+}
+
+// DropTableNode represents a DROP TABLE execution plan node
+type DropTableNode struct {
+	TableName   string
+	Transaction *transaction.Transaction
+	metadata    map[string]any
+}
+
+func (n *DropTableNode) Children() []Node { return nil }
+func (n *DropTableNode) NodeType() string { return "DROP_TABLE" }
+func (n *DropTableNode) Metadata() map[string]any {
+	if n.metadata != nil {
+		return n.metadata
+	}
+	return map[string]any{
+		"table": n.TableName,
+	}
 }
