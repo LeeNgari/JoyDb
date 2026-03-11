@@ -50,3 +50,17 @@ func (r *Row) UnmarshalJSON(data []byte) error {
 func (r Row) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.Data)
 }
+
+// ToJSON serializes the row to json.RawMessage for WAL integration
+func (r Row) ToJSON() (json.RawMessage, error) {
+	return json.Marshal(r.Data)
+}
+
+// FromJSON creates a Row from json.RawMessage (for WAL recovery)
+func FromJSON(data json.RawMessage) (Row, error) {
+	var m map[string]interface{}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return Row{}, err
+	}
+	return NewRow(m), nil
+}

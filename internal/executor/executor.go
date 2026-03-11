@@ -7,6 +7,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // ColumnMetadata provides rich information about a result column
@@ -41,10 +42,16 @@ func newTableNotFoundError(tableName string) error {
 // Execute is the main entry point for executing execution plans
 // It dispatches to the appropriate executor based on node type using tree walking
 func Execute(node plan.Node, db *schema.Database, tx *transaction.Transaction) (*Result, error) {
+	return ExecuteWithWAL(node, db, tx, nil)
+}
+
+// ExecuteWithWAL executes a plan with optional WAL logging
+func ExecuteWithWAL(node plan.Node, db *schema.Database, tx *transaction.Transaction, walMgr *manager.WALManager) (*Result, error) {
 	ctx := &ExecutionContext{
 		Database:    db,
 		Transaction: tx,
 		Config:      DefaultExecutionConfig(),
+		WALManager:  walMgr,
 	}
 
 	// Execute the plan tree recursively

@@ -406,6 +406,7 @@ WHERE users.is_active = true AND orders.amount > 100;
 6. **No subqueries**: Nested SELECT statements not supported
 7. **No DISTINCT**: Duplicate removal not supported
 8. **Literal values only in SET**: UPDATE SET clause only supports literal values, not expressions
+9. **DDL not WAL-logged**: CREATE TABLE, DROP TABLE, and ALTER TABLE are NOT logged to the Write-Ahead Log. Only DML operations (INSERT, UPDATE, DELETE) are crash-recoverable. DDL changes persist to disk immediately via JSON.
 
 
 

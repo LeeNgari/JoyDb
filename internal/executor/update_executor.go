@@ -12,9 +12,49 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
+	// If WAL is enabled, capture old rows and their keys before update
+	type oldRowInfo struct {
+		key    string
+		oldRow data.Row
+	}
+	var oldRowInfos []oldRowInfo
+
+	if ctx.WALManager != nil {
+		table.RLock()
+		for _, row := range table.Rows {
+			if node.Predicate(row) {
+				key, keyErr := table.GetPrimaryKeyValue(row)
+				if keyErr == nil {
+					oldRowInfos = append(oldRowInfos, oldRowInfo{
+						key:    key,
+						oldRow: row.Copy(),
+					})
+				}
+			}
+		}
+		table.RUnlock()
+	}
+
+	// Log to WAL before successful update (WAL-first execution)
+	// Compute new row by applying updates to old row (safer than index lookup)
+	if ctx.WALManager != nil && len(oldRowInfos) > 0 {
+		for _, info := range oldRowInfos {
+			// Compute the new row by applying updates to old row
+			newRow := info.oldRow.Copy()
+			for col, val := range node.Updates.Data {
+				newRow.Data[col] = val
+			}
+
+			if err := ctx.WALManager.LogUpdate(ctx.Transaction, table, info.key, info.oldRow, newRow); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// Use domain model to update
 	rowsAffected, err := table.Update(node.Predicate, node.Updates, ctx.Transaction)
 	if err != nil {
+		// If table update fails, the engine will call WALManager.Abort(tx)
 		return nil, err
 	}
 

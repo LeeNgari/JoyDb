@@ -21,6 +21,9 @@ import (
 func main() {
 	serverMode := flag.Bool("server", false, "Run in server mode")
 	port := flag.Int("port", 4444, "Port to listen on")
+	noWAL := flag.Bool("no-wal", false, "Disable Write-Ahead Logging (reduces durability)")
+	walSyncInterval := flag.Duration("wal-sync-interval", 0, "Interval between WAL fsyncs (0 = sync on every commit, e.g., '100ms', '1s')")
+	checkpointInterval := flag.Duration("checkpoint-interval", 5*time.Second, "Interval between automatic checkpoints (e.g., '5s', '1m')")
 	flag.Parse()
 
 	logger, closeFn := logging.SetupLogger()
@@ -29,6 +32,19 @@ func main() {
 	slog.SetDefault(logger)
 	time.Sleep(1 * time.Second)
 	fmt.Println("Starting JoyDB application...")
+
+	// WAL is enabled by default, disabled with --no-wal flag
+	walEnabled := !*noWAL
+	if walEnabled {
+		slog.Info("WAL enabled for crash recovery")
+		if *walSyncInterval > 0 {
+			// TODO: Wire this into WALManager for periodic fsync
+			slog.Info("WAL sync interval configured", "interval", *walSyncInterval)
+		}
+		slog.Info("Checkpoint interval configured", "interval", *checkpointInterval)
+	} else {
+		slog.Warn("WAL disabled - data may be lost on crash")
+	}
 
 	// Base path for databases
 	basePath := "databases"
@@ -42,15 +58,16 @@ func main() {
 	// Create storage engine (currently JSON, can be swapped for binary)
 	storageEngine := engine.NewJSONEngine()
 
-	// Create Database Registry with storage engine
-	registry := manager.NewRegistry(basePath, storageEngine)
+	// Create Database Registry with storage engine and WAL configuration
+	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval)
 
-	// Save all loaded databases on shutdown
+	// Close all WAL managers and save databases on shutdown
 	defer func() {
 		slog.Info("Shutting down - saving databases...")
 		tx := transaction.NewTransaction()
 		defer tx.Close()
 		registry.SaveAll(tx)
+		registry.CloseAll()
 	}()
 
 	// Seed 'main' from embedded FS
@@ -58,7 +75,7 @@ func main() {
 		slog.Error("Failed to seed main database", "error", err)
 	}
 
-	slog.Info("Application ready!", "base_path", basePath)
+	slog.Info("Application ready!", "base_path", basePath, "wal_enabled", walEnabled)
 
 	if *serverMode {
 		slog.Info("Starting Server mode...")

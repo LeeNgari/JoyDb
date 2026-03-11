@@ -10,15 +10,17 @@ import (
 	"github.com/leengari/mini-rdbms/internal/parser"
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/mini-rdbms/internal/plan"
 	"github.com/leengari/mini-rdbms/internal/planner"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // Engine is the main entry point for the database system
 type Engine struct {
-	db        *schema.Database
-	registry  *manager.Registry
-	observers []Observer // Observers for lifecycle events
+	db         *schema.Database
+	registry   *manager.Registry
+	walManager *manager.WALManager // WAL manager for current database
+	observers  []Observer          // Observers for lifecycle events
 }
 
 // New creates a new Engine instance
@@ -28,6 +30,16 @@ func New(db *schema.Database, registry *manager.Registry) *Engine {
 		registry:  registry,
 		observers: make([]Observer, 0),
 	}
+}
+
+// SetWALManager sets the WAL manager for the engine
+func (e *Engine) SetWALManager(wm *manager.WALManager) {
+	e.walManager = wm
+}
+
+// GetWALManager returns the current WAL manager
+func (e *Engine) GetWALManager() *manager.WALManager {
+	return e.walManager
 }
 
 // Execute processes a SQL string and returns the result
@@ -53,7 +65,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventParseEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", stmt)})
 
-	// 3. Handle Database Management Statements
+	// 3. Handle Database Management Statements (no WAL for these)
 	switch s := stmt.(type) {
 	case *ast.CreateDatabaseStatement:
 		if err := e.registry.Create(s.Name); err != nil {
@@ -65,6 +77,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		// If dropping currently active DB, unload it first
 		if e.db != nil && e.db.Name == s.Name {
 			e.db = nil
+			e.walManager = nil
 		}
 		if err := e.registry.Drop(s.Name); err != nil {
 			return nil, err
@@ -75,6 +88,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		// If renaming active DB, unload it (or update it, but unloading is safer for now)
 		if e.db != nil && e.db.Name == s.Name {
 			e.db = nil
+			e.walManager = nil
 		}
 		if err := e.registry.Rename(s.Name, s.NewName); err != nil {
 			return nil, err
@@ -83,11 +97,12 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 
 	case *ast.UseDatabaseStatement:
 		// Load/Get new DB from registry
-		newDB, err := e.registry.Get(s.Name)
+		newDB, walMgr, err := e.registry.GetWithWAL(s.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load database '%s': %w", s.Name, err)
 		}
 		e.db = newDB
+		e.walManager = walMgr
 		return &executor.Result{Message: fmt.Sprintf("Switched to database '%s'", s.Name)}, nil
 	}
 
@@ -104,16 +119,45 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventPlanEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", planNode)})
 
-	// 6. Execute
+	// Determine if this is a DML operation (needs WAL logging)
+	isDML := false
+	switch planNode.(type) {
+	case *plan.InsertNode, *plan.UpdateNode, *plan.DeleteNode:
+		isDML = true
+	}
+
+	// 6. Begin WAL transaction only for DML operations
+	if e.walManager != nil && isDML {
+		if err := e.walManager.BeginTransaction(tx); err != nil {
+			return nil, fmt.Errorf("WAL begin failed: %w", err)
+		}
+	}
+
+	// 7. Execute with WAL (will be nil for SELECT, so no logging happens)
 	e.notify(Event{Type: EventExecStart, TxID: tx.ID})
-	result, err := executor.Execute(planNode, e.db, tx)
+	var walMgr *manager.WALManager
+	if isDML {
+		walMgr = e.walManager
+	}
+	result, err := executor.ExecuteWithWAL(planNode, e.db, tx, walMgr)
 	if err != nil {
+		// Abort WAL transaction on execution error (only if DML)
+		if e.walManager != nil && isDML {
+			e.walManager.Abort(tx)
+		}
 		return nil, fmt.Errorf("execution error: %w", err)
 	}
 	e.notify(Event{Type: EventExecEnd, TxID: tx.ID, Data: map[string]interface{}{
 		"rows_affected": result.RowsAffected,
 		"rows_returned": len(result.Rows),
 	}})
+
+	// 8. Commit WAL transaction on success (only for DML)
+	if e.walManager != nil && isDML {
+		if err := e.walManager.Commit(tx); err != nil {
+			return nil, fmt.Errorf("WAL commit failed: %w", err)
+		}
+	}
 
 	return result, nil
 }

@@ -392,3 +392,37 @@ func normalizeToInt64(val interface{}) (int64, bool) {
 	}
 	return 0, false
 }
+
+// GetPrimaryKeyValue extracts the primary key value from a row as a string
+// This is used for WAL record keys which require a string key
+func (t *Table) GetPrimaryKeyValue(row data.Row) (string, error) {
+	pkCol := t.Schema.GetPrimaryKeyColumn()
+	if pkCol == nil {
+		return "", fmt.Errorf("table %s has no primary key", t.Name)
+	}
+
+	val, exists := row.Data[pkCol.Name]
+	if !exists {
+		return "", fmt.Errorf("row missing primary key column %s", pkCol.Name)
+	}
+
+	// Convert value to string based on type
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case int64:
+		return fmt.Sprintf("%d", v), nil
+	case int:
+		return fmt.Sprintf("%d", v), nil
+	case float64:
+		// Check if it's a whole number (common when loaded from JSON)
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%d", int64(v)), nil
+		}
+		return fmt.Sprintf("%g", v), nil
+	case bool:
+		return fmt.Sprintf("%t", v), nil
+	default:
+		return fmt.Sprintf("%v", v), nil
+	}
+}
