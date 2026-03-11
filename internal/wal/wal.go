@@ -78,6 +78,12 @@ func NewWAL(walPath string, dbName string) (*WAL, error) {
 			file.Close()
 			return nil, fmt.Errorf("failed to seek to recovered offset: %w", err)
 		}
+
+		// Truncate any trailing garbage resulting from a partial write
+		if err := file.Truncate(int64(wal.currentOffset)); err != nil {
+			file.Close()
+			return nil, fmt.Errorf("failed to truncate trailing junk: %w", err)
+		}
 	} else {
 		// Write file header for new WAL
 		if err := wal.writeFileHeader(); err != nil {

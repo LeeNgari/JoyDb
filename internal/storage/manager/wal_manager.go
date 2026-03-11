@@ -245,12 +245,13 @@ func (m *WALManager) calculateChecksums(db *schema.Database) ([]wal.TableChecksu
 	// Use RLock to iterate tables safely and snapshot paths
 	db.RLock()
 	type tableInfo struct {
-		Name string
-		Path string
+		Name  string
+		Path  string
+		Table *schema.Table
 	}
 	infos := make([]tableInfo, 0, len(db.Tables))
 	for name, table := range db.Tables {
-		infos = append(infos, tableInfo{Name: name, Path: table.Path})
+		infos = append(infos, tableInfo{Name: name, Path: table.Path, Table: table})
 	}
 	db.RUnlock()
 
@@ -259,17 +260,24 @@ func (m *WALManager) calculateChecksums(db *schema.Database) ([]wal.TableChecksu
 		dataPath := filepath.Join(info.Path, "data.json")
 		metaPath := filepath.Join(info.Path, "meta.json")
 
+		// Lock the table to prevent concurrent writes while calculating checksums
+		info.Table.RLock()
+
 		dataCRC, err := wal.CalculateFileCRC32(dataPath)
 		if err != nil {
+			info.Table.RUnlock()
 			slog.Warn("Failed to calculate data.json CRC", "table", info.Name, "error", err)
 			continue
 		}
 
 		metaCRC, err := wal.CalculateFileCRC32(metaPath)
 		if err != nil {
+			info.Table.RUnlock()
 			slog.Warn("Failed to calculate meta.json CRC", "table", info.Name, "error", err)
 			continue
 		}
+
+		info.Table.RUnlock()
 
 		tables = append(tables, wal.TableChecksum{
 			TableName: info.Name,
