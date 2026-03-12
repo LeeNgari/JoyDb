@@ -107,6 +107,10 @@ func (m *mockTarget) ReplayInsert(table, key string, val json.RawMessage) error 
 func (m *mockTarget) ReplayUpdate(table, key string, val json.RawMessage) error { return nil }
 func (m *mockTarget) ReplayDelete(table, key string) error { return nil }
 
+func (m *mockTarget) ReplayCreateTable(name string, schemaBytes []byte) error { return nil }
+func (m *mockTarget) ReplayDropTable(name string) error { return nil }
+func (m *mockTarget) ReplayAlterTable(name string, op uint8, colDesc []byte) error { return nil }
+
 func TestReplayAll_UsesCorrectOrder(t *testing.T) {
 	res := &RecoveryResult{
 		InsertOps: []*InsertRecord{

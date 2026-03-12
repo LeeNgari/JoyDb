@@ -8,7 +8,7 @@ import (
 )
 
 func TestExecuteCreateTable(t *testing.T) {
-db := schema.NewDatabase("testdb", "/tmp")
+db := &schema.Database{Name: "testdb", Path: "/tmp", Tables: make(map[string]*schema.Table)}
 ctx := &ExecutionContext{
 Database: db,
 }
@@ -30,7 +30,7 @@ assert.Equal(t, 2, len(db.Tables["users"].Schema.Columns))
 }
 
 func TestExecuteDropTable(t *testing.T) {
-db := schema.NewDatabase("testdb", "/tmp")
+db := &schema.Database{Name: "testdb", Path: "/tmp", Tables: make(map[string]*schema.Table)}
 ctx := &ExecutionContext{
 Database: db,
 }
