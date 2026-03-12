@@ -17,10 +17,11 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 
 	// 2. Validate schema (basic validation for now)
 	tableSchema := &schema.TableSchema{
-		Columns: n.Columns,
+		TableName: n.TableName,
+		Columns:   n.Columns,
 	}
-	if len(tableSchema.Columns) == 0 {
-		return nil, fmt.Errorf("table must have at least one column")
+	if err := tableSchema.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid table schema: %w", err)
 	}
 
 	// 3. Log to WAL BEFORE mutating state (WAL-first rule)
@@ -32,13 +33,21 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 
 	// 4. Create in-memory table
 	table := &schema.Table{
-		Name:   n.TableName,
-		Schema: tableSchema,
-		Rows:   []data.Row{},
+		Name:    n.TableName,
+		Schema:  tableSchema,
+		Rows:    []data.Row{},
+		Indexes: make(map[string]*data.Index),
 	}
 	
-	// Create Indexes map if it exists in schema.Table (we don't want to fail compilation if it doesn't)
-	// We'll skip index creation here to ensure compilation, since we don't need indexes for Phase 0 DDL.
+	// Manually initialize data.Index structs for unique/primary key columns
+	for _, col := range tableSchema.Columns {
+		if col.PrimaryKey || col.Unique {
+			table.Indexes[col.Name] = &data.Index{
+				Unique: true,
+				Data:   make(map[interface{}][]int),
+			}
+		}
+	}
 
 	// 5. Register table in database
 	ctx.Database.Lock()

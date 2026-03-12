@@ -13,8 +13,8 @@ import (
 func (p *Parser) parseCreateTable() *ast.CreateTableStatement {
 	stmt := &ast.CreateTableStatement{}
 
-	// Skip CREATE, curTok becomes TABLE
-	p.nextToken()
+	// Currently p.curTok is CREATE, p.peekTok is TABLE (checked by parseCreate)
+	p.nextToken() // Skip CREATE, curTok becomes TABLE
 
 	// Skip TABLE, expect next to be identifier (table name)
 	if !p.expectPeek(lexer.IDENTIFIER) {
@@ -26,7 +26,7 @@ func (p *Parser) parseCreateTable() *ast.CreateTableStatement {
 	if !p.expectPeek(lexer.PAREN_OPEN) {
 		return nil
 	}
-	p.nextToken() // Skip '(' so curTok is the first part of column def
+	// Do NOT call p.nextToken() here. expectPeek already advanced p.curTok to PAREN_OPEN
 
 	// Parse columns
 	stmt.Columns = p.parseColumnDefs()
@@ -40,6 +40,9 @@ func (p *Parser) parseCreateTable() *ast.CreateTableStatement {
 // parseColumnDefs parses the list of column definitions inside the parentheses
 func (p *Parser) parseColumnDefs() []*ast.ColumnDef {
 	var columns []*ast.ColumnDef
+
+	// curTok is PAREN_OPEN, advance to first column token
+	p.nextToken()
 
 	// Parse first column
 	if p.curTok.Type == lexer.PAREN_CLOSE {
@@ -138,8 +141,8 @@ func (p *Parser) parseColumnDef() *ast.ColumnDef {
 func (p *Parser) parseDropTable() *ast.DropTableStatement {
 	stmt := &ast.DropTableStatement{}
 
-	// Skip DROP, curTok becomes TABLE
-	p.nextToken()
+	// Currently p.curTok is DROP, p.peekTok is TABLE (checked by parseDrop)
+	p.nextToken() // Skip DROP, curTok becomes TABLE
 
 	// Skip TABLE, expect next to be identifier (table name)
 	if !p.expectPeek(lexer.IDENTIFIER) {
