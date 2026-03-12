@@ -78,6 +78,72 @@ func TestBeginTransaction(t *testing.T) {
 	assert.NilError(t, wal.verifyActiveTxn(txTwo))
 }
 
+// TestLogCreateTable verifies that LogCreateTable logs a CreateTableRecord correctly
+func TestLogCreateTable(t *testing.T) {
+	wal, tempDir := createTestWAL(t)
+	defer cleanupTestWAL(t, tempDir)
+
+	var txID uint64 = 1
+	wal.BeginTransaction(txID)
+
+	schemaBytes := []byte("dummy schema bytes")
+	lsn, err := wal.LogCreateTable(txID, "users", schemaBytes)
+	assert.NilError(t, err)
+	assert.Assert(t, lsn > 0)
+
+	wal.Commit(txID)
+	wal.Close()
+
+	// Read and verify
+	reader, err := NewWALReader(wal.Path())
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Expecting: BeginTxn, CreateTable, Commit
+	assert.Equal(t, len(records), 3)
+
+	createRec, ok := records[1].(*CreateTableRecord)
+	assert.Assert(t, ok)
+	assert.Equal(t, createRec.TxID, txID)
+	assert.Equal(t, createRec.TableName, "users")
+	assert.DeepEqual(t, createRec.Schema, schemaBytes)
+}
+
+// TestLogDropTable verifies that LogDropTable logs a DropTableRecord correctly
+func TestLogDropTable(t *testing.T) {
+	wal, tempDir := createTestWAL(t)
+	defer cleanupTestWAL(t, tempDir)
+
+	var txID uint64 = 1
+	wal.BeginTransaction(txID)
+
+	lsn, err := wal.LogDropTable(txID, "users")
+	assert.NilError(t, err)
+	assert.Assert(t, lsn > 0)
+
+	wal.Commit(txID)
+	wal.Close()
+
+	// Read and verify
+	reader, err := NewWALReader(wal.Path())
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Expecting: BeginTxn, DropTable, Commit
+	assert.Equal(t, len(records), 3)
+
+	dropRec, ok := records[1].(*DropTableRecord)
+	assert.Assert(t, ok)
+	assert.Equal(t, dropRec.TxID, txID)
+	assert.Equal(t, dropRec.TableName, "users")
+}
+
 // TestLogInsert verifies that LogInsert:
 // - Writes an Insert record with table name, key, and value
 // - Encodes the JSON payload correctly

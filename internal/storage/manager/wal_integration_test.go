@@ -124,6 +124,52 @@ func TestWALManagerDisabled(t *testing.T) {
 	assert.Assert(t, os.IsNotExist(err))
 }
 
+// TestWALManagerLogCreateTable verifies LogCreateTable and LogDropTable integration
+func TestWALManagerLogCreateTable(t *testing.T) {
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
+	assert.NilError(t, err)
+
+	tx := createTestTransaction(t)
+
+	assert.NilError(t, wm.BeginTransaction(tx))
+
+	schemaObj := &schema.TableSchema{
+		TableName: "users",
+		Columns: []schema.Column{
+			{Name: "id", Type: "INT", PrimaryKey: true},
+		},
+	}
+	assert.NilError(t, wm.LogCreateTable(tx, "users", schemaObj))
+	assert.NilError(t, wm.LogDropTable(tx, "users"))
+
+	assert.NilError(t, wm.Commit(tx))
+	assert.NilError(t, wm.Close())
+
+	// Read WAL to verify
+	walPath := filepath.Join(tempDir, dbName+".wal")
+	reader, err := wal.NewWALReader(walPath)
+	assert.NilError(t, err)
+	defer reader.Close()
+
+	records, err := reader.ScanAll()
+	assert.NilError(t, err)
+
+	// Expecting: BeginTxn, CreateTable, DropTable, Commit
+	assert.Equal(t, len(records), 4)
+
+	createRec, ok := records[1].(*wal.CreateTableRecord)
+	assert.Assert(t, ok)
+	assert.Equal(t, createRec.TableName, "users")
+
+	dropRec, ok := records[2].(*wal.DropTableRecord)
+	assert.Assert(t, ok)
+	assert.Equal(t, dropRec.TableName, "users")
+}
+
 // TestWALManagerInsert verifies LogInsert integration:
 // - Create WALManager
 // - Begin transaction
@@ -250,6 +296,117 @@ func TestWALManagerDelete(t *testing.T) {
 	assert.Equal(t, del.Key, "1")
 }
 
+// TestCreateDropRecovery verifies DDL recovery cycle
+// CREATE TABLE -> INSERT -> DROP TABLE -> Recover -> DB should not have table
+func TestCreateDropRecovery(t *testing.T) {
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
+	assert.NilError(t, err)
+
+	tx := createTestTransaction(t)
+
+	assert.NilError(t, wm.BeginTransaction(tx))
+
+	// Create table
+	schemaObj := &schema.TableSchema{
+		TableName: "users",
+		Columns: []schema.Column{
+			{Name: "id", Type: "INT", PrimaryKey: true},
+		},
+	}
+	assert.NilError(t, wm.LogCreateTable(tx, "users", schemaObj))
+
+	// Insert row
+	table := &schema.Table{
+		Name: "users",
+		Schema: schemaObj,
+	}
+	row := createTestRow(t, map[string]interface{}{"id": int64(1)})
+	assert.NilError(t, wm.LogInsert(tx, table, row))
+
+	// Drop table
+	assert.NilError(t, wm.LogDropTable(tx, "users"))
+
+	assert.NilError(t, wm.Commit(tx))
+	assert.NilError(t, wm.Close())
+
+	// Recover
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
+	assert.NilError(t, err)
+
+	db := createTestDatabase(t, dbName)
+	db.Tables = make(map[string]*schema.Table)
+
+	target := NewDatabaseReplayTarget(db)
+
+	result, err := wm2.Recover()
+	assert.NilError(t, err)
+	assert.NilError(t, result.ReplayAll(target))
+
+	// Since DROP TABLE was recorded after CREATE TABLE, the table should not exist
+	assert.Assert(t, db.Tables["users"] == nil)
+
+	wm2.Close()
+}
+
+// TestCreateTableRecoveryOrdering verifies DDL is replayed before DML
+// CREATE TABLE -> INSERT -> Recover -> DB should have table with data
+func TestCreateTableRecoveryOrdering(t *testing.T) {
+	tempDir := createTempDir(t)
+	defer os.RemoveAll(tempDir)
+
+	dbName := "testdb"
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
+	assert.NilError(t, err)
+
+	tx := createTestTransaction(t)
+
+	assert.NilError(t, wm.BeginTransaction(tx))
+
+	// Create table
+	schemaObj := &schema.TableSchema{
+		TableName: "users",
+		Columns: []schema.Column{
+			{Name: "id", Type: "INT", PrimaryKey: true},
+			{Name: "name", Type: "TEXT"},
+		},
+	}
+	assert.NilError(t, wm.LogCreateTable(tx, "users", schemaObj))
+
+	// Insert row
+	table := &schema.Table{
+		Name: "users",
+		Schema: schemaObj,
+	}
+	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
+	assert.NilError(t, wm.LogInsert(tx, table, row))
+
+	assert.NilError(t, wm.Commit(tx))
+	assert.NilError(t, wm.Close())
+
+	// Recover
+	wm2, err := NewWALManager(nil, tempDir, dbName, true, 0, nil)
+	assert.NilError(t, err)
+
+	db := createTestDatabase(t, dbName)
+	db.Tables = make(map[string]*schema.Table)
+
+	target := NewDatabaseReplayTarget(db)
+	result, err := wm2.Recover()
+	assert.NilError(t, err)
+	assert.NilError(t, result.ReplayAll(target))
+
+	// Table must exist and row must be present
+	assert.Assert(t, db.Tables["users"] != nil)
+	assert.Equal(t, len(db.Tables["users"].Rows), 1)
+	assert.Equal(t, db.Tables["users"].Rows[0].Data["name"], "Alice")
+
+	wm2.Close()
+}
+
 // TestWALManagerFullCycle verifies complete write/close/recover cycle:
 // - Insert via WALManager, commit
 // - Close WALManager
@@ -286,6 +443,42 @@ func TestWALManagerFullCycle(t *testing.T) {
 // =============================================================================
 // REPLAY TARGET INTEGRATION TESTS
 // =============================================================================
+
+// TestReplayCreateTable verifies ReplayCreateTable creates a table correctly
+func TestReplayCreateTable(t *testing.T) {
+	db := createTestDatabase(t, "testdb")
+	db.Tables = make(map[string]*schema.Table) // Start empty
+
+	target := NewDatabaseReplayTarget(db)
+
+	schemaObj := &schema.TableSchema{
+		TableName: "orders",
+		Columns: []schema.Column{
+			{Name: "id", Type: "INT", PrimaryKey: true},
+		},
+	}
+	schemaBytes := wal.EncodeTableSchema(schemaObj)
+
+	err := target.ReplayCreateTable("orders", schemaBytes)
+	assert.NilError(t, err)
+
+	assert.Assert(t, db.Tables["orders"] != nil)
+	assert.Equal(t, db.Tables["orders"].Name, "orders")
+	assert.Equal(t, len(db.Tables["orders"].Schema.Columns), 1)
+}
+
+// TestReplayDropTable verifies ReplayDropTable drops a table correctly
+func TestReplayDropTable(t *testing.T) {
+	db := createTestDatabase(t, "testdb")
+	target := NewDatabaseReplayTarget(db)
+
+	assert.Assert(t, db.Tables["users"] != nil)
+
+	err := target.ReplayDropTable("users")
+	assert.NilError(t, err)
+
+	assert.Assert(t, db.Tables["users"] == nil)
+}
 
 // TestReplayInsertToDatabase verifies ReplayInsert:
 // - Create database with empty table

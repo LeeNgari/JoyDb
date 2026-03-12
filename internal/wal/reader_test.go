@@ -13,6 +13,70 @@ import (
 // SUITE 2: WAL READER TESTS
 // =============================================================================
 
+// TestDecodeCreateTablePayload verifies decodeCreateTablePayload properly unpacks binary payload
+func TestDecodeCreateTablePayload(t *testing.T) {
+	// Create payload
+	var txID uint64 = 12345
+	tableName := "users"
+	schemaBytes := []byte("fake_schema")
+
+	payloadSize := 8 + 2 + len(tableName) + 4 + len(schemaBytes)
+	payload := make([]byte, payloadSize)
+
+	offset := 0
+	ByteOrder.PutUint64(payload[offset:], txID)
+	offset += 8
+
+	ByteOrder.PutUint16(payload[offset:], uint16(len(tableName)))
+	offset += 2
+	copy(payload[offset:], tableName)
+	offset += len(tableName)
+
+	ByteOrder.PutUint32(payload[offset:], uint32(len(schemaBytes)))
+	offset += 4
+	copy(payload[offset:], schemaBytes)
+	offset += len(schemaBytes)
+
+	header := WALRecordHeader{
+		Type:       RecordCreateTable,
+		PayloadLen: uint32(payloadSize),
+	}
+
+	rec, err := decodeCreateTablePayload(header, payload)
+	assert.NilError(t, err)
+	assert.Equal(t, rec.TxID, txID)
+	assert.Equal(t, rec.TableName, tableName)
+	assert.DeepEqual(t, rec.Schema, schemaBytes)
+}
+
+// TestDecodeDropTablePayload verifies decodeDropTablePayload properly unpacks binary payload
+func TestDecodeDropTablePayload(t *testing.T) {
+	var txID uint64 = 98765
+	tableName := "orders"
+
+	payloadSize := 8 + 2 + len(tableName)
+	payload := make([]byte, payloadSize)
+
+	offset := 0
+	ByteOrder.PutUint64(payload[offset:], txID)
+	offset += 8
+
+	ByteOrder.PutUint16(payload[offset:], uint16(len(tableName)))
+	offset += 2
+	copy(payload[offset:], tableName)
+	offset += len(tableName)
+
+	header := WALRecordHeader{
+		Type:       RecordDropTable,
+		PayloadLen: uint32(payloadSize),
+	}
+
+	rec, err := decodeDropTablePayload(header, payload)
+	assert.NilError(t, err)
+	assert.Equal(t, rec.TxID, txID)
+	assert.Equal(t, rec.TableName, tableName)
+}
+
 // TestReadFileHeader verifies that the WAL file header:
 // - Can be read after creating a new WAL
 // - Contains correct magic bytes
