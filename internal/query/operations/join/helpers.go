@@ -84,19 +84,6 @@ func validateJoinCondition(
 	return nil
 }
 
-// executeJoinWithDisambiguation is a helper used by innerJoin to find the right column name
-func resolveJoinColumn(table *schema.Table, colName string) string {
-	for i := range table.Schema.Columns {
-		if table.Schema.Columns[i].Name == colName {
-			return colName
-		}
-		if strings.HasSuffix(table.Schema.Columns[i].Name, "."+colName) {
-			return table.Schema.Columns[i].Name
-		}
-	}
-	return colName
-}
-
 // buildJoinIndex creates a hash index for the join column
 // Returns the index and a boolean indicating if an existing index was reused
 func buildJoinIndex(table *schema.Table, columnName string) (map[interface{}][]int, bool) {

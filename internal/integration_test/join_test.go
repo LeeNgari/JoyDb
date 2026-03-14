@@ -35,89 +35,47 @@ func TestJoinOperations(t *testing.T) {
 		t.Skip("orders table not found - skipping JOIN tests")
 	}
 
-	t.Run("InnerJoin", func(t *testing.T) {
-		tx := transaction.NewTransaction()
-		defer tx.Close()
-		results, err := join.ExecuteJoin(
-			usersTable, ordersTable,
-			"id", "user_id",
-			join.JoinTypeInner,
-			nil, nil, tx,
-		)
+	joinTests := []struct {
+		name     string
+		joinType join.JoinType
+	}{
+		{"InnerJoin", join.JoinTypeInner},
+		{"LeftJoin", join.JoinTypeLeft},
+		{"RightJoin", join.JoinTypeRight},
+		{"FullOuterJoin", join.JoinTypeFull},
+	}
 
-		testutil.AssertNoError(t, err, "INNER JOIN")
-		if len(results) == 0 {
-			t.Error("Expected JOIN results, got none")
-		}
+	for _, tt := range joinTests {
+		t.Run(tt.name, func(t *testing.T) {
+			tx := transaction.NewTransaction()
+			defer tx.Close()
+			results, err := join.ExecuteJoin(
+				usersTable, ordersTable,
+				"id", "user_id",
+				tt.joinType,
+				nil, nil, tx,
+			)
 
-		// Verify joined row structure
-		for _, row := range results {
-			if _, exists := row.Get("users.id"); !exists {
-				t.Error("Expected users.id in joined row")
+			testutil.AssertNoError(t, err, tt.name)
+			if len(results) == 0 {
+				t.Errorf("Expected %s results, got none", tt.name)
 			}
-			if _, exists := row.Get("orders.product"); !exists {
-				t.Error("Expected orders.product in joined row")
+
+			if tt.joinType == join.JoinTypeInner {
+				// Verify joined row structure for inner join
+				for _, row := range results {
+					if _, exists := row.Get("users.id"); !exists {
+						t.Error("Expected users.id in joined row")
+					}
+					if _, exists := row.Get("orders.product"); !exists {
+						t.Error("Expected orders.product in joined row")
+					}
+				}
 			}
-		}
 
-		t.Logf("INNER JOIN returned %d rows", len(results))
-	})
-
-	t.Run("LeftJoin", func(t *testing.T) {
-		tx := transaction.NewTransaction()
-		defer tx.Close()
-		results, err := join.ExecuteJoin(
-			usersTable, ordersTable,
-			"id", "user_id",
-			join.JoinTypeLeft,
-			nil, nil, tx,
-		)
-
-		testutil.AssertNoError(t, err, "LEFT JOIN")
-		
-		// LEFT JOIN should return at least as many rows as INNER JOIN
-		if len(results) == 0 {
-			t.Error("Expected LEFT JOIN results, got none")
-		}
-
-		t.Logf("LEFT JOIN returned %d rows", len(results))
-	})
-
-	t.Run("RightJoin", func(t *testing.T) {
-		tx := transaction.NewTransaction()
-		defer tx.Close()
-		results, err := join.ExecuteJoin(
-			usersTable, ordersTable,
-			"id", "user_id",
-			join.JoinTypeRight,
-			nil, nil, tx,
-		)
-
-		testutil.AssertNoError(t, err, "RIGHT JOIN")
-		if len(results) == 0 {
-			t.Error("Expected RIGHT JOIN results, got none")
-		}
-
-		t.Logf("RIGHT JOIN returned %d rows", len(results))
-	})
-
-	t.Run("FullOuterJoin", func(t *testing.T) {
-		tx := transaction.NewTransaction()
-		defer tx.Close()
-		results, err := join.ExecuteJoin(
-			usersTable, ordersTable,
-			"id", "user_id",
-			join.JoinTypeFull,
-			nil, nil, tx,
-		)
-
-		testutil.AssertNoError(t, err, "FULL OUTER JOIN")
-		if len(results) == 0 {
-			t.Error("Expected FULL JOIN results, got none")
-		}
-
-		t.Logf("FULL OUTER JOIN returned %d rows", len(results))
-	})
+			t.Logf("%s returned %d rows", tt.name, len(results))
+		})
+	}
 
 	t.Run("JoinWithProjection", func(t *testing.T) {
 		tx := transaction.NewTransaction()

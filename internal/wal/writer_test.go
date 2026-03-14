@@ -293,24 +293,3 @@ func TestLSNMonotonicity(t *testing.T) {
 // FILE VERIFICATION HELPERS
 // =============================================================================
 
-// verifyWALFileExists checks that a WAL file was created at the expected path.
-func verifyWALFileExists(t *testing.T, tempDir, dbName string) {
-	t.Helper()
-	walPath := filepath.Join(tempDir, dbName+".wal")
-	if _, err := os.Stat(walPath); os.IsNotExist(err) {
-		t.Fatalf("WAL file not found at %s", walPath)
-	}
-}
-
-// verifyWALNotEmpty checks that the WAL file has content.
-func verifyWALNotEmpty(t *testing.T, tempDir, dbName string) {
-	t.Helper()
-	walPath := filepath.Join(tempDir, dbName+".wal")
-	info, err := os.Stat(walPath)
-	if err != nil {
-		t.Fatalf("failed to stat WAL file: %v", err)
-	}
-	if info.Size() == 0 {
-		t.Fatal("WAL file is empty")
-	}
-}

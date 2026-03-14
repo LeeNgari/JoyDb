@@ -15,11 +15,6 @@ func isIdentifierOrKeyword(t lexer.TokenType) bool {
 	return t == lexer.IDENTIFIER || isTypedLiteralKeyword(t)
 }
 
-// isNumericType checks if a literal kind represents a numeric type
-func isNumericType(kind string) bool {
-	return kind == "INT" || kind == "FLOAT"
-}
-
 // isComparisonOperator checks if a token type is a comparison operator
 func isComparisonOperator(t lexer.TokenType) bool {
 	return t == lexer.EQUALS ||
@@ -30,7 +25,3 @@ func isComparisonOperator(t lexer.TokenType) bool {
 		t == lexer.NOT_EQUAL
 }
 
-// isLogicalOperator checks if a token type is a logical operator (AND, OR)
-func isLogicalOperator(t lexer.TokenType) bool {
-	return t == lexer.AND || t == lexer.OR
-}
