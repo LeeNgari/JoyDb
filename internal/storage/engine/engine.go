@@ -35,4 +35,11 @@ type StorageEngine interface {
 
 	// SaveTable persists a single table to disk
 	SaveTable(table *schema.Table, tx *transaction.Transaction) error
+
+	// CreateSnapshot atomically persists the current in-memory state and returns the snapshot LSN.
+	// The returned LSN is embedded in the WAL checkpoint record.
+	CreateSnapshot(db *schema.Database, snapshotDir string) (snapshotLSN uint64, snapshotCRC uint32, err error)
+
+	// LoadSnapshot loads a snapshot file into the given (possibly empty) database.
+	LoadSnapshot(db *schema.Database, snapshotPath string) error
 }

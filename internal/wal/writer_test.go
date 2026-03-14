@@ -204,12 +204,10 @@ func TestWriteCheckpoint(t *testing.T) {
 	wal.LogInsert(txID, "users", "1", createTestJSON(t, map[string]interface{}{"name": "Alice"}))
 	wal.Commit(txID)
 
-	tables := []TableChecksum{
-		{TableName: "users", DataCRC32: 12345, MetaCRC32: 67890},
-	}
-	dbCRC := uint32(11111)
+	snapshotLSN := uint64(42)
+	snapshotCRC := uint32(11111)
 
-	lsn, err := wal.WriteCheckpoint(tables, dbCRC)
+	lsn, err := wal.WriteCheckpoint(snapshotLSN, snapshotCRC)
 	assert.NilError(t, err)
 	assert.Assert(t, lsn > 0)
 	assert.Equal(t, wal.LastCheckpointLSN(), lsn)
@@ -285,7 +283,7 @@ func TestLSNMonotonicity(t *testing.T) {
 	lsn, _ = wal.Commit(tx1)
 	checkLSN(lsn)
 
-	lsn, _ = wal.WriteCheckpoint(nil, 0)
+	lsn, _ = wal.WriteCheckpoint(0, 0)
 	checkLSN(lsn)
 }
 

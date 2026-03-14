@@ -9,6 +9,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/wal"
 )
 
@@ -21,6 +22,7 @@ type WALManager struct {
 	dbPath       string
 	dbName       string
 	enabled      bool
+	engine       engine.StorageEngine
 }
 
 // NewWALManager creates a new WAL manager for a database
@@ -31,6 +33,7 @@ func NewWALManager(
 	enabled bool,
 	checkpointInterval time.Duration,
 	saveFunc func() error,
+	storageEngine engine.StorageEngine,
 ) (*WALManager, error) {
 	if !enabled {
 		return &WALManager{
@@ -38,6 +41,7 @@ func NewWALManager(
 			dbPath:  dbPath,
 			dbName:  dbName,
 			enabled: false,
+			engine:  storageEngine,
 		}, nil
 	}
 
@@ -53,6 +57,7 @@ func NewWALManager(
 		dbPath:  dbPath,
 		dbName:  dbName,
 		enabled: true,
+		engine:  storageEngine,
 	}
 
 	// Setup async checkpointer
@@ -271,76 +276,27 @@ func (m *WALManager) WriteCheckpoint(db *schema.Database) error {
 		return nil
 	}
 
-	checksums, dbCRC, err := m.calculateChecksums(db)
+	snapshotLSN, snapshotCRC, err := m.createAndRecordSnapshot(db)
 	if err != nil {
 		return err
 	}
 
-	lsn, err := m.wal.WriteCheckpoint(checksums, dbCRC)
+	lsn, err := m.wal.WriteCheckpoint(snapshotLSN, snapshotCRC)
 	if err != nil {
 		return fmt.Errorf("WAL WriteCheckpoint failed: %w", err)
 	}
 
-	slog.Info("WAL: Checkpoint written", "database", m.dbName, "tables", len(checksums), "lsn", lsn)
+	slog.Info("WAL: Checkpoint written", "database", m.dbName, "snapshot_lsn", snapshotLSN, "lsn", lsn)
 	return nil
 }
 
-// calculateChecksums calculates CRCs for all tables and the database metadata
-func (m *WALManager) calculateChecksums(db *schema.Database) ([]wal.TableChecksum, uint32, error) {
-	// Calculate checksums for all tables
-	// Use RLock to iterate tables safely and snapshot paths
-	db.RLock()
-	type tableInfo struct {
-		Name  string
-		Path  string
-		Table *schema.Table
-	}
-	infos := make([]tableInfo, 0, len(db.Tables))
-	for name, table := range db.Tables {
-		infos = append(infos, tableInfo{Name: name, Path: table.Path, Table: table})
-	}
-	db.RUnlock()
-
-	tables := make([]wal.TableChecksum, 0, len(infos))
-	for _, info := range infos {
-		dataPath := filepath.Join(info.Path, "data.json")
-		metaPath := filepath.Join(info.Path, "meta.json")
-
-		// Lock the table to prevent concurrent writes while calculating checksums
-		info.Table.RLock()
-
-		dataCRC, err := wal.CalculateFileCRC32(dataPath)
-		if err != nil {
-			info.Table.RUnlock()
-			slog.Warn("Failed to calculate data.json CRC", "table", info.Name, "error", err)
-			continue
-		}
-
-		metaCRC, err := wal.CalculateFileCRC32(metaPath)
-		if err != nil {
-			info.Table.RUnlock()
-			slog.Warn("Failed to calculate meta.json CRC", "table", info.Name, "error", err)
-			continue
-		}
-
-		info.Table.RUnlock()
-
-		tables = append(tables, wal.TableChecksum{
-			TableName: info.Name,
-			DataCRC32: dataCRC,
-			MetaCRC32: metaCRC,
-		})
+// createAndRecordSnapshot creates a snapshot using the storage engine
+func (m *WALManager) createAndRecordSnapshot(db *schema.Database) (uint64, uint32, error) {
+	if m.engine == nil {
+		return 0, 0, fmt.Errorf("StorageEngine is not configured in WALManager")
 	}
 
-	// Calculate database meta CRC
-	dbMetaPath := filepath.Join(db.Path, "meta.json")
-	dbCRC, err := wal.CalculateFileCRC32(dbMetaPath)
-	if err != nil {
-		slog.Warn("Failed to calculate database meta.json CRC", "error", err)
-		dbCRC = 0
-	}
-
-	return tables, dbCRC, nil
+	return m.engine.CreateSnapshot(db, m.dbPath)
 }
 
 // Recover performs WAL recovery and returns operations to replay

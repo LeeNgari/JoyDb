@@ -320,42 +320,17 @@ func (rm *RecoveryManager) collectCommittedOps(tracker *TxnTracker, result *Reco
 // CHECKPOINT VERIFICATION
 // ===========================================================================
 
-// VerifyCheckpoint verifies that JSON files match checkpoint checksums
+// VerifyCheckpoint verifies that the snapshot file matches the checkpoint checksum
 func (rm *RecoveryManager) VerifyCheckpoint(checkpoint *CheckpointRecord) (bool, error) {
-	// Verify database meta.json CRC
-	dbMetaPath := filepath.Join(rm.dbPath, "meta.json")
-	dbCRC, err := CalculateFileCRC32(dbMetaPath)
+	// Verify snapshot file CRC
+	snapshotPath := filepath.Join(rm.dbPath, fmt.Sprintf("%d.snap", checkpoint.SnapshotLSN))
+	snapshotCRC, err := CalculateFileCRC32(snapshotPath)
 	if err != nil {
 		// File doesn't exist or can't be read - checkpoint invalid
 		return false, nil
 	}
-	if dbCRC != checkpoint.DatabaseCRC32 {
+	if snapshotCRC != checkpoint.SnapshotCRC32 {
 		return false, nil
-	}
-
-	// Verify each table's checksums
-	for _, table := range checkpoint.Tables {
-		tablePath := filepath.Join(rm.dbPath, table.TableName)
-
-		// Check data.json CRC
-		dataPath := filepath.Join(tablePath, "data.json")
-		dataCRC, err := CalculateFileCRC32(dataPath)
-		if err != nil {
-			return false, nil
-		}
-		if dataCRC != table.DataCRC32 {
-			return false, nil
-		}
-
-		// Check meta.json CRC
-		metaPath := filepath.Join(tablePath, "meta.json")
-		metaCRC, err := CalculateFileCRC32(metaPath)
-		if err != nil {
-			return false, nil
-		}
-		if metaCRC != table.MetaCRC32 {
-			return false, nil
-		}
 	}
 
 	return true, nil

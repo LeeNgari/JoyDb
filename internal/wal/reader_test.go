@@ -228,7 +228,7 @@ func TestReadAllRecordTypes(t *testing.T) {
 	wal.BeginTransaction(2)
 	wal.Abort(2)
 
-	wal.WriteCheckpoint([]TableChecksum{{TableName: "t1", DataCRC32: 1, MetaCRC32: 2}}, 999)
+	wal.WriteCheckpoint(uint64(42), uint32(999))
 
 	wal.Close()
 
@@ -272,8 +272,8 @@ func TestReadAllRecordTypes(t *testing.T) {
 	// Checkpoint
 	assert.Assert(t, records[7].GetHeader().Type == RecordCheckpoint)
 	cp := records[7].(*CheckpointRecord)
-	assert.Equal(t, cp.DatabaseCRC32, uint32(999))
-	assert.Equal(t, len(cp.Tables), 1)
+	assert.Equal(t, cp.SnapshotCRC32, uint32(999))
+	assert.Equal(t, cp.SnapshotLSN, uint64(42))
 }
 
 // TestSeekToOffset verifies direct offset seeking:

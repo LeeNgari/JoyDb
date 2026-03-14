@@ -189,13 +189,10 @@ func TestRoundTrip_CheckpointRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	tables := []TableChecksum{
-		{TableName: "t1", DataCRC32: 1, MetaCRC32: 2},
-		{TableName: "t2", DataCRC32: 3, MetaCRC32: 4},
-	}
-	dbCRC := uint32(99)
+	snapshotLSN := uint64(42)
+	snapshotCRC := uint32(99)
 
-	lsn, err := w.WriteCheckpoint(tables, dbCRC)
+	lsn, err := w.WriteCheckpoint(snapshotLSN, snapshotCRC)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,14 +215,11 @@ func TestRoundTrip_CheckpointRecord(t *testing.T) {
 		t.Fatalf("Expected CheckpointRecord, got %T", rec)
 	}
 
-	if cp.DatabaseCRC32 != dbCRC {
-		t.Errorf("DatabaseCRC mismatch: %d vs %d", cp.DatabaseCRC32, dbCRC)
+	if cp.SnapshotCRC32 != snapshotCRC {
+		t.Errorf("SnapshotCRC32 mismatch: %d vs %d", cp.SnapshotCRC32, snapshotCRC)
 	}
-	if len(cp.Tables) != 2 {
-		t.Errorf("Table count mismatch: %d vs 2", len(cp.Tables))
-	}
-	if cp.Tables[0].TableName != "t1" || cp.Tables[1].TableName != "t2" {
-		t.Error("Table data mismatch")
+	if cp.SnapshotLSN != snapshotLSN {
+		t.Errorf("SnapshotLSN mismatch: %d vs %d", cp.SnapshotLSN, snapshotLSN)
 	}
 	if cp.CheckpointLSN != lsn {
 		t.Error("LSN mismatch")

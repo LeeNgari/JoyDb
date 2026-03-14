@@ -89,6 +89,11 @@ func (r *WALReader) ReadFileHeader() (*WALFileHeader, error) {
 		Magic:   magic,
 		Version: ByteOrder.Uint16(buf[8:10]),
 	}
+
+	if header.Version < 2 {
+		return nil, fmt.Errorf("unsupported WAL version: %d (expected 2 or higher)", header.Version)
+	}
+
 	copy(header.DatabaseName[:], buf[10:42])
 	header.InitialLSN = ByteOrder.Uint64(buf[42:50])
 	header.CreatedAt = int64(ByteOrder.Uint64(buf[50:58]))
@@ -469,11 +474,9 @@ func decodeAbortPayload(header WALRecordHeader, payload []byte) (*AbortRecord, e
 }
 
 // decodeCheckpointPayload decodes a Checkpoint record payload
-// Format: CheckpointLSN(8) + CheckpointOffset(8) + LastFlushedLSN(8) + Timestamp(8) +
-//
-//	DatabaseCRC32(4) + TableCount(4) + [TableChecksums...]
+// Format: CheckpointLSN(8) + CheckpointOffset(8) + LastFlushedLSN(8) + Timestamp(8) + SnapshotLSN(8) + SnapshotCRC32(4)
 func decodeCheckpointPayload(header WALRecordHeader, payload []byte) (*CheckpointRecord, error) {
-	if len(payload) < 40 { // minimum fixed fields
+	if len(payload) < 44 { // minimum fixed fields
 		return nil, fmt.Errorf("checkpoint payload too short: %d bytes", len(payload))
 	}
 
@@ -495,41 +498,12 @@ func decodeCheckpointPayload(header WALRecordHeader, payload []byte) (*Checkpoin
 	timestamp := int64(ByteOrder.Uint64(payload[offset:]))
 	offset += 8
 
-	// DatabaseCRC32 (4 bytes)
-	databaseCRC32 := ByteOrder.Uint32(payload[offset:])
-	offset += 4
+	// SnapshotLSN (8 bytes)
+	snapshotLSN := ByteOrder.Uint64(payload[offset:])
+	offset += 8
 
-	// TableCount (4 bytes)
-	tableCount := ByteOrder.Uint32(payload[offset:])
-	offset += 4
-
-	// Tables
-	tables := make([]TableChecksum, tableCount)
-	for i := uint32(0); i < tableCount; i++ {
-		// TableName
-		tableName, newOffset, err := decodeString(payload, offset)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode table %d name: %w", i, err)
-		}
-		offset = newOffset
-
-		// DataCRC32 (4 bytes)
-		if offset+8 > len(payload) {
-			return nil, fmt.Errorf("payload too short for table %d checksums", i)
-		}
-		dataCRC32 := ByteOrder.Uint32(payload[offset:])
-		offset += 4
-
-		// MetaCRC32 (4 bytes)
-		metaCRC32 := ByteOrder.Uint32(payload[offset:])
-		offset += 4
-
-		tables[i] = TableChecksum{
-			TableName: tableName,
-			DataCRC32: dataCRC32,
-			MetaCRC32: metaCRC32,
-		}
-	}
+	// SnapshotCRC32 (4 bytes)
+	snapshotCRC32 := ByteOrder.Uint32(payload[offset:])
 
 	return &CheckpointRecord{
 		Header:           header,
@@ -537,9 +511,8 @@ func decodeCheckpointPayload(header WALRecordHeader, payload []byte) (*Checkpoin
 		CheckpointOffset: checkpointOffset,
 		LastFlushedLSN:   lastFlushedLSN,
 		Timestamp:        timestamp,
-		DatabaseCRC32:    databaseCRC32,
-		TableCount:       tableCount,
-		Tables:           tables,
+		SnapshotLSN:      snapshotLSN,
+		SnapshotCRC32:    snapshotCRC32,
 	}, nil
 }
 
