@@ -2,6 +2,7 @@ package wal
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -99,13 +100,31 @@ func TestGetAllOperations_SortsByLSN(t *testing.T) {
 // Mock Replay Target
 type mockTarget struct {
 	inserts []string
+	ops     []string
 }
+
 func (m *mockTarget) ReplayInsert(table, key string, val json.RawMessage) error {
 	m.inserts = append(m.inserts, key)
 	return nil
 }
+
 func (m *mockTarget) ReplayUpdate(table, key string, val json.RawMessage) error { return nil }
 func (m *mockTarget) ReplayDelete(table, key string) error { return nil }
+
+func (m *mockTarget) ReplayCreateTable(name string, schemaBytes []byte) error {
+	m.ops = append(m.ops, fmt.Sprintf("CREATE TABLE %s", name))
+	return nil
+}
+
+func (m *mockTarget) ReplayDropTable(name string) error {
+	m.ops = append(m.ops, fmt.Sprintf("DROP TABLE %s", name))
+	return nil
+}
+
+func (m *mockTarget) ReplayAlterTable(name string, op uint8, colDesc []byte) error {
+	m.ops = append(m.ops, fmt.Sprintf("ALTER TABLE %s", name))
+	return nil
+}
 
 func TestReplayAll_UsesCorrectOrder(t *testing.T) {
 	res := &RecoveryResult{

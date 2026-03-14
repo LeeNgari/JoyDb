@@ -11,7 +11,7 @@ import (
 // ===========================================================================
 //
 // Binary format for TableSchema:
-//   [ColCount(2)] [Col1] [Col2] ...
+//   [NameLen(2)][TableName(N)] [ColCount(2)] [Col1] [Col2] ...
 //
 // Binary format for a single Column:
 //   [NameLen(2)][Name(N)][Type(1)][Flags(1)]
@@ -50,16 +50,21 @@ var byteToColumnType = map[byte]schema.ColumnType{
 }
 
 // EncodeTableSchema encodes a TableSchema to a binary byte slice.
-// Format: [ColCount(2)] [Col1] [Col2] ...
 func EncodeTableSchema(s *schema.TableSchema) []byte {
 	// Pre-calculate size
-	size := 2 // ColCount
+	size := 2 + len(s.TableName) + 2 // NameLen + Name + ColCount
 	for _, col := range s.Columns {
 		size += encodedColumnSize(col)
 	}
 
 	buf := make([]byte, size)
 	offset := 0
+
+	// TableName (2 bytes len + string)
+	ByteOrder.PutUint16(buf[offset:], uint16(len(s.TableName)))
+	offset += 2
+	copy(buf[offset:], s.TableName)
+	offset += len(s.TableName)
 
 	// ColCount (2 bytes)
 	ByteOrder.PutUint16(buf[offset:], uint16(len(s.Columns)))
@@ -82,7 +87,19 @@ func DecodeTableSchema(data []byte) (*schema.TableSchema, error) {
 
 	offset := 0
 
+	// TableName
+	nameLen := int(ByteOrder.Uint16(data[offset:]))
+	offset += 2
+	if offset+nameLen > len(data) {
+		return nil, fmt.Errorf("schema buffer too small for table name")
+	}
+	tableName := string(data[offset : offset+nameLen])
+	offset += nameLen
+
 	// ColCount (2 bytes)
+	if offset+2 > len(data) {
+		return nil, fmt.Errorf("schema buffer too small for column count")
+	}
 	colCount := int(ByteOrder.Uint16(data[offset:]))
 	offset += 2
 
@@ -96,7 +113,7 @@ func DecodeTableSchema(data []byte) (*schema.TableSchema, error) {
 		offset = newOffset
 	}
 
-	return &schema.TableSchema{Columns: columns}, nil
+	return &schema.TableSchema{TableName: tableName, Columns: columns}, nil
 }
 
 // EncodeColumn encodes a single Column to a binary byte slice.

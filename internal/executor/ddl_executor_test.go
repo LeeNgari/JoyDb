@@ -8,45 +8,53 @@ import (
 )
 
 func TestExecuteCreateTable(t *testing.T) {
-db := schema.NewDatabase("testdb", "/tmp")
-ctx := &ExecutionContext{
-Database: db,
-}
+	db := &schema.Database{
+		Name:   "testdb",
+		Path:   "/tmp",
+		Tables: make(map[string]*schema.Table),
+	}
+	ctx := &ExecutionContext{
+		Database: db,
+	}
 
-node := &plan.CreateTableNode{
-TableName: "users",
-Columns: []schema.Column{
-{Name: "id", Type: schema.ColumnTypeInt},
-{Name: "name", Type: schema.ColumnTypeText},
-},
-}
+	node := &plan.CreateTableNode{
+		TableName: "users",
+		Columns: []schema.Column{
+			{Name: "id", Type: "INT", PrimaryKey: true},
+			{Name: "name", Type: "TEXT"},
+		},
+	}
 
-res, err := executeCreateTable(node, ctx)
-assert.NoError(t, err)
-assert.NotNil(t, res)
+	res, err := executeCreateTable(node, ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
 
-assert.Contains(t, db.Tables, "users")
-assert.Equal(t, 2, len(db.Tables["users"].Schema.Columns))
+	assert.Contains(t, db.Tables, "users")
+	assert.Equal(t, 2, len(db.Tables["users"].Schema.Columns))
 }
 
 func TestExecuteDropTable(t *testing.T) {
-db := schema.NewDatabase("testdb", "/tmp")
-ctx := &ExecutionContext{
-Database: db,
-}
+	db := &schema.Database{
+		Name:   "testdb",
+		Path:   "/tmp",
+		Tables: make(map[string]*schema.Table),
+	}
+	ctx := &ExecutionContext{
+		Database: db,
+	}
 
-// Create table first
-db.Tables["users"] = &schema.Table{
-Name: "users",
-}
+	// Create table first
+	db.Tables["users"] = &schema.Table{
+		Name: "users",
+	}
 
-node := &plan.DropTableNode{
-TableName: "users",
-}
+	node := &plan.DropTableNode{
+		TableName: "users",
+	}
 
-res, err := executeDropTable(node, ctx)
-assert.NoError(t, err)
-assert.NotNil(t, res)
+	res, err := executeDropTable(node, ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, res)
 
-assert.NotContains(t, db.Tables, "users")
+	assert.NotContains(t, db.Tables, "users")
 }
