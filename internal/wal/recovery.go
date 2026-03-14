@@ -466,11 +466,20 @@ func (t *TxnTracker) getOrCreateTxn(txID uint64, lsn uint64) *TxnRecoveryState {
 	return txn
 }
 
+// checkActiveTxn gets or creates a transaction and ensures it is active
+func (t *TxnTracker) checkActiveTxn(txID uint64, lsn uint64, opName string) (*TxnRecoveryState, error) {
+	txn := t.getOrCreateTxn(txID, lsn)
+	if txn.State != TxnActive {
+		return nil, fmt.Errorf("cannot add %s to non-active transaction %d", opName, txID)
+	}
+	return txn, nil
+}
+
 // AddInsert adds an insert operation to a transaction
 func (t *TxnTracker) AddInsert(record *InsertRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add insert to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "insert")
+	if err != nil {
+		return err
 	}
 	txn.Inserts = append(txn.Inserts, record)
 	return nil
@@ -478,9 +487,9 @@ func (t *TxnTracker) AddInsert(record *InsertRecord) error {
 
 // AddUpdate adds an update operation to a transaction
 func (t *TxnTracker) AddUpdate(record *UpdateRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add update to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "update")
+	if err != nil {
+		return err
 	}
 	txn.Updates = append(txn.Updates, record)
 	return nil
@@ -488,9 +497,9 @@ func (t *TxnTracker) AddUpdate(record *UpdateRecord) error {
 
 // AddDelete adds a delete operation to a transaction
 func (t *TxnTracker) AddDelete(record *DeleteRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add delete to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "delete")
+	if err != nil {
+		return err
 	}
 	txn.Deletes = append(txn.Deletes, record)
 	return nil
@@ -521,9 +530,9 @@ func (t *TxnTracker) AbortTransaction(record *AbortRecord) error {
 
 // AddCreateTable adds a CREATE TABLE operation to a transaction
 func (t *TxnTracker) AddCreateTable(record *CreateTableRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add CreateTable to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "CreateTable")
+	if err != nil {
+		return err
 	}
 	txn.CreateTables = append(txn.CreateTables, record)
 	return nil
@@ -531,9 +540,9 @@ func (t *TxnTracker) AddCreateTable(record *CreateTableRecord) error {
 
 // AddDropTable adds a DROP TABLE operation to a transaction
 func (t *TxnTracker) AddDropTable(record *DropTableRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add DropTable to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "DropTable")
+	if err != nil {
+		return err
 	}
 	txn.DropTables = append(txn.DropTables, record)
 	return nil
@@ -541,9 +550,9 @@ func (t *TxnTracker) AddDropTable(record *DropTableRecord) error {
 
 // AddAlterTable adds an ALTER TABLE operation to a transaction
 func (t *TxnTracker) AddAlterTable(record *AlterTableRecord) error {
-	txn := t.getOrCreateTxn(record.TxID, record.Header.LSN)
-	if txn.State != TxnActive {
-		return fmt.Errorf("cannot add AlterTable to non-active transaction %d", record.TxID)
+	txn, err := t.checkActiveTxn(record.TxID, record.Header.LSN, "AlterTable")
+	if err != nil {
+		return err
 	}
 	txn.AlterTables = append(txn.AlterTables, record)
 	return nil
@@ -717,32 +726,3 @@ func (result *RecoveryResult) GetAllOperations() []WALRecord {
 	return ops
 }
 
-// ===========================================================================
-// HELPER FUNCTIONS
-// ===========================================================================
-
-// getTxIDFromRecord extracts the transaction ID from a WAL record
-func getTxIDFromRecord(r WALRecord) uint64 {
-	switch rec := r.(type) {
-	case *BeginTxnRecord:
-		return rec.TxID
-	case *InsertRecord:
-		return rec.TxID
-	case *UpdateRecord:
-		return rec.TxID
-	case *DeleteRecord:
-		return rec.TxID
-	case *CommitRecord:
-		return rec.TxID
-	case *AbortRecord:
-		return rec.TxID
-	case *CreateTableRecord:
-		return rec.TxID
-	case *DropTableRecord:
-		return rec.TxID
-	case *AlterTableRecord:
-		return rec.TxID
-	default:
-		return 0
-	}
-}

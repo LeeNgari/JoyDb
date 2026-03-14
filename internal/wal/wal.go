@@ -3,6 +3,7 @@ package wal
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"sync"
@@ -74,7 +75,7 @@ func NewWAL(walPath string, dbName string) (*WAL, error) {
 			"offset", wal.currentOffset)
 
 		// Seek to the end of valid data
-		if _, err := file.Seek(int64(wal.currentOffset), os.SEEK_SET); err != nil {
+		if _, err := file.Seek(int64(wal.currentOffset), io.SeekStart); err != nil {
 			file.Close()
 			return nil, fmt.Errorf("failed to seek to recovered offset: %w", err)
 		}

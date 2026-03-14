@@ -120,28 +120,3 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 	}
 }
 
-// parseTypedLiteral parses a typed literal (DATE, TIME, EMAIL)
-// Format: TYPE 'value'
-// Example: DATE '2024-01-13', TIME '14:30:00', EMAIL 'user@example.com'
-func (p *Parser) parseTypedLiteral(kind ast.LiteralKind, validator func(string) error) (*ast.Literal, error) {
-	typeKeyword := p.curTok.Literal
-	p.nextToken() // consume type keyword (DATE/TIME/EMAIL)
-
-	if p.curTok.Type != lexer.STRING {
-		return nil, fmt.Errorf("expected string literal after %s, got %s", typeKeyword, p.curTok.Literal)
-	}
-
-	value := p.curTok.Literal
-	
-	// Validate the format
-	if err := validator(value); err != nil {
-		return nil, fmt.Errorf("%s validation failed: %w", typeKeyword, err)
-	}
-
-	p.nextToken()
-	return &ast.Literal{
-		TokenLiteralValue: typeKeyword + " '" + value + "'",
-		Value:             value,
-		Kind:              kind,
-	}, nil
-}

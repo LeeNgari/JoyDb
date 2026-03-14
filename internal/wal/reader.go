@@ -313,7 +313,7 @@ func decodeBeginTxnPayload(header WALRecordHeader, payload []byte) (*BeginTxnRec
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + ValueLen(4) + Value
 func decodeInsertPayload(header WALRecordHeader, payload []byte) (*InsertRecord, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("Insert payload too short: %d bytes", len(payload))
+		return nil, fmt.Errorf("insert payload too short: %d bytes", len(payload))
 	}
 
 	offset := 0
@@ -355,7 +355,7 @@ func decodeInsertPayload(header WALRecordHeader, payload []byte) (*InsertRecord,
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + OldValueLen(4) + OldValue + NewValueLen(4) + NewValue
 func decodeUpdatePayload(header WALRecordHeader, payload []byte) (*UpdateRecord, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("Update payload too short: %d bytes", len(payload))
+		return nil, fmt.Errorf("update payload too short: %d bytes", len(payload))
 	}
 
 	offset := 0
@@ -405,7 +405,7 @@ func decodeUpdatePayload(header WALRecordHeader, payload []byte) (*UpdateRecord,
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + OldValueLen(4) + OldValue
 func decodeDeletePayload(header WALRecordHeader, payload []byte) (*DeleteRecord, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("Delete payload too short: %d bytes", len(payload))
+		return nil, fmt.Errorf("delete payload too short: %d bytes", len(payload))
 	}
 
 	offset := 0
@@ -475,7 +475,7 @@ func decodeAbortPayload(header WALRecordHeader, payload []byte) (*AbortRecord, e
 //	DatabaseCRC32(4) + TableCount(4) + [TableChecksums...]
 func decodeCheckpointPayload(header WALRecordHeader, payload []byte) (*CheckpointRecord, error) {
 	if len(payload) < 40 { // minimum fixed fields
-		return nil, fmt.Errorf("Checkpoint payload too short: %d bytes", len(payload))
+		return nil, fmt.Errorf("checkpoint payload too short: %d bytes", len(payload))
 	}
 
 	offset := 0
