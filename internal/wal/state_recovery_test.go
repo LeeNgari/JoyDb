@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"encoding/json"
 	"testing"
 )
 
@@ -40,7 +39,7 @@ func TestScanWALState_WithRecords(t *testing.T) {
 	w.BeginTransaction(1) // LSN 1
 	w.Commit(1)           // LSN 2
 	w.BeginTransaction(2) // LSN 3
-	w.LogInsert(2, "t", "k", json.RawMessage("{}")) // LSN 4
+	w.LogInsert(2, "t", "k", []byte("{}")) // LSN 4
 	w.Close()
 
 	state, err := ScanWALState(tmpFile)

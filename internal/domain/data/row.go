@@ -51,13 +51,13 @@ func (r Row) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r.Data)
 }
 
-// ToJSON serializes the row to json.RawMessage for WAL integration
-func (r Row) ToJSON() (json.RawMessage, error) {
+// Serialize serializes the row to []byte for WAL integration
+func (r Row) Serialize() ([]byte, error) {
 	return json.Marshal(r.Data)
 }
 
-// FromJSON creates a Row from json.RawMessage (for WAL recovery)
-func FromJSON(data json.RawMessage) (Row, error) {
+// Deserialize creates a Row from []byte (for WAL recovery)
+func Deserialize(data []byte) (Row, error) {
 	var m map[string]interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return Row{}, err

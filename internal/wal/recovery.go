@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -603,8 +602,8 @@ func (t *TxnTracker) GetAbortedTransactions() []*TxnRecoveryState {
 // This will be implemented by the storage layer (e.g., Engine)
 type ReplayTarget interface {
 	// DML replay methods
-	ReplayInsert(tableName string, key string, value json.RawMessage) error
-	ReplayUpdate(tableName string, key string, newValue json.RawMessage) error
+	ReplayInsert(tableName string, key string, value []byte) error
+	ReplayUpdate(tableName string, key string, newValue []byte) error
 	ReplayDelete(tableName string, key string) error
 
 	// DDL replay methods

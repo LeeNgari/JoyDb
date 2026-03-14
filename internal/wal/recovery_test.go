@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"encoding/json"
 	"fmt"
 	"testing"
 )
@@ -103,12 +102,12 @@ type mockTarget struct {
 	ops     []string
 }
 
-func (m *mockTarget) ReplayInsert(table, key string, val json.RawMessage) error {
+func (m *mockTarget) ReplayInsert(table, key string, val []byte) error {
 	m.inserts = append(m.inserts, key)
 	return nil
 }
 
-func (m *mockTarget) ReplayUpdate(table, key string, val json.RawMessage) error { return nil }
+func (m *mockTarget) ReplayUpdate(table, key string, val []byte) error { return nil }
 func (m *mockTarget) ReplayDelete(table, key string) error { return nil }
 
 func (m *mockTarget) ReplayCreateTable(name string, schemaBytes []byte) error {
