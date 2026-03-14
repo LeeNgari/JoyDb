@@ -7,6 +7,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/mini-rdbms/internal/validation"
 )
 
 // parseAtom parses atomic expressions (identifiers, literals, typed literals)
@@ -53,7 +54,7 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 			case lexer.DATE:
 				// Validate the string value
 				value := p.curTok.Literal
-				if err := validateDate(value); err != nil {
+				if err := validation.ValidateDate(value); err != nil {
 					return nil, fmt.Errorf("DATE validation failed: %w", err)
 				}
 				p.nextToken()
@@ -64,7 +65,7 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 				}, nil
 			case lexer.TIME:
 				value := p.curTok.Literal
-				if err := validateTime(value); err != nil {
+				if err := validation.ValidateTime(value); err != nil {
 					return nil, fmt.Errorf("TIME validation failed: %w", err)
 				}
 				p.nextToken()
@@ -75,7 +76,7 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 				}, nil
 			case lexer.EMAIL:
 				value := p.curTok.Literal
-				if err := validateEmail(value); err != nil {
+				if err := validation.ValidateEmail(value); err != nil {
 					return nil, fmt.Errorf("EMAIL validation failed: %w", err)
 				}
 				p.nextToken()
