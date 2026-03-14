@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"time"
@@ -53,7 +52,7 @@ func (w *WAL) BeginTransaction(txID uint64) (uint64, error) {
 
 // LogInsert writes an Insert record to the WAL
 // Returns the LSN assigned to this record
-func (w *WAL) LogInsert(txID uint64, tableName string, key string, value json.RawMessage) (uint64, error) {
+func (w *WAL) LogInsert(txID uint64, tableName string, key string, value []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -76,7 +75,7 @@ func (w *WAL) LogInsert(txID uint64, tableName string, key string, value json.Ra
 
 // LogUpdate writes an Update record to the WAL
 // Returns the LSN assigned to this record
-func (w *WAL) LogUpdate(txID uint64, tableName string, key string, oldValue json.RawMessage, newValue json.RawMessage) (uint64, error) {
+func (w *WAL) LogUpdate(txID uint64, tableName string, key string, oldValue []byte, newValue []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -99,7 +98,7 @@ func (w *WAL) LogUpdate(txID uint64, tableName string, key string, oldValue json
 
 // LogDelete writes a Delete record to the WAL
 // Returns the LSN assigned to this record
-func (w *WAL) LogDelete(txID uint64, tableName string, key string, oldValue json.RawMessage) (uint64, error) {
+func (w *WAL) LogDelete(txID uint64, tableName string, key string, oldValue []byte) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -383,7 +382,7 @@ func encodeHeader(h WALRecordHeader) []byte {
 
 // encodeInsertPayload encodes the payload for an Insert record
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + ValueLen(4) + Value
-func (w *WAL) encodeInsertPayload(txID uint64, tableName string, key string, value json.RawMessage) []byte {
+func (w *WAL) encodeInsertPayload(txID uint64, tableName string, key string, value []byte) []byte {
 	// Calculate total size
 	size := 8 + 2 + len(tableName) + 2 + len(key) + 4 + len(value)
 	buf := make([]byte, size)
@@ -415,7 +414,7 @@ func (w *WAL) encodeInsertPayload(txID uint64, tableName string, key string, val
 
 // encodeUpdatePayload encodes the payload for an Update record
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + OldValueLen(4) + OldValue + NewValueLen(4) + NewValue
-func (w *WAL) encodeUpdatePayload(txID uint64, tableName string, key string, oldValue json.RawMessage, newValue json.RawMessage) []byte {
+func (w *WAL) encodeUpdatePayload(txID uint64, tableName string, key string, oldValue []byte, newValue []byte) []byte {
 	// Calculate total size
 	size := 8 + 2 + len(tableName) + 2 + len(key) + 4 + len(oldValue) + 4 + len(newValue)
 	buf := make([]byte, size)
@@ -453,7 +452,7 @@ func (w *WAL) encodeUpdatePayload(txID uint64, tableName string, key string, old
 
 // encodeDeletePayload encodes the payload for a Delete record
 // Format: TxID(8) + TableNameLen(2) + TableName + KeyLen(2) + Key + OldValueLen(4) + OldValue
-func (w *WAL) encodeDeletePayload(txID uint64, tableName string, key string, oldValue json.RawMessage) []byte {
+func (w *WAL) encodeDeletePayload(txID uint64, tableName string, key string, oldValue []byte) []byte {
 	// Calculate total size
 	size := 8 + 2 + len(tableName) + 2 + len(key) + 4 + len(oldValue)
 	buf := make([]byte, size)

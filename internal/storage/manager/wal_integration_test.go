@@ -297,7 +297,7 @@ func TestReplayInsertToDatabase(t *testing.T) {
 
 	rowMap := map[string]interface{}{"id": int64(1), "name": "Alice"}
 	rowBytes, _ := json.Marshal(rowMap)
-	rowJSON := json.RawMessage(rowBytes)
+	rowJSON := []byte(rowBytes)
 
 	err := target.ReplayInsert("users", "1", rowJSON)
 	assert.NilError(t, err)
@@ -320,7 +320,7 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 
 	newRowMap := map[string]interface{}{"id": int64(1), "name": "Bob"}
 	newRowBytes, _ := json.Marshal(newRowMap)
-	newRowJSON := json.RawMessage(newRowBytes)
+	newRowJSON := []byte(newRowBytes)
 
 	err := target.ReplayUpdate("users", "1", newRowJSON)
 	assert.NilError(t, err)
@@ -359,7 +359,7 @@ func TestReplayMissingTable(t *testing.T) {
 
 	rowBytes, _ := json.Marshal(map[string]interface{}{"a": 1})
 
-	err := target.ReplayInsert("nonexistent", "1", json.RawMessage(rowBytes))
+	err := target.ReplayInsert("nonexistent", "1", []byte(rowBytes))
 	assert.NilError(t, err)
 }
 

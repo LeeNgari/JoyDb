@@ -40,15 +40,15 @@ func cleanupTestWAL(t *testing.T, tempDir string) {
 	}
 }
 
-// createTestJSON creates a json.RawMessage from a map for testing.
-func createTestJSON(t *testing.T, data map[string]interface{}) json.RawMessage {
+// createTestJSON creates a []byte from a map for testing.
+func createTestJSON(t *testing.T, data map[string]interface{}) []byte {
 	t.Helper()
 
 	bytes, err := json.Marshal(data)
 	if err != nil {
 		t.Fatalf("failed to create test JSON: %v", err)
 	}
-	return json.RawMessage(bytes)
+	return []byte(bytes)
 }
 
 // =============================================================================

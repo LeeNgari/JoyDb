@@ -1,7 +1,6 @@
 package manager
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -128,8 +127,8 @@ func (m *WALManager) LogInsert(tx *transaction.Transaction, table *schema.Table,
 		return fmt.Errorf("failed to get primary key for WAL: %w", err)
 	}
 
-	// Serialize row to JSON
-	value, err := row.ToJSON()
+	// Serialize row to []byte
+	value, err := row.Serialize()
 	if err != nil {
 		return fmt.Errorf("failed to serialize row for WAL: %w", err)
 	}
@@ -149,12 +148,12 @@ func (m *WALManager) LogUpdate(tx *transaction.Transaction, table *schema.Table,
 		return nil
 	}
 
-	oldValue, err := oldRow.ToJSON()
+	oldValue, err := oldRow.Serialize()
 	if err != nil {
 		return fmt.Errorf("failed to serialize old row for WAL: %w", err)
 	}
 
-	newValue, err := newRow.ToJSON()
+	newValue, err := newRow.Serialize()
 	if err != nil {
 		return fmt.Errorf("failed to serialize new row for WAL: %w", err)
 	}
@@ -174,7 +173,7 @@ func (m *WALManager) LogDelete(tx *transaction.Transaction, table *schema.Table,
 		return nil
 	}
 
-	oldValue, err := oldRow.ToJSON()
+	oldValue, err := oldRow.Serialize()
 	if err != nil {
 		return fmt.Errorf("failed to serialize old row for WAL: %w", err)
 	}
@@ -410,14 +409,14 @@ func NewDatabaseReplayTarget(db *schema.Database) *DatabaseReplayTarget {
 }
 
 // ReplayInsert applies an insert operation during recovery
-func (t *DatabaseReplayTarget) ReplayInsert(tableName, key string, value json.RawMessage) error {
+func (t *DatabaseReplayTarget) ReplayInsert(tableName, key string, value []byte) error {
 	table, ok := t.db.Tables[tableName]
 	if !ok {
 		slog.Warn("Replay: table not found, skipping insert", "table", tableName)
 		return nil
 	}
 
-	row, err := data.FromJSON(value)
+	row, err := data.Deserialize(value)
 	if err != nil {
 		return fmt.Errorf("failed to deserialize row: %w", err)
 	}
@@ -435,14 +434,14 @@ func (t *DatabaseReplayTarget) ReplayInsert(tableName, key string, value json.Ra
 }
 
 // ReplayUpdate applies an update operation during recovery
-func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue json.RawMessage) error {
+func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue []byte) error {
 	table, ok := t.db.Tables[tableName]
 	if !ok {
 		slog.Warn("Replay: table not found, skipping update", "table", tableName)
 		return nil
 	}
 
-	newRow, err := data.FromJSON(newValue)
+	newRow, err := data.Deserialize(newValue)
 	if err != nil {
 		return fmt.Errorf("failed to deserialize row: %w", err)
 	}

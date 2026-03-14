@@ -2,7 +2,7 @@ package wal
 
 import (
 	"bytes"
-	"encoding/json"
+
 	"hash/crc32"
 	"testing"
 )
@@ -16,7 +16,7 @@ func TestRoundTrip_InsertRecord(t *testing.T) {
 	txID := uint64(12345)
 	tableName := "users"
 	key := "100"
-	value := json.RawMessage(`{"id":100,"name":"Alice"}`)
+	value := []byte(`{"id":100,"name":"Alice"}`)
 
 	// Encode using the WAL logic (simulated by calling private encoder methods if accessible,
 	// or by writing to a real WAL and reading back).
@@ -98,8 +98,8 @@ func TestRoundTrip_UpdateRecord(t *testing.T) {
 	}
 
 	txID := uint64(101)
-	oldVal := json.RawMessage(`{"v":1}`)
-	newVal := json.RawMessage(`{"v":2}`)
+	oldVal := []byte(`{"v":1}`)
+	newVal := []byte(`{"v":2}`)
 
 	// Create active txn first
 	w.BeginTransaction(txID)
@@ -149,7 +149,7 @@ func TestRoundTrip_DeleteRecord(t *testing.T) {
 	}
 
 	txID := uint64(102)
-	oldVal := json.RawMessage(`{"v":1}`)
+	oldVal := []byte(`{"v":1}`)
 
 	w.BeginTransaction(txID)
 	_, err = w.LogDelete(txID, "t1", "k1", oldVal)
@@ -292,7 +292,7 @@ func TestPayloadEncoding_EmptyValues(t *testing.T) {
 
 	w.BeginTransaction(1)
 	// Empty key, empty value
-	_, err = w.LogInsert(1, "", "", json.RawMessage{})
+	_, err = w.LogInsert(1, "", "", []byte{})
 	if err != nil {
 		t.Fatal(err)
 	}

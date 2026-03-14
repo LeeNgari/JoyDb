@@ -2,7 +2,6 @@ package wal
 
 import (
 	"encoding/binary"
-	"encoding/json"
 )
 
 // ===========================================================================
@@ -186,8 +185,8 @@ type InsertRecord struct {
 	Header    WALRecordHeader
 	TxID      uint64
 	TableName string
-	Key       string          // Primary key value serialized as string
-	Value     json.RawMessage // Row data as JSON (for REDO)
+	Key       string // Primary key value serialized as string
+	Value     []byte // Row data serialized (for REDO)
 }
 
 // UpdateRecord logs an update operation (REDO + UNDO)
@@ -198,9 +197,9 @@ type UpdateRecord struct {
 	Header    WALRecordHeader
 	TxID      uint64
 	TableName string
-	Key       string          // Primary key value serialized as string
-	OldValue  json.RawMessage // Previous row data (for UNDO during abort)
-	NewValue  json.RawMessage // New row data (for REDO during recovery)
+	Key       string // Primary key value serialized as string
+	OldValue  []byte // Previous row data (for UNDO during abort)
+	NewValue  []byte // New row data (for REDO during recovery)
 }
 
 // DeleteRecord logs a delete operation (REDO + UNDO)
@@ -209,8 +208,8 @@ type DeleteRecord struct {
 	Header    WALRecordHeader
 	TxID      uint64
 	TableName string
-	Key       string          // Primary key value serialized as string
-	OldValue  json.RawMessage // Deleted row data (for UNDO during abort)
+	Key       string // Primary key value serialized as string
+	OldValue  []byte // Deleted row data (for UNDO during abort)
 }
 
 // ===========================================================================
