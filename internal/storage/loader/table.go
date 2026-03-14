@@ -9,8 +9,8 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/query/validation"
 	"github.com/leengari/mini-rdbms/internal/storage/metadata"
+	"github.com/leengari/mini-rdbms/internal/validation"
 )
 
 // LoadTable loads a table from the given directory path

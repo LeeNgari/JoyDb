@@ -2,16 +2,11 @@ package validation
 
 import (
 	"fmt"
-	"regexp"
-	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/errors"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 )
-
-// Email validation regex - reasonable balance between strictness and practicality
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 // ValidateRow checks if the given row matches the table's schema
 // - Checks required fields (NOT NULL)
@@ -90,13 +85,13 @@ func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
 				return typeMismatchError(table.Name, col.Name, val, "string", rowIndex)
 			}
 			// Validate email format
-			if !emailRegex.MatchString(str) {
+			if err := ValidateEmail(str); err != nil {
 				return &errors.ConstraintError{
 					Table:      table.Name,
 					Column:     col.Name,
 					Value:      val,
 					Constraint: "invalid_email",
-					Reason:     "invalid email format",
+					Reason:     err.Error(),
 					RowIndex:   rowIndex,
 				}
 			}
@@ -106,18 +101,24 @@ func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
 				return typeMismatchError(table.Name, col.Name, val, "boolean", rowIndex)
 			}
 
-		case schema.ColumnTypeDate, schema.ColumnTypeTime:
+		case schema.ColumnTypeDate:
 			switch v := val.(type) {
 			case string:
-				_, err := time.Parse("2006-01-02", v)
-				if err != nil && col.Type == schema.ColumnTypeTime {
-					_, err = time.Parse(time.RFC3339, v)
-				}
-				if err != nil {
+				if err := ValidateDate(v); err != nil {
 					return typeMismatchError(table.Name, col.Name, val, "date/time string", rowIndex)
 				}
 			default:
-				return typeMismatchError(table.Name, col.Name, val, "date/time string or time.Time", rowIndex)
+				return typeMismatchError(table.Name, col.Name, val, "date string", rowIndex)
+			}
+
+		case schema.ColumnTypeTime:
+			switch v := val.(type) {
+			case string:
+				if err := ValidateTime(v); err != nil {
+					return typeMismatchError(table.Name, col.Name, val, "time string", rowIndex)
+				}
+			default:
+				return typeMismatchError(table.Name, col.Name, val, "time string", rowIndex)
 			}
 
 		default:
