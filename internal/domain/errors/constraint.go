@@ -38,7 +38,7 @@ func (e *ConstraintError) Error() string {
 		parts = append(parts, fmt.Sprintf("at row %d", e.RowIndex))
 	}
 
-	return fmt.Sprintf("%s", strings.Join(parts, " - "))
+	return strings.Join(parts, " - ")
 }
 
 // NewUniqueViolation creates a unique constraint violation error

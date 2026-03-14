@@ -111,16 +111,6 @@ func executeNode(node plan.Node, ctx *ExecutionContext) (*IntermediateResult, er
 	}
 }
 
-// findColumnInSchema finds a column by name in the table schema
-func findColumnInSchema(table *schema.Table, colName string) *schema.Column {
-	for i := range table.Schema.Columns {
-		if table.Schema.Columns[i].Name == colName {
-			return &table.Schema.Columns[i]
-		}
-	}
-	return nil
-}
-
 // formatDDLResult formats the result for a DDL operation
 func formatDDLResult(intermediate *IntermediateResult) *Result {
 	msg := ""

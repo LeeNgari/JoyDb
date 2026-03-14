@@ -9,16 +9,6 @@ import (
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
-// formatResult converts IntermediateResult to user-facing Result
-func formatResult(intermediate *IntermediateResult, columns []string, metadata []ColumnMetadata) *Result {
-	return &Result{
-		Columns:  columns,
-		Metadata: metadata,
-		Rows:     intermediate.Rows,
-		Message:  fmt.Sprintf("Returned %d rows", len(intermediate.Rows)),
-	}
-}
-
 // formatInsertResult creates a Result for INSERT operations
 func formatInsertResult(intermediate *IntermediateResult) *Result {
 	rowsAffected, _ := intermediate.Metadata["rows_affected"].(int)
