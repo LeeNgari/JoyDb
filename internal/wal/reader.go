@@ -1,7 +1,6 @@
 package wal
 
 import (
-	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -347,7 +346,7 @@ func decodeInsertPayload(header WALRecordHeader, payload []byte) (*InsertRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		Value:     json.RawMessage(value),
+		Value:     value,
 	}, nil
 }
 
@@ -396,8 +395,8 @@ func decodeUpdatePayload(header WALRecordHeader, payload []byte) (*UpdateRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		OldValue:  json.RawMessage(oldValue),
-		NewValue:  json.RawMessage(newValue),
+		OldValue:  oldValue,
+		NewValue:  newValue,
 	}, nil
 }
 
@@ -439,7 +438,7 @@ func decodeDeletePayload(header WALRecordHeader, payload []byte) (*DeleteRecord,
 		TxID:      txID,
 		TableName: tableName,
 		Key:       key,
-		OldValue:  json.RawMessage(oldValue),
+		OldValue:  oldValue,
 	}, nil
 }
 
