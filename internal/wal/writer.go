@@ -248,14 +248,14 @@ func (w *WAL) LogAlterTable(txID uint64, tableName string, alterOp uint8, colDes
 }
 
 // WriteCheckpoint writes a Checkpoint record to the WAL
-// This should be called after successfully persisting all dirty tables to JSON
+// This should be called after successfully creating a snapshot.
 // Returns the LSN assigned to this record
-func (w *WAL) WriteCheckpoint(tables []TableChecksum, databaseCRC32 uint32) (uint64, error) {
+func (w *WAL) WriteCheckpoint(snapshotLSN uint64, snapshotCRC32 uint32) (uint64, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
 	// Build checkpoint payload
-	payload := w.encodeCheckpointPayload(tables, databaseCRC32)
+	payload := w.encodeCheckpointPayload(snapshotLSN, snapshotCRC32)
 
 	// Write record
 	lsn, err := w.writeRecord(RecordCheckpoint, payload)
@@ -483,20 +483,9 @@ func (w *WAL) encodeDeletePayload(txID uint64, tableName string, key string, old
 }
 
 // encodeCheckpointPayload encodes the payload for a Checkpoint record
-// Format: CheckpointLSN(8) + CheckpointOffset(8) + LastFlushedLSN(8) + Timestamp(8) +
-//
-//	DatabaseCRC32(4) + TableCount(4) + [TableChecksums...]
-//
-// Each TableChecksum: TableNameLen(2) + TableName + DataCRC32(4) + MetaCRC32(4)
-func (w *WAL) encodeCheckpointPayload(tables []TableChecksum, databaseCRC32 uint32) []byte {
-	// Calculate size for tables
-	tablesSize := 0
-	for _, t := range tables {
-		tablesSize += 2 + len(t.TableName) + 4 + 4
-	}
-
-	// Total size: fixed fields + tables
-	size := 8 + 8 + 8 + 8 + 4 + 4 + tablesSize
+// Format: CheckpointLSN(8) + CheckpointOffset(8) + LastFlushedLSN(8) + Timestamp(8) + SnapshotLSN(8) + SnapshotCRC32(4)
+func (w *WAL) encodeCheckpointPayload(snapshotLSN uint64, snapshotCRC32 uint32) []byte {
+	size := 8 + 8 + 8 + 8 + 8 + 4
 	buf := make([]byte, size)
 	offset := 0
 
@@ -516,30 +505,12 @@ func (w *WAL) encodeCheckpointPayload(tables []TableChecksum, databaseCRC32 uint
 	ByteOrder.PutUint64(buf[offset:], uint64(time.Now().Unix()))
 	offset += 8
 
-	// DatabaseCRC32 (4 bytes)
-	ByteOrder.PutUint32(buf[offset:], databaseCRC32)
-	offset += 4
+	// SnapshotLSN (8 bytes)
+	ByteOrder.PutUint64(buf[offset:], snapshotLSN)
+	offset += 8
 
-	// TableCount (4 bytes)
-	ByteOrder.PutUint32(buf[offset:], uint32(len(tables)))
-	offset += 4
-
-	// Tables
-	for _, t := range tables {
-		// TableName with length prefix (2 bytes)
-		ByteOrder.PutUint16(buf[offset:], uint16(len(t.TableName)))
-		offset += 2
-		copy(buf[offset:], t.TableName)
-		offset += len(t.TableName)
-
-		// DataCRC32 (4 bytes)
-		ByteOrder.PutUint32(buf[offset:], t.DataCRC32)
-		offset += 4
-
-		// MetaCRC32 (4 bytes)
-		ByteOrder.PutUint32(buf[offset:], t.MetaCRC32)
-		offset += 4
-	}
+	// SnapshotCRC32 (4 bytes)
+	ByteOrder.PutUint32(buf[offset:], snapshotCRC32)
 
 	return buf
 }

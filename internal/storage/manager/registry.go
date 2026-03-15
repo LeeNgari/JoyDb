@@ -91,7 +91,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 			return r.storageEngine.SaveDatabase(db, nil)
 		}
 
-		walMgr, err = NewWALManager(db, dbPath, name, true, r.checkpointInterval, saveFunc)
+		walMgr, err = NewWALManager(db, dbPath, name, true, r.checkpointInterval, saveFunc, r.storageEngine)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create WAL manager: %w", err)
 		}

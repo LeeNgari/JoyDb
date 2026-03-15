@@ -53,7 +53,7 @@ const WriteBufferSize = 32 * 1024
 var WALMagic = [8]byte{'J', 'O', 'Y', 'D', 'B', 'W', 'A', 'L'}
 
 // WALVersion is the current WAL format version
-const WALVersion uint16 = 1
+const WALVersion uint16 = 2
 
 // WALFileHeader is written at the beginning of every WAL file
 // Fixed size: 64 bytes (padded for alignment)
@@ -220,26 +220,17 @@ type DeleteRecord struct {
 // It includes checksums of all JSON files to detect external corruption
 //
 // Payload binary layout:
-// ┌──────────────────┬──────────────────┬────────────────┬─────────────┬───────────────┬────────────┬─────────────────┐
-// │ CheckpointLSN(8) │ CheckpointOff(8) │ FlushedLSN(8)  │ Timestamp(8)│ DatabaseCRC(4)│ TableCnt(4)│ Tables (var)    │
-// └──────────────────┴──────────────────┴────────────────┴─────────────┴───────────────┴────────────┴─────────────────┘
+// ┌──────────────────┬──────────────────┬────────────────┬─────────────┬────────────────┬─────────────────┐
+// │ CheckpointLSN(8) │ CheckpointOff(8) │ FlushedLSN(8)  │ Timestamp(8)│ SnapshotLSN(8) │ SnapshotCRC32(4)│
+// └──────────────────┴──────────────────┴────────────────┴─────────────┴────────────────┴─────────────────┘
 type CheckpointRecord struct {
 	Header           WALRecordHeader
-	CheckpointLSN    uint64          // LSN at which checkpoint was taken (offset 0)
-	CheckpointOffset uint64          // Byte offset in WAL file of this checkpoint (offset 8)
-	LastFlushedLSN   uint64          // Last LSN guaranteed to be fsynced (offset 16)
-	Timestamp        int64           // Unix timestamp of checkpoint (offset 24)
-	DatabaseCRC32    uint32          // Checksum of database meta.json (offset 32)
-	TableCount       uint32          // Number of tables (offset 36)
-	Tables           []TableChecksum // Checksums of each table's JSON files (offset 40+)
-}
-
-// TableChecksum stores the checksum of a table's JSON files at checkpoint time
-// Used to detect if JSON files were modified externally (user tampering)
-type TableChecksum struct {
-	TableName string // Name of the table
-	DataCRC32 uint32 // CRC32 of data.json
-	MetaCRC32 uint32 // CRC32 of meta.json
+	CheckpointLSN    uint64 // LSN at which checkpoint was taken (offset 0)
+	CheckpointOffset uint64 // Byte offset in WAL file of this checkpoint (offset 8)
+	LastFlushedLSN   uint64 // Last LSN guaranteed to be fsynced (offset 16)
+	Timestamp        int64  // Unix timestamp of checkpoint (offset 24)
+	SnapshotLSN      uint64 // LSN of the snapshot this checkpoint references (offset 32)
+	SnapshotCRC32    uint32 // CRC of the snapshot file for tamper detection (offset 40)
 }
 
 // ===========================================================================
