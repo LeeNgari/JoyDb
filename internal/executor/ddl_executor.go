@@ -2,6 +2,8 @@ package executor
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
@@ -34,9 +36,15 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 		}
 	}
 
-	// 4. Create in-memory table
+	// 4. Create table directory and in-memory table
+	tablePath := filepath.Join(ctx.Database.Path, n.TableName)
+	if err := os.MkdirAll(tablePath, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create table directory: %w", err)
+	}
+
 	table := &schema.Table{
 		Name:    n.TableName,
+		Path:    tablePath,
 		Schema:  tableSchema,
 		Rows:    []data.Row{},
 		Indexes: make(map[string]*data.Index),
