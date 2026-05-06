@@ -116,12 +116,18 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 			}
 
 			// Replay operations if any
-			if result != nil && (len(result.InsertOps) > 0 || len(result.UpdateOps) > 0 || len(result.DeleteOps) > 0) {
+			hasOps := len(result.InsertOps) > 0 || len(result.UpdateOps) > 0 || len(result.DeleteOps) > 0 ||
+				len(result.CreateTableOps) > 0 || len(result.DropTableOps) > 0 || len(result.AlterTableOps) > 0
+
+			if result != nil && hasOps {
 				slog.Info("WAL: Replaying operations",
 					"database", name,
 					"inserts", len(result.InsertOps),
 					"updates", len(result.UpdateOps),
 					"deletes", len(result.DeleteOps),
+					"create_tables", len(result.CreateTableOps),
+					"drop_tables", len(result.DropTableOps),
+					"alter_tables", len(result.AlterTableOps),
 				)
 
 				target := NewDatabaseReplayTarget(db)

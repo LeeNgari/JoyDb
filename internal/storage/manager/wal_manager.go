@@ -3,6 +3,7 @@ package manager
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -467,9 +468,16 @@ func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte
 		return fmt.Errorf("failed to decode table schema during replay: %w", err)
 	}
 
+	// Create table directory (needed for JSON engine compatibility)
+	tablePath := filepath.Join(t.db.Path, name)
+	if err := os.MkdirAll(tablePath, 0755); err != nil {
+		return fmt.Errorf("failed to create table directory during replay: %w", err)
+	}
+
 	// Create new table instance
 	table := &schema.Table{
 		Name:    name,
+		Path:    tablePath,
 		Schema:  s,
 		Rows:    []data.Row{},
 		Indexes: make(map[string]*data.Index),
@@ -503,8 +511,49 @@ func (t *DatabaseReplayTarget) ReplayDropTable(name string) error {
 
 // ReplayAlterTable applies an ALTER TABLE operation during recovery
 func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc []byte) error {
-	// Full implementation will be in a future phase
-	// For Phase 0, we just log and ignore to satisfy the interface
-	slog.Warn("Replay: AlterTable not yet implemented, ignoring", "table", name, "op", op)
+	t.db.Lock()
+	defer t.db.Unlock()
+
+	table, ok := t.db.Tables[name]
+	if !ok {
+		slog.Warn("Replay: table not found for ALTER TABLE", "table", name)
+		return nil
+	}
+
+	table.Lock()
+	defer table.Unlock()
+
+	if op == wal.AlterOpAddColumn {
+		col, _, err := wal.DecodeColumn(colDesc, 0)
+		if err != nil {
+			return fmt.Errorf("failed to decode column for ADD_COLUMN: %w", err)
+		}
+		table.Schema.Columns = append(table.Schema.Columns, col)
+		table.MarkDirtyUnsafe()
+		slog.Debug("Replay: AlterTable ADD_COLUMN", "table", name, "column", col.Name)
+	} else if op == wal.AlterOpDropColumn {
+		col, _, err := wal.DecodeColumn(colDesc, 0)
+		if err != nil {
+			return fmt.Errorf("failed to decode column for DROP_COLUMN: %w", err)
+		}
+		
+		newCols := make([]schema.Column, 0, len(table.Schema.Columns))
+		for _, c := range table.Schema.Columns {
+			if c.Name != col.Name {
+				newCols = append(newCols, c)
+			}
+		}
+		table.Schema.Columns = newCols
+		
+		for i := range table.Rows {
+			delete(table.Rows[i].Data, col.Name)
+		}
+		
+		table.MarkDirtyUnsafe()
+		slog.Debug("Replay: AlterTable DROP_COLUMN", "table", name, "column", col.Name)
+	} else {
+		slog.Warn("Replay: unsupported AlterOp", "table", name, "op", op)
+	}
+
 	return nil
 }
