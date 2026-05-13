@@ -89,70 +89,79 @@
 
 ---
 
-## Phase 3: Implement the In-Memory B-Tree Engine + Binary Snapshot
+## Phase 3: Implement the In-Memory B+Tree Engine + Binary Snapshot
 
 This is the largest phase. I recommend breaking it into 4 discrete sub-phases that can be individually committed and tested.
 
 ---
 
-### Phase 3a: B-Tree Data Structure
+### Phase 3a: B+Tree Data Structure
 
 > [!IMPORTANT]
 > This sub-phase has **zero dependencies** on other work. It can be implemented and tested in complete isolation.
 
-#### [NEW] `internal/index/btree/btree.go`
+#### [NEW] `internal/index/btree/bplustree.go`
 
-A generic B-Tree implementation with degree 32 (63 keys per internal node, 64 children).
+A B+Tree implementation with degree 32. Internal nodes store only routing keys (no values). Leaf nodes store key→pos pairs and are linked in a doubly-linked list for efficient range scans.
+
+**Why B+Tree over B-Tree:** (1) Leaf linked-list gives O(log n + k) range scans vs B-Tree's O(k·log n). (2) Internal nodes hold only keys → higher fan-out → shallower tree. (3) Every production RDBMS (PostgreSQL, MySQL/InnoDB, SQLite) uses B+Trees. (4) Deletion is simpler since values only exist in leaves.
 
 **Core API:**
 ```go
 package btree
 
-// BTree is an ordered map from a comparable key to an int (row position).
-type BTree struct {
+// BPlusTree is an ordered map from a comparable key to an int (row position).
+// Internal nodes store only routing keys. Leaf nodes store key→pos pairs
+// and are linked for efficient range scans.
+type BPlusTree struct {
     root   *node
     degree int    // half-order (min keys = degree-1, max keys = 2*degree-1)
     size   int    // total number of entries
+    first  *node  // pointer to first (leftmost) leaf for full scans
 }
 
-func New(degree int) *BTree
+func New(degree int) *BPlusTree
 
-// Insert adds or updates key → pos mapping. Returns error if key exists.
-func (t *BTree) Insert(key interface{}, pos int) error
+// Insert adds a key → pos mapping. Returns error if key already exists.
+func (t *BPlusTree) Insert(key interface{}, pos int) error
 
 // Search returns the position for a key, or (0, false) if not found.
-func (t *BTree) Search(key interface{}) (pos int, found bool)
+func (t *BPlusTree) Search(key interface{}) (pos int, found bool)
 
 // Delete removes a key. Returns error if key not found.
-func (t *BTree) Delete(key interface{}) error
+func (t *BPlusTree) Delete(key interface{}) error
 
 // RangeScan returns all positions where lo <= key <= hi, in key order.
-func (t *BTree) RangeScan(lo, hi interface{}) []int
+// Uses the leaf linked-list for O(log n + k) performance.
+func (t *BPlusTree) RangeScan(lo, hi interface{}) []int
 
-// All returns all positions in key order.
-func (t *BTree) All() []int
+// All returns all positions in key order by walking the leaf linked-list.
+func (t *BPlusTree) All() []int
 
 // Size returns the number of entries.
-func (t *BTree) Size() int
+func (t *BPlusTree) Size() int
 
 // Clear removes all entries.
-func (t *BTree) Clear()
+func (t *BPlusTree) Clear()
 ```
 
 **Key comparison:** Use a `compareKeys(a, b interface{}) int` function that handles `int64`, `float64`, `string` (the three PK types JoyDB supports). Return `-1`, `0`, `1`.
 
 **Design notes:**
-- Node struct: `type node struct { keys []interface{}; values []int; children []*node; leaf bool }`
-- Use the classic B-Tree insertion with proactive splitting (split on the way down)
-- For deletion, use the merge/redistribute approach
+- Internal node: `type node struct { keys []interface{}; children []*node; leaf bool }`
+- Leaf node: `type node struct { keys []interface{}; values []int; next *node; prev *node; leaf bool }`
+  (Can use a single node struct with optional fields)
+- Use proactive splitting on insert (split on the way down)
+- For deletion, merge/redistribute at the leaf level only
 
-#### [NEW] `internal/index/btree/btree_test.go`
+#### [NEW] `internal/index/btree/bplustree_test.go`
 
 Comprehensive tests:
 - Insert/Search/Delete correctness with int64, string, float64 keys
-- RangeScan with various boundaries
+- RangeScan with various boundaries (verify O(log n + k) via leaf list traversal)
+- Full scan via `All()` using linked leaf list
 - Large-scale insert (10k+ keys) to verify tree depth stays at 3-4 levels
-- Concurrent read safety (B-Tree is read-locked at table level, but test anyway)
+- Concurrent read safety (B+Tree is read-locked at table level, but test anyway)
 - Edge cases: empty tree, single element, duplicate key rejection
 
 #### [DELETE] `internal/index/index.go`
@@ -160,12 +169,12 @@ The existing placeholder file (14 bytes) should be replaced by the `btree/` subd
 
 ---
 
-### Phase 3b: Integrate B-Tree into Table
+### Phase 3b: Integrate B+Tree into Table
 
 #### [MODIFY] [table.go](file:///home/leengari/projects/joydb/internal/domain/schema/table.go)
 
 **Changes:**
-1. Add `PKIndex *btree.BTree` field to `Table` struct (line 14-23):
+1. Add `PKIndex *btree.BPlusTree` field to `Table` struct (line 14-23):
    ```go
    type Table struct {
        mu           sync.RWMutex
@@ -173,7 +182,7 @@ The existing placeholder file (14 bytes) should be replaced by the `btree/` subd
        Path         string
        Schema       *TableSchema
        Rows         []data.Row
-       PKIndex      *btree.BTree          // NEW: primary key B-Tree index
+       PKIndex      *btree.BPlusTree      // NEW: primary key B+Tree index (linked leaves)
        Indexes      map[string]*data.Index
        LastInsertID int64
        Dirty        bool
@@ -528,8 +537,8 @@ Then **kill the process** (Ctrl+C) and restart — verify that WAL recovery rest
 
 | Sub-phase | Files Changed | Effort | Risk |
 |-----------|--------------|--------|------|
-| 3a: B-Tree implementation | 2 new | Medium | Medium (algorithmic) |
-| 3b: Integrate B-Tree into Table | 3 modified | Low | Low |
+| 3a: B+Tree implementation | 2 new | Medium | Medium (algorithmic) |
+| 3b: Integrate B+Tree into Table | 3 modified | Low | Low |
 | 3c: MemoryEngine + Snapshot | 3 new | High | High (binary format) |
 | 3d: Registry fix + wiring | 2 modified | Low | Low |
 | 4: Table.Path fix | 3 modified | Low | Low |
@@ -537,9 +546,12 @@ Then **kill the process** (Ctrl+C) and restart — verify that WAL recovery rest
 
 **Recommended commit order:**
 1. Fix registry replay bug (Issue #2) — standalone 1-line commit
-2. Phase 3a (B-Tree) — standalone, independently testable
+2. Phase 3a (B+Tree) — standalone, independently testable
 3. Phase 3b (integrate into Table)
 4. Phase 3c (MemoryEngine + snapshot)
 5. Phase 3d (wire it up + main.go flag)
 6. Phase 4 (Table.Path)
 7. Phase 5 (cleanup) — only after MemoryEngine is validated
+
+> [!NOTE]
+> **Design decision log (2026-05-06):** Changed from B-Tree to B+Tree after analysis. B+Tree's linked leaf list provides O(log n + k) range scans (vs B-Tree's O(k·log n)), higher fan-out from value-free internal nodes, and is the industry standard for database indexes.

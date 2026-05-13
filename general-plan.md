@@ -1,4 +1,4 @@
-# JoyDB: Migration from JSON Storage → In-Memory B-Tree + WAL Persistence
+# JoyDB: Migration from JSON Storage → In-Memory B+Tree + WAL Persistence
 
 ## Confirmed Design Decisions
 
@@ -6,7 +6,7 @@
 |---|---|---|
 | WAL backward compatibility | ❌ Break it (bump to `WALVersion = 2`) | Dev/test data only; simplifies reader significantly |
 | DDL scope | CREATE TABLE + DROP TABLE + ALTER TABLE | Plan for all three now — WAL format bump needed anyway |
-| B-Tree node degree | **32** (63 keys per node) | See rationale below |
+| B+Tree node degree | **32** (63 keys per internal node, linked leaves) | See rationale below |
 | Snapshot retention | **2 files** (current + 1 previous) | Safety net during crash at checkpoint moment |
 | Snapshot serialization | **Custom binary** (`encoding/binary.LittleEndian`) | Consistent with WAL format; faster than gob; no reflection |
 
@@ -30,8 +30,8 @@ After reading every critical file, here is the ground-truth picture. The origina
 **Gap 1: `Table.Path` Is Hardwired to a Filesystem Layout**
 The [Table](file:///home/leengari/projects/joydb/internal/domain/schema/table.go#14-24) struct in [schema/table.go](file:///home/leengari/projects/joydb/internal/domain/schema/table.go) has a `Path string` field that maps to a physical directory (`databases/mydb/users/`). The `WALManager.calculateChecksums()` method (line 260-261 in [wal_manager.go](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go)) constructs `data.json`/`meta.json` paths directly from `table.Path`. If you build a `MemoryEngine` but don't change the [Table](file:///home/leengari/projects/joydb/internal/domain/schema/table.go#14-24) struct, the table's [Path](file:///home/leengari/projects/joydb/internal/wal/wal.go#221-225) will be empty/meaningless and [calculateChecksums()](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go#242-299) will silently skip every table (see `continue` on line 270). **The `Table.Path` concept must be rethought or replaced with a snapshot directory.**
 
-**Gap 2: [DatabaseReplayTarget](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go#356-359) Appends to `[]data.Row` Slice, Not a B-Tree**
-The replay target in [wal_manager.go](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go) (lines 366–457) does direct slice operations: `table.Rows = append(table.Rows, row)` and `table.Rows = append(table.Rows[:i], table.Rows[i+1:]...)`. If you change the internal data structure to a B-Tree, every replay path must use the B-Tree's ordered insert/delete API, not the raw slice. This is actually **the biggest refactor surface area**.
+**Gap 2: [DatabaseReplayTarget](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go#356-359) Appends to `[]data.Row` Slice, Not a B+Tree**
+The replay target in [wal_manager.go](file:///home/leengari/projects/joydb/internal/storage/manager/wal_manager.go) (lines 366–457) does direct slice operations: `table.Rows = append(table.Rows, row)` and `table.Rows = append(table.Rows[:i], table.Rows[i+1:]...)`. If you change the internal data structure to a B+Tree, every replay path must use the B+Tree's ordered insert/delete API, not the raw slice. This is actually **the biggest refactor surface area**.
 
 **Gap 3: [ReplayTarget](file:///home/leengari/projects/joydb/internal/wal/recovery.go#532-542) Interface in [wal/recovery.go](file:///home/leengari/projects/joydb/internal/wal/recovery.go) Knows About `json.RawMessage`**
 This is a WAL-layer interface (line 534 in [recovery.go](file:///home/leengari/projects/joydb/internal/wal/recovery.go)). It must be changed to `[]byte` as part of Phase 1 — the plan mentions this but attributes it to the wrong level. [ReplayTarget](file:///home/leengari/projects/joydb/internal/wal/recovery.go#532-542) lives in `internal/wal`, not `internal/storage/manager`. Both must change.
@@ -191,37 +191,37 @@ Implement `CreateSnapshot()` on `JSONEngine` to just return `(currentWALFlushedL
 
 ---
 
-### Phase 3: Implement the In-Memory B-Tree Engine + Binary Snapshot
+### Phase 3: Implement the In-Memory B+Tree Engine + Binary Snapshot
 
 **Goal:** Build the new data structure and storage engine.
 
 #### 3a: The In-Memory Data Structure
 
-**B-Tree + Dense Rows — Why This Combination Is Right:**
+**B+Tree + Dense Rows — Why This Combination Is Right:**
 
-The user's suggestion of "B-Tree + dense rows" is excellent. Here's the precise meaning:
+The B+Tree was chosen over a plain B-Tree after analysis of JoyDB's access patterns:
 
-- **B-Tree (ordered by primary key):** A B-Tree node stores keys (the primary key value, typed as `int64`, `string`, or `float64`) and values that are **integer offsets** into the dense row array. This gives O(log n) lookup on the primary key while the actual row data is stored in a flat, cache-friendly array.
-- **Dense Row Array (`[]data.Row`):** The same `[]data.Row` that exists today. Rows are stored compactly. The B-Tree's leaf values are indices (`int`) into this array.
-- **Why not store rows in the B-Tree directly:** Storing full `Row` structs in B-Tree nodes ruins cache locality. The node would become huge, and pointer chasing across a wide tree is slow. The indirection (B-Tree leaf → dense array index) is the standard approach used by DuckDB and similar systems.
+- **B+Tree (ordered by primary key):** Internal nodes store only routing keys (no values), while leaf nodes store key→position mappings and are linked in a doubly-linked list. This gives O(log n) point lookups and O(log n + k) range scans.
+- **Why B+Tree over B-Tree:** (1) Leaf linked-list enables efficient range scans — find the start leaf, then walk the list instead of traversing the tree. (2) Internal nodes hold only keys → higher fan-out → shallower tree → fewer comparisons. (3) Every production RDBMS (PostgreSQL, MySQL/InnoDB, SQLite) uses B+Trees for indexes. (4) Deletion is simpler since values only exist in leaves.
+- **Dense Row Array (`[]data.Row`):** The same `[]data.Row` that exists today. Rows are stored compactly. The B+Tree's leaf values are indices (`int`) into this array.
+- **Why not store rows in the B+Tree directly:** Storing full `Row` structs in B+Tree nodes ruins cache locality. The node would become huge, and pointer chasing across a wide tree is slow. The indirection (B+Tree leaf → dense array index) is the standard approach used by DuckDB and similar systems.
 
 **New Package: `internal/index/btree/`**
 ```go
-// Key types the B-Tree supports
-type BTreeKeyType int64 | string | float64
+// BPlusTree is an ordered map from primary key → row position in dense array.
+// Internal nodes store only routing keys. Leaf nodes store key→pos pairs
+// and are linked for efficient range scans.
+type BPlusTree struct { ... }
 
-// BTree is an ordered map from primary key → row position in dense array
-type BTree struct { ... }
-
-func (b *BTree) Insert(key interface{}, pos int) error
-func (b *BTree) Search(key interface{}) (pos int, found bool)
-func (b *BTree) Delete(key interface{}) error
-func (b *BTree) RangeScan(lo, hi interface{}) []int   // For WHERE key BETWEEN x AND y
-func (b *BTree) All() []int                           // Full scan in key order
+func (b *BPlusTree) Insert(key interface{}, pos int) error
+func (b *BPlusTree) Search(key interface{}) (pos int, found bool)
+func (b *BPlusTree) Delete(key interface{}) error
+func (b *BPlusTree) RangeScan(lo, hi interface{}) []int   // For WHERE key BETWEEN x AND y
+func (b *BPlusTree) All() []int                           // Full scan in key order via leaf list
 ```
 
 > [!NOTE]
-> **Use degree 32 (stores 63 keys + 64 child pointers per node).** Rationale: at degree 32, a node holds ~63 `interface{}` keys + `int` positions ≈ ~1KB. That's 16 cache lines — large enough to reduce tree depth to 3–4 levels for millions of rows, small enough to be easy to test, debug, and reason about. Degree 128 would give 2–3 levels for the same dataset but a 4KB node that evicts L1 cache on every read. Degree 32 is the same default used by the widely benchmarked `google/btree` Go package **and** it matches the order of magnitude used by SQLite's in-memory B-Trees. You can tune it up later by changing a single constant if benchmarks warrant it.
+> **Use degree 32 (internal nodes hold up to 63 routing keys + 64 child pointers; leaf nodes hold up to 63 key→pos pairs and are linked).** Rationale: at degree 32, an internal node holds ~63 `interface{}` keys ≈ ~0.5KB. That's 8 cache lines — large enough to reduce tree depth to 3–4 levels for millions of rows, small enough to be easy to test, debug, and reason about. Degree 128 would give 2–3 levels for the same dataset but a node that evicts L1 cache on every read. Degree 32 matches the order of magnitude used by SQLite's in-memory B+Trees. You can tune it up later by changing a single constant if benchmarks warrant it.
 
 **Update `schema.Table` to Support Both Structures (Transitionally)**
 
@@ -229,10 +229,10 @@ func (b *BTree) All() []int                           // Full scan in key order
 type Table struct {
     mu           sync.RWMutex
     Name         string
-    Path         string        // kept for WAL path context; now points to db dir, not data files
+    Path         string              // kept for WAL path context; now points to db dir, not data files
     Schema       *TableSchema
-    Rows         []data.Row    // dense row store
-    PKIndex      *btree.BTree  // primary key → row position (new)
+    Rows         []data.Row          // dense row store
+    PKIndex      *btree.BPlusTree    // primary key → row position (new, B+Tree with linked leaves)
     Indexes      map[string]*data.Index  // existing secondary hash indexes
     LastInsertID int64
     Dirty        bool
@@ -249,7 +249,7 @@ After removing from `t.Rows`, call `t.PKIndex.Delete(key)` and rebuild PKIndex (
 If the column is the PK, use `t.PKIndex.Search(value)` → O(log n) instead of linear scan.
 
 **Update `DatabaseReplayTarget`**
-Replace `table.Rows = append(table.Rows, row)` with `table.InsertReplay(row)` which uses the B-Tree insert path (a new, lock-free variant of `Insert` for use during recovery before the table is live).
+Replace `table.Rows = append(table.Rows, row)` with `table.InsertReplay(row)` which uses the B+Tree insert path (a new, lock-free variant of `Insert` for use during recovery before the table is live).
 
 #### 3b: The `MemoryEngine`
 
@@ -385,53 +385,54 @@ This means: during a crash at exactly the checkpoint moment, if the new snapshot
 
 ---
 
-## B-Tree Design: Detailed Considerations
+## B+Tree Design: Detailed Considerations
 
-### Why B-Tree Over Other Structures
+### Why B+Tree Over Other Structures
 
 | Structure | Range Scan | Point Lookup | Insert | Cache Friendly |
 |---|---|---|---|---|
 | `[]data.Row` (current) | O(n) | O(n) | O(1) amortized | ✅ best |
 | `map[pk]int` (hash) | ❌ impossible | O(1) avg | O(1) | ❌ |
-| **B-Tree** | **O(log n + k)** | **O(log n)** | **O(log n)** | **✅ good** |
+| B-Tree | O(k·log n) | O(log n) | O(log n) | ✅ good |
+| **B+Tree** | **O(log n + k)** | **O(log n)** | **O(log n)** | **✅ best (linked leaves)** |
 | Skip List | O(log n + k) | O(log n) | O(log n) | ❌ poor |
 
-The B-Tree wins because it supports **range queries** (`WHERE id BETWEEN 1 AND 100`), which a hash index cannot, while being significantly more cache-friendly than a skip list.
+The B+Tree wins because: (1) its leaf linked-list gives truly O(log n + k) range scans (B-Tree range scans require tree traversal = O(k·log n)), (2) internal nodes hold only routing keys → higher fan-out → shallower tree, (3) it is the universal standard for database indexes (PostgreSQL, MySQL/InnoDB, SQLite all use B+Trees).
 
-### B-Tree + Dense Row Array: The Interplay
+### B+Tree + Dense Row Array: The Interplay
 
 ```
 Dense Row Array (t.Rows):
 [ Row0 | Row1 | Row2 | Row3 | ... ]
     0      1      2      3
 
-B-Tree (PK index):
-  PK=1 → pos=2   (Row2 has pk=1)
-  PK=3 → pos=0   (Row0 has pk=3)
-  PK=7 → pos=1   (Row1 has pk=7)
-  PK=9 → pos=3   (Row3 has pk=9)
+B+Tree (PK index) — leaf nodes linked:
+  Internal:  [PK=3 | PK=7]
+              /     |     \
+  Leaf[0]:  PK=1→2  Leaf[1]: PK=3→0, PK=7→1  Leaf[2]: PK=9→3
+    ↔ linked list ↔
 ```
 
 **Critical Issue: Delete Invalidates Positions**
 When you delete `Row1` from the dense array:
 - Rows shift: what was `Row2` is now at position 1, `Row3` at position 2
-- The B-Tree's positions for pk=1 and pk=9 are now **wrong**
+- The B+Tree's positions for pk=1 and pk=9 are now **wrong**
 
 **Solutions (choose one):**
 
 **Option A: Rebuild PK Index on Every Delete (Simple, Current Approach)**
-The existing `rebuildIndexesUnsafe()` already does this for hash indexes. Add PK B-Tree rebuild there. Cost: O(n log n) per delete. Acceptable for now.
+The existing `rebuildIndexesUnsafe()` already does this for hash indexes. Add PK B+Tree rebuild there. Cost: O(n log n) per delete. Acceptable for now.
 
 **Option B: Tombstone Approach (Advanced)**
-Mark deleted rows with a tombstone bit in the dense array. Never shift rows. B-Tree lookups skip tombstoned positions. Compact (defragment) during checkpoint. Cost: more complex, wastes memory until checkpoint. Enables O(log n) deletes.
+Mark deleted rows with a tombstone bit in the dense array. Never shift rows. B+Tree lookups skip tombstoned positions. Compact (defragment) during checkpoint. Cost: more complex, wastes memory until checkpoint. Enables O(log n) deletes.
 
 **Option C: Gap List (Intermediate)**
-Maintain a `freeList []int` of available positions from deleted rows. On insert, reuse from `freeList` before appending. B-Tree update is targeted (only the reused slot). Cost: O(log n) delete (just B-Tree remove) + O(1) freeList append.
+Maintain a `freeList []int` of available positions from deleted rows. On insert, reuse from `freeList` before appending. B+Tree update is targeted (only the reused slot). Cost: O(log n) delete (just B+Tree remove) + O(1) freeList append.
 
 **Recommendation: Start with Option A (rebuild).** With WAL and snapshotting in place, correctness matters more than optimal delete performance at this stage. Option C can be added in a follow-up.
 
 ### Handling Multi-Key Tables (No PK)
-Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If no PK column exists, the B-Tree is not applicable. This is fine — the existing behavior (linear scan) remains for tables without PKs. The B-Tree is only built when `table.Schema.GetPrimaryKeyColumn() != nil`.
+Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If no PK column exists, the B+Tree is not applicable. This is fine — the existing behavior (linear scan) remains for tables without PKs. The B+Tree is only built when `table.Schema.GetPrimaryKeyColumn() != nil`.
 
 ---
 
@@ -447,7 +448,7 @@ Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If n
 | Component | Changes? | Notes |
 |---|---|---|
 | `domain/data/row.go` | ✅ Yes | Rename `ToJSON/FromJSON` to `Serialize/Deserialize` |
-| `domain/schema/table.go` | ✅ Yes | Add `PKIndex *btree.BTree`; update `Insert/Delete/rebuildIndexes` |
+| `domain/schema/table.go` | ✅ Yes | Add `PKIndex *btree.BPlusTree`; update `Insert/Delete/rebuildIndexes` |
 | `domain/schema/database.go` | ❌ No | |
 | `wal/types.go` | ✅ Yes | `json.RawMessage` → `[]byte`; new `RecordCreateTable/Drop`; simplified `CheckpointRecord` |
 | `wal/writer.go` | ✅ Yes | Add `LogCreateTable()`, update `LogInsert/Update/Delete` signatures |
@@ -466,7 +467,7 @@ Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If n
 | `executor/` (CREATE TABLE) | ✅ Yes | Add WAL DDL logging |
 | `parser/`, `planner/`, `query/` | ❌ No | Untouched |
 | `engine/` (orchestrator) | ❌ No | |
-| `internal/index/btree/` | ✅ New | B-Tree implementation |
+| `internal/index/btree/` | ✅ New | B+Tree implementation (with linked leaf nodes for range scans) |
 
 ---
 
@@ -477,7 +478,7 @@ Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If n
 | 0: DDL in WAL | High | High | None (start here) |
 | 1: De-JSON Domain/WAL types | Low | Low | Phase 0 |
 | 2: Decouple Checkpointing | Medium | Medium | Phase 1 |
-| 3a: B-Tree data structure | Medium | Medium | None (can parallelise) |
+| 3a: B+Tree data structure | Medium | Medium | None (can parallelise) |
 | 3b-d: MemoryEngine + Snapshot | High | High | Phases 1, 2, 3a |
 | 4: Table.Path cleanup | Low | Low | Phase 3 |
 | 5: Delete JSON code | Low | Low | Phase 3 |
@@ -485,3 +486,6 @@ Currently JoyDB requires a PK for WAL records (see `GetPrimaryKeyValue()`). If n
 **Total: ~3–6 weeks of focused engineering depending on B-Tree implementation complexity.**
 
 The hardest single task is Phase 0 (DDL in WAL) combined with Phase 3d (startup sequence correctness under crash scenarios). Get those right and everything else follows.
+
+> [!NOTE]
+> **Design decision log (2026-05-06):** Changed from B-Tree to B+Tree after analysis. B+Tree's linked leaf list provides O(log n + k) range scans (vs B-Tree's O(k·log n)), higher fan-out from value-free internal nodes, and is the industry standard for database indexes.
