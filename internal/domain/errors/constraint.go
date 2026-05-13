@@ -6,7 +6,6 @@ import (
 )
 
 // ConstraintError represents a violation of a database constraint
-// (unique, primary key, not null, type mismatch, foreign key later, etc.)
 type ConstraintError struct {
 	Table      string      // table name
 	Column     string      // column name (empty if table-level constraint)
@@ -41,7 +40,6 @@ func (e *ConstraintError) Error() string {
 	return strings.Join(parts, " - ")
 }
 
-// NewUniqueViolation creates a unique constraint violation error
 func NewUniqueViolation(table, column string, value interface{}, rows []int) *ConstraintError {
 	return &ConstraintError{
 		Table:      table,
@@ -54,7 +52,6 @@ func NewUniqueViolation(table, column string, value interface{}, rows []int) *Co
 	}
 }
 
-// NewNotNullViolation creates a not null constraint violation error
 func NewNotNullViolation(table, column string, rowIndex int) *ConstraintError {
 	return &ConstraintError{
 		Table:      table,
@@ -66,7 +63,6 @@ func NewNotNullViolation(table, column string, rowIndex int) *ConstraintError {
 	}
 }
 
-// NewPrimaryKeyViolation creates a primary key constraint violation error
 func NewPrimaryKeyViolation(table, column string, value interface{}) *ConstraintError {
 	return &ConstraintError{
 		Table:      table,
@@ -77,7 +73,6 @@ func NewPrimaryKeyViolation(table, column string, value interface{}) *Constraint
 	}
 }
 
-// NewTypeMismatch creates a type mismatch constraint violation error
 func NewTypeMismatch(table, column string, value interface{}, expectedType string) *ConstraintError {
 	return &ConstraintError{
 		Table:      table,

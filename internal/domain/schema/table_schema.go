@@ -18,7 +18,6 @@ func (s *TableSchema) GetPrimaryKeyColumn() *Column {
 	return nil
 }
 
-// Validate ensures the schema is valid
 func (s *TableSchema) Validate() error {
 	if len(s.Columns) == 0 {
 		return fmt.Errorf("table must have at least one column")

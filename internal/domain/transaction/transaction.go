@@ -38,7 +38,6 @@ type Transaction struct {
 	Changes   []Change  // Modifications made
 }
 
-// NewTransaction creates a new transaction with a unique ID
 func NewTransaction() *Transaction {
 	return &Transaction{
 		ID:        uuid.New().String(),
@@ -49,7 +48,6 @@ func NewTransaction() *Transaction {
 	}
 }
 
-// Close marks the transaction as inactive
 func (tx *Transaction) Close() {
 	tx.Active = false
 }

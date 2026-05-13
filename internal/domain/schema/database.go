@@ -3,7 +3,6 @@ package schema
 import "sync"
 
 // Database represents a single database on disk
-// (a directory containing table subdirectories)
 type Database struct {
 	mu     sync.RWMutex
 	Name   string

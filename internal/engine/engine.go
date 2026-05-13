@@ -23,7 +23,6 @@ type Engine struct {
 	observers  []Observer          // Observers for lifecycle events
 }
 
-// New creates a new Engine instance
 func New(db *schema.Database, registry *manager.Registry) *Engine {
 	return &Engine{
 		db:        db,
@@ -32,12 +31,9 @@ func New(db *schema.Database, registry *manager.Registry) *Engine {
 	}
 }
 
-// SetWALManager sets the WAL manager for the engine
 func (e *Engine) SetWALManager(wm *manager.WALManager) {
 	e.walManager = wm
 }
-
-// GetWALManager returns the current WAL manager
 func (e *Engine) GetWALManager() *manager.WALManager {
 	return e.walManager
 }
@@ -65,7 +61,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventParseEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", stmt)})
 
-	// 3. Handle Database Management Statements (no WAL for these)
 	switch s := stmt.(type) {
 	case *ast.CreateDatabaseStatement:
 		if err := e.registry.Create(s.Name); err != nil {
@@ -106,12 +101,9 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		return &executor.Result{Message: fmt.Sprintf("Switched to database '%s'", s.Name)}, nil
 	}
 
-	// 4. Ensure Database is Selected
 	if e.db == nil {
 		return nil, fmt.Errorf("no database selected. Use 'USE <database_name>' to select one")
 	}
-
-	// 5. Plan (for DML/DQL)
 	e.notify(Event{Type: EventPlanStart, TxID: tx.ID})
 	planNode, err := planner.Plan(stmt, e.db, tx)
 	if err != nil {
@@ -119,21 +111,18 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventPlanEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", planNode)})
 
-	// Determine if this is a mutating operation (needs WAL logging)
 	needsWAL := false
 	switch planNode.(type) {
 	case *plan.InsertNode, *plan.UpdateNode, *plan.DeleteNode, *plan.CreateTableNode, *plan.DropTableNode:
 		needsWAL = true
 	}
 
-	// 6. Begin WAL transaction only for mutating operations
 	if e.walManager != nil && needsWAL {
 		if err := e.walManager.BeginTransaction(tx); err != nil {
 			return nil, fmt.Errorf("WAL begin failed: %w", err)
 		}
 	}
 
-	// 7. Execute with WAL (will be nil for SELECT, so no logging happens)
 	e.notify(Event{Type: EventExecStart, TxID: tx.ID})
 	var walMgr *manager.WALManager
 	if needsWAL {
@@ -141,7 +130,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	result, err := executor.ExecuteWithWAL(planNode, e.db, tx, walMgr)
 	if err != nil {
-		// Abort WAL transaction on execution error (only if it needs WAL)
 		if e.walManager != nil && needsWAL {
 			e.walManager.Abort(tx)
 		}
@@ -152,7 +140,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		"rows_returned": len(result.Rows),
 	}})
 
-	// 8. Commit WAL transaction on success
 	if e.walManager != nil && needsWAL {
 		if err := e.walManager.Commit(tx); err != nil {
 			return nil, fmt.Errorf("WAL commit failed: %w", err)
@@ -162,7 +149,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	return result, nil
 }
 
-// ListTables returns a list of tables in the currently selected database
 func (e *Engine) ListTables() ([]string, error) {
 	if e.db == nil {
 		return nil, fmt.Errorf("no database selected")
@@ -175,12 +161,9 @@ func (e *Engine) ListTables() ([]string, error) {
 	return tables, nil
 }
 
-// AddObserver registers an observer to receive lifecycle events
 func (e *Engine) AddObserver(observer Observer) {
 	e.observers = append(e.observers, observer)
 }
-
-// RemoveObserver unregisters an observer
 func (e *Engine) RemoveObserver(observer Observer) {
 	for i, o := range e.observers {
 		if o == observer {
@@ -190,7 +173,6 @@ func (e *Engine) RemoveObserver(observer Observer) {
 	}
 }
 
-// notify sends an event to all registered observers
 func (e *Engine) notify(event Event) {
 	event.Timestamp = time.Now()
 	for _, observer := range e.observers {
