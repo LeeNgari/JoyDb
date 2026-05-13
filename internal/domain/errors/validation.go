@@ -21,7 +21,6 @@ func (e *ValidationError) Error() string {
 		e.Table, e.Column, e.Message, e.Value, e.Expected)
 }
 
-// NewValidationError creates a new validation error
 func NewValidationError(table, column string, value interface{}, expected, message string) *ValidationError {
 	return &ValidationError{
 		Table:    table,
@@ -33,7 +32,6 @@ func NewValidationError(table, column string, value interface{}, expected, messa
 	}
 }
 
-// StorageError represents a storage layer error
 type StorageError struct {
 	Operation string // "load", "save", "read", "write"
 	Path      string // File or directory path
@@ -53,7 +51,6 @@ func (e *StorageError) Unwrap() error {
 	return e.Cause
 }
 
-// NewStorageError creates a new storage error
 func NewStorageError(operation, path, message string) *StorageError {
 	return &StorageError{
 		Operation: operation,
@@ -62,7 +59,6 @@ func NewStorageError(operation, path, message string) *StorageError {
 	}
 }
 
-// NewStorageErrorWithCause creates a storage error wrapping another error
 func NewStorageErrorWithCause(operation, path string, cause error) *StorageError {
 	return &StorageError{
 		Operation: operation,

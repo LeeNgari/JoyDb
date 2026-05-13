@@ -4,16 +4,16 @@ import "fmt"
 
 // ParseError represents an error during SQL parsing
 type ParseError struct {
-	Message  string
-	Token    string // The problematic token
-	Line     int    // Line number (if available)
-	Column   int    // Column number (if available)
-	Cause    error  // Underlying error (if any)
+	Message string
+	Token   string // The problematic token
+	Line    int    // Line number (if available)
+	Column  int    // Column number (if available)
+	Cause   error  // Underlying error (if any)
 }
 
 func (e *ParseError) Error() string {
 	if e.Line > 0 && e.Column > 0 {
-		return fmt.Sprintf("parse error at line %d, column %d: %s (token: %s)", 
+		return fmt.Sprintf("parse error at line %d, column %d: %s (token: %s)",
 			e.Line, e.Column, e.Message, e.Token)
 	}
 	if e.Token != "" {
@@ -26,7 +26,6 @@ func (e *ParseError) Unwrap() error {
 	return e.Cause
 }
 
-// NewParseError creates a new parse error
 func NewParseError(message, token string) *ParseError {
 	return &ParseError{
 		Message: message,
@@ -34,7 +33,6 @@ func NewParseError(message, token string) *ParseError {
 	}
 }
 
-// NewParseErrorWithPosition creates a parse error with position information
 func NewParseErrorWithPosition(message, token string, line, column int) *ParseError {
 	return &ParseError{
 		Message: message,
@@ -44,7 +42,6 @@ func NewParseErrorWithPosition(message, token string, line, column int) *ParseEr
 	}
 }
 
-// NewParseErrorWithCause creates a parse error wrapping another error
 func NewParseErrorWithCause(message string, cause error) *ParseError {
 	return &ParseError{
 		Message: message,
