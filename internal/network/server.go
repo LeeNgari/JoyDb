@@ -42,25 +42,21 @@ func handleConnection(conn net.Conn, registry *manager.Registry) {
 	defer conn.Close()
 
 	dbEngine := engine.New(nil, registry)
-	
-	// Register logging observer for lifecycle tracing
+
 	loggingObserver := engine.NewLoggingObserver()
 	dbEngine.AddObserver(loggingObserver)
 
-	// Use Decoder instead of Scanner for network streams
 	decoder := json.NewDecoder(conn)
 	encoder := json.NewEncoder(conn)
 
 	for {
 		var req Request
-		// Decode directly from the connection
 		if err := decoder.Decode(&req); err != nil {
 			if err == io.EOF {
-				return // Connection closed gracefully
+				return
 			}
 			slog.Error("decode error", "error", err)
-			
-			// Send error back to client
+
 			errResult := &executor.Result{
 				Error: fmt.Sprintf("Invalid request format: %v", err),
 			}
@@ -74,7 +70,7 @@ func handleConnection(conn net.Conn, registry *manager.Registry) {
 
 		result, err := dbEngine.Execute(req.Query)
 		if err != nil {
-			// Return error as a Result object
+
 			errResult := &executor.Result{
 				Error: err.Error(),
 			}
