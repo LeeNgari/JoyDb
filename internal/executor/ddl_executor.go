@@ -7,6 +7,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
@@ -58,6 +59,7 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 			Data:   make(map[interface{}][]int),
 			Unique: true,
 		}
+		table.PKIndex = btree.New(btree.DefaultDegree)
 	}
 
 	for _, col := range tableSchema.Columns {

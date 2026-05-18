@@ -10,6 +10,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 	"github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/wal"
 )
@@ -383,7 +384,8 @@ func (t *DatabaseReplayTarget) ReplayInsert(tableName, key string, value []byte)
 	table.Lock()
 	defer table.Unlock()
 
-	table.Rows = append(table.Rows, row)
+	// Use InsertReplay for lock-free insert that also maintains B+Tree PKIndex
+	table.InsertReplay(row)
 	table.MarkDirtyUnsafe()
 
 	slog.Debug("Replay: Insert", "table", tableName, "key", key)
@@ -481,6 +483,11 @@ func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte
 		Schema:  s,
 		Rows:    []data.Row{},
 		Indexes: make(map[string]*data.Index),
+	}
+
+	// Initialize PKIndex if table has a primary key
+	if pkCol := s.GetPrimaryKeyColumn(); pkCol != nil {
+		table.PKIndex = btree.New(btree.DefaultDegree)
 	}
 
 	t.db.Lock()

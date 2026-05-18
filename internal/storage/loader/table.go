@@ -9,6 +9,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 	"github.com/leengari/mini-rdbms/internal/storage/metadata"
 	"github.com/leengari/mini-rdbms/internal/validation"
 )
@@ -70,6 +71,17 @@ func LoadTable(path string) (*schema.Table, error) {
 	for i, row := range table.Rows {
 		if err := validation.ValidateRow(table, row, i); err != nil {
 			return nil, fmt.Errorf("data validation failed for row %d in table %s: %w", i, meta.Name, err)
+		}
+	}
+
+	// Initialize B+Tree PKIndex if the table has a primary key
+	pkCol := tableSchema.GetPrimaryKeyColumn()
+	if pkCol != nil {
+		table.PKIndex = btree.New(btree.DefaultDegree)
+		for pos, row := range table.Rows {
+			if val, exists := row.Data[pkCol.Name]; exists {
+				table.PKIndex.Insert(val, pos)
+			}
 		}
 	}
 
