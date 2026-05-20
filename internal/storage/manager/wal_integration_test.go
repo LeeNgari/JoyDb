@@ -521,14 +521,14 @@ func TestWriteCheckpointWithTables(t *testing.T) {
 		Path: dbPath,
 		Tables: map[string]*schema.Table{
 			"t1": {
-				Name: "t1", 
+				Name: "t1",
 				Path: dbPath,
 				Schema: &schema.TableSchema{
 					Columns: []schema.Column{{Name: "id", Type: schema.ColumnTypeInt}},
 				},
 			},
 			"t2": {
-				Name: "t2", 
+				Name: "t2",
 				Path: dbPath,
 				Schema: &schema.TableSchema{
 					Columns: []schema.Column{{Name: "id", Type: schema.ColumnTypeInt}},

@@ -1,14 +1,13 @@
 package integration
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"encoding/json"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/network"

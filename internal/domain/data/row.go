@@ -2,7 +2,6 @@ package data
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
 	"math"
 	"sync"
@@ -43,23 +42,6 @@ func (r Row) Copy() Row {
 		Data: copy,
 		mu:   &sync.Mutex{},
 	}
-}
-
-// UnmarshalJSON implements json.Unmarshaler interface
-// This allows Row to be unmarshaled from JSON as a map
-func (r *Row) UnmarshalJSON(data []byte) error {
-	var m map[string]interface{}
-	if err := json.Unmarshal(data, &m); err != nil {
-		return err
-	}
-	r.Data = m
-	return nil
-}
-
-// MarshalJSON implements json.Marshaler interface
-// This allows Row to be marshaled to JSON as a map
-func (r Row) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r.Data)
 }
 
 // Serialize serializes the row to []byte using a custom binary format.
