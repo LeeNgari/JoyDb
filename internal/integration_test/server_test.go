@@ -40,15 +40,9 @@ func TestServerJSON(t *testing.T) {
 	basePath := filepath.Dir(db.Path)
 	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(basePath, storageEng)
-	defer registry.CloseAll()
 
-	// Start server in goroutine using NewServer for graceful shutdown
-	srv, err := network.NewServer(port, registry)
-	if err != nil {
-		t.Fatalf("Failed to create server: %v", err)
-	}
-	go srv.Start()
-	defer srv.Close()
+	// Start server in goroutine
+	go network.Start(port, registry)
 
 	// Wait a bit for server
 	time.Sleep(100 * time.Millisecond)

@@ -51,7 +51,5 @@ This document tracks `TODO` comments and tasks identified in the codebase that a
 
 ---
 
-## Stale Comments / Cleanup
-*Note: The following were identified but might be stale as the features appear to be partially or fully implemented.*
+## Stale Comments / Cleanup - clean up of unnecessary comments keeping codebase clean and professional, expect that peaople working on the project are already familiear with it and know what going on no need to explain what every line or comment does
 
-- **Integration Tests**: `internal/integration_test/database_management_test.go:64` and `:74` mention that `CREATE TABLE` isn't implemented, but the code exists in `internal/executor/ddl_executor.go`. These comments should be updated or removed.

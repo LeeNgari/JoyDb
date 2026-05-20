@@ -16,56 +16,26 @@ type Request struct {
 	Query string `json:"query"`
 }
 
-// Server represents the TCP database server
-type Server struct {
-	listener net.Listener
-	registry *manager.Registry
-}
-
-// NewServer creates a new TCP database server instance but does not start listening
-func NewServer(port int, registry *manager.Registry) (*Server, error) {
+// Start starts the TCP database server
+func Start(port int, registry *manager.Registry) {
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-	return &Server{
-		listener: listener,
-		registry: registry,
-	}, nil
-}
-
-// Start starts the server loop
-func (s *Server) Start() {
-	slog.Info("Running on port", "port", s.listener.Addr().(*net.TCPAddr).Port)
-
-	for {
-		conn, err := s.listener.Accept()
-		if err != nil {
-			// When the listener is closed, Accept will return an error
-			slog.Debug("Server listener closed or accept error", "error", err)
-			return
-		}
-		go handleConnection(conn, s.registry)
-	}
-}
-
-// Close gracefully closes the server listener
-func (s *Server) Close() error {
-	if s.listener != nil {
-		return s.listener.Close()
-	}
-	return nil
-}
-
-// Start starts the TCP database server in a blocking way (retained for backward compatibility)
-func Start(port int, registry *manager.Registry) {
-	s, err := NewServer(port, registry)
 	if err != nil {
 		slog.Error("Failed to bind to port", "port", port, "error", err)
 		return
 	}
-	s.Start()
+	defer listener.Close()
+
+	slog.Info("Running on port", "port", port)
+
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			slog.Error("Failed to accept connection", "error", err)
+			continue
+		}
+		go handleConnection(conn, registry)
+	}
 }
 
 func handleConnection(conn net.Conn, registry *manager.Registry) {
