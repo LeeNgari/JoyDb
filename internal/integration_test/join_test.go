@@ -5,25 +5,16 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
-	"github.com/leengari/mini-rdbms/internal/storage/loader"
 )
 
 // TestJoinOperations tests all JOIN types with real database
 func TestJoinOperations(t *testing.T) {
 	// Load test database
-	db, err := loader.LoadDatabase("../../databases/testdb")
-	if err != nil {
-		t.Fatalf("Failed to load database: %v", err)
-	}
-
-	// Build indexes
-	if err := indexing.BuildDatabaseIndexes(db); err != nil {
-		t.Fatalf("Failed to build indexes: %v", err)
-	}
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
 
 	usersTable, ok := db.Tables["users"]
 	if !ok {

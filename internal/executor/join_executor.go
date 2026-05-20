@@ -90,7 +90,6 @@ func extractTableName(node plan.Node) string {
 	case *plan.SelectNode:
 		return n.TableName
 	case *plan.JoinNode:
-		// Recursive join names can be complex, use a placeholder
 		return fmt.Sprintf("join_%p", n)
 	default:
 		return "temp_table"

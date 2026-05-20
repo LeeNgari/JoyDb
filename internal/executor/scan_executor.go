@@ -5,8 +5,6 @@ import (
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
-// executeScan executes a ScanNode (leaf operation)
-// This is the base case for recursive tree walking
 func executeScan(node *plan.ScanNode, ctx *ExecutionContext) (*IntermediateResult, error) {
 	table, ok := ctx.Database.Tables[node.TableName]
 	if !ok {

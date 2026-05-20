@@ -3,13 +3,13 @@ package manager
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 	"github.com/leengari/mini-rdbms/internal/storage/engine"
 	"github.com/leengari/mini-rdbms/internal/wal"
 )
@@ -383,7 +383,8 @@ func (t *DatabaseReplayTarget) ReplayInsert(tableName, key string, value []byte)
 	table.Lock()
 	defer table.Unlock()
 
-	table.Rows = append(table.Rows, row)
+	// Use InsertReplay for lock-free insert that also maintains B+Tree PKIndex
+	table.InsertReplay(row)
 	table.MarkDirtyUnsafe()
 
 	slog.Debug("Replay: Insert", "table", tableName, "key", key)
@@ -468,19 +469,18 @@ func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte
 		return fmt.Errorf("failed to decode table schema during replay: %w", err)
 	}
 
-	// Create table directory (needed for JSON engine compatibility)
-	tablePath := filepath.Join(t.db.Path, name)
-	if err := os.MkdirAll(tablePath, 0755); err != nil {
-		return fmt.Errorf("failed to create table directory during replay: %w", err)
-	}
-
 	// Create new table instance
 	table := &schema.Table{
 		Name:    name,
-		Path:    tablePath,
+		Path:    t.db.Path,
 		Schema:  s,
 		Rows:    []data.Row{},
 		Indexes: make(map[string]*data.Index),
+	}
+
+	// Initialize PKIndex if table has a primary key
+	if pkCol := s.GetPrimaryKeyColumn(); pkCol != nil {
+		table.PKIndex = btree.New(btree.DefaultDegree)
 	}
 
 	t.db.Lock()

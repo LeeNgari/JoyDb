@@ -8,15 +8,17 @@ import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/errors"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 )
 
 // Table represents a database table with its schema, data, and indexes
 type Table struct {
 	mu           sync.RWMutex
 	Name         string
-	Path         string // filesystem path to table directory
+	Path         string // database directory path (used for WAL/snapshot context)
 	Schema       *TableSchema
 	Rows         []data.Row
+	PKIndex      *btree.BPlusTree   // primary key B+Tree index (nil if no PK)
 	Indexes      map[string]*data.Index
 	LastInsertID int64
 	Dirty        bool // tracks if table has unsaved changes
@@ -156,7 +158,27 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	// 5. Everything passed → safe to append
 	t.Rows = append(t.Rows, row)
 
-	// 6. Update all indexes
+	// 6. Update PKIndex if present
+	if t.PKIndex != nil {
+		pkCol := t.Schema.GetPrimaryKeyColumn()
+		if pkCol != nil {
+			if pkVal, exists := row.Data[pkCol.Name]; exists {
+				if err := t.PKIndex.Insert(pkVal, newRowPos); err != nil {
+					// Rollback the append
+					t.Rows = t.Rows[:newRowPos]
+					return &errors.ConstraintError{
+						Table:      t.Name,
+						Column:     pkCol.Name,
+						Value:      pkVal,
+						Constraint: "primary_key",
+						Reason:     "duplicate primary key (B+Tree)",
+					}
+				}
+			}
+		}
+	}
+
+	// 7. Update all hash indexes
 	for colName, idx := range t.Indexes {
 		if val, exists := row.Data[colName]; exists {
 			idx.Data[val] = append(idx.Data[val], newRowPos)
@@ -211,6 +233,19 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.ID)
 	}
 
+	// Fast path: use B+Tree for PK lookups — O(log n) instead of hash lookup
+	if t.PKIndex != nil {
+		pkCol := t.Schema.GetPrimaryKeyColumn()
+		if pkCol != nil && pkCol.Name == colName {
+			pos, found := t.PKIndex.Search(value)
+			if !found {
+				return data.Row{}, false
+			}
+			return t.Rows[pos], true
+		}
+	}
+
+	// Fallback: use hash index for non-PK unique columns
 	idx, exists := t.Indexes[colName]
 	if !exists || !idx.Unique {
 		return data.Row{}, false
@@ -359,15 +394,28 @@ func (t *Table) validateType(colName string, value interface{}, expectedType Col
 	return nil
 }
 
-// rebuildIndexesUnsafe rebuilds all indexes
+// rebuildIndexesUnsafe rebuilds all indexes (hash indexes + PKIndex B+Tree)
 // IMPORTANT: Must be called while holding write lock!
 func (t *Table) rebuildIndexesUnsafe() {
-	// Clear existing indexes
+	// Clear existing hash indexes
 	for _, idx := range t.Indexes {
 		idx.Data = make(map[interface{}][]int)
 	}
 
-	// Rebuild from current rows
+	// Rebuild PKIndex B+Tree if present
+	if t.PKIndex != nil {
+		t.PKIndex.Clear()
+		pkCol := t.Schema.GetPrimaryKeyColumn()
+		if pkCol != nil {
+			for pos, row := range t.Rows {
+				if val, exists := row.Data[pkCol.Name]; exists {
+					t.PKIndex.Insert(val, pos)
+				}
+			}
+		}
+	}
+
+	// Rebuild hash indexes from current rows
 	for rowPos, row := range t.Rows {
 		for colName, idx := range t.Indexes {
 			if val, exists := row.Data[colName]; exists {
@@ -379,6 +427,27 @@ func (t *Table) rebuildIndexesUnsafe() {
 
 // normalizeToInt64 converts various numeric types to int64
 // Returns the int64 value and true if successful, 0 and false otherwise
+// InsertReplay appends a row during WAL recovery (no validation, no locking).
+// This is safe because recovery runs single-threaded before the table is live.
+func (t *Table) InsertReplay(row data.Row) {
+	pos := len(t.Rows)
+	t.Rows = append(t.Rows, row)
+	if t.PKIndex != nil {
+		pkCol := t.Schema.GetPrimaryKeyColumn()
+		if pkCol != nil {
+			if val, exists := row.Data[pkCol.Name]; exists {
+				t.PKIndex.Insert(val, pos)
+			}
+		}
+	}
+	// Update hash indexes too
+	for colName, idx := range t.Indexes {
+		if val, exists := row.Data[colName]; exists {
+			idx.Data[val] = append(idx.Data[val], pos)
+		}
+	}
+}
+
 func normalizeToInt64(val interface{}) (int64, bool) {
 	switch v := val.(type) {
 	case float64:

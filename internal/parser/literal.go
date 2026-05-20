@@ -17,7 +17,7 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 	case lexer.IDENTIFIER:
 		val := p.curTok.Literal
 		p.nextToken()
-		
+
 		// Check for qualified identifier (table.column)
 		if p.curTok.Type == lexer.DOT {
 			p.nextToken()
@@ -32,27 +32,25 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 				Value:             colName,
 			}, nil
 		}
-		
+
 		// Unqualified identifier
 		return &ast.Identifier{TokenLiteralValue: val, Value: val}, nil
-	
+
 	// Allow EMAIL, DATE, TIME as column names when not used as typed literals
 	case lexer.EMAIL, lexer.DATE, lexer.TIME:
 		// Peek ahead - if next token is STRING, this is a typed literal
 		// Otherwise, treat it as an identifier (column name)
 		keywordType := p.curTok.Type
 		keyword := p.curTok.Literal
-		
+
 		// Check if this is a typed literal (keyword followed by string)
 		// by checking the next token
 		p.nextToken()
-		
+
 		if p.curTok.Type == lexer.STRING {
-			// This is a typed literal - we need to parse it properly
-			// Put back the keyword token and call parseTypedLiteral
+			// This is a typed literal -  parse it properly
 			switch keywordType {
 			case lexer.DATE:
-				// Validate the string value
 				value := p.curTok.Literal
 				if err := validation.ValidateDate(value); err != nil {
 					return nil, fmt.Errorf("DATE validation failed: %w", err)
@@ -87,7 +85,7 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 				}, nil
 			}
 		}
-		
+
 		// Not followed by STRING, treat as identifier (column name)
 		// p.curTok is already at the next token, so don't advance
 		return &ast.Identifier{
@@ -120,4 +118,3 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 		return nil, fmt.Errorf("unexpected token in expression: %s", p.curTok.Literal)
 	}
 }
-

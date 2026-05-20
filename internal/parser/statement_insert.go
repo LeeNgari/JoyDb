@@ -28,7 +28,6 @@ func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
 	stmt.TableName = &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal}
 	p.nextToken()
 
-	// Columns (Optional but we'll require them for now or handle parens)
 	if p.curTok.Type == lexer.PAREN_OPEN {
 		// Parse columns
 		cols, err := p.parseIdentifierList()
@@ -48,7 +47,7 @@ func (p *Parser) parseInsert() (*ast.InsertStatement, error) {
 	if p.curTok.Type != lexer.PAREN_OPEN {
 		return nil, fmt.Errorf("expected (, got %s", p.curTok.Literal)
 	}
-	
+
 	// Parse Values List
 	values, err := p.parseExpressionList()
 	if err != nil {

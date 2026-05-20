@@ -342,6 +342,11 @@ func CalculateFileCRC32(filePath string) (uint32, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to read file: %w", err)
 	}
+	// Snapshots embed their own CRC32 as the last 4 bytes.
+	// We must exclude it from the checksum calculation.
+	if len(data) >= 4 && filepath.Ext(filePath) == ".snap" {
+		data = data[:len(data)-4]
+	}
 	return crc32.ChecksumIEEE(data), nil
 }
 
