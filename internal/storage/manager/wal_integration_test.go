@@ -296,10 +296,9 @@ func TestReplayInsertToDatabase(t *testing.T) {
 	target := NewDatabaseReplayTarget(db)
 
 	rowMap := map[string]interface{}{"id": int64(1), "name": "Alice"}
-	rowBytes, _ := json.Marshal(rowMap)
-	rowJSON := []byte(rowBytes)
+	rowBytes, _ := data.NewRow(rowMap).Serialize()
 
-	err := target.ReplayInsert("users", "1", rowJSON)
+	err := target.ReplayInsert("users", "1", rowBytes)
 	assert.NilError(t, err)
 
 	assert.Equal(t, len(db.Tables["users"].Rows), 1)
@@ -319,10 +318,9 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 	target := NewDatabaseReplayTarget(db)
 
 	newRowMap := map[string]interface{}{"id": int64(1), "name": "Bob"}
-	newRowBytes, _ := json.Marshal(newRowMap)
-	newRowJSON := []byte(newRowBytes)
+	newRowBytes, _ := data.NewRow(newRowMap).Serialize()
 
-	err := target.ReplayUpdate("users", "1", newRowJSON)
+	err := target.ReplayUpdate("users", "1", newRowBytes)
 	assert.NilError(t, err)
 
 	assert.Equal(t, len(db.Tables["users"].Rows), 1)

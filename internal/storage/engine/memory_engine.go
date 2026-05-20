@@ -21,8 +21,8 @@ func NewMemoryEngine() *MemoryEngine {
 
 // LoadDatabase loads a database from the latest snapshot file
 func (e *MemoryEngine) LoadDatabase(dbPath string) (*schema.Database, error) {
-	if err := os.MkdirAll(dbPath, 0755); err != nil {
-		return nil, err
+	if _, err := os.Stat(dbPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("database does not exist at path: %s", dbPath)
 	}
 
 	entries, err := os.ReadDir(dbPath)
