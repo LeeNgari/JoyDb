@@ -10,10 +10,9 @@ import (
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
-// ColumnMetadata provides rich information about a result column
 type ColumnMetadata struct {
-	Name string // Column name
-	Type string // Data type as string
+	Name string
+	Type string
 }
 
 // Result represents the outcome of executing a SQL statement
@@ -54,13 +53,11 @@ func ExecuteWithWAL(node plan.Node, db *schema.Database, tx *transaction.Transac
 		WALManager:  walMgr,
 	}
 
-	// Execute the plan tree recursively
 	intermediate, err := executeNode(node, ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	// Format the final result based on node type
 	switch n := node.(type) {
 	case *plan.SelectNode:
 		return formatSelectResult(n, intermediate, db), nil
@@ -80,7 +77,6 @@ func ExecuteWithWAL(node plan.Node, db *schema.Database, tx *transaction.Transac
 }
 
 // executeNode recursively executes a plan node and its children
-// This is the core of the tree-walking executor
 func executeNode(node plan.Node, ctx *ExecutionContext) (*IntermediateResult, error) {
 	if node == nil {
 		return &IntermediateResult{

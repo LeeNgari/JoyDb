@@ -4,7 +4,7 @@ import (
 	"github.com/leengari/mini-rdbms/internal/parser/lexer"
 )
 
-// isTypedLiteralKeyword checks if a token type is a typed literal keyword (DATE, TIME, EMAIL)
+// Checks if a token type is a typed literal keyword (DATE, TIME, EMAIL)
 func isTypedLiteralKeyword(t lexer.TokenType) bool {
 	return t == lexer.DATE || t == lexer.TIME || t == lexer.EMAIL
 }
@@ -24,4 +24,3 @@ func isComparisonOperator(t lexer.TokenType) bool {
 		t == lexer.GREATER_EQUAL ||
 		t == lexer.NOT_EQUAL
 }
-

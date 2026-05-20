@@ -4,7 +4,6 @@ import (
 	"testing"
 )
 
-// MockObserver is a test observer that records events
 type MockObserver struct {
 	Events []Event
 }
@@ -39,7 +38,6 @@ func TestRemoveObserver(t *testing.T) {
 func TestNotifyWithNoObservers(t *testing.T) {
 	eng := New(nil, nil)
 
-	// Should not panic
 	eng.notify(Event{Type: EventLexStart, TxID: "test-tx"})
 }
 

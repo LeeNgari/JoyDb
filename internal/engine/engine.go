@@ -40,11 +40,11 @@ func (e *Engine) GetWALManager() *manager.WALManager {
 
 // Execute processes a SQL string and returns the result
 func (e *Engine) Execute(sql string) (*executor.Result, error) {
-	// 0. Start Transaction
+	//Start Transaction
 	tx := transaction.NewTransaction()
 	defer tx.Close()
 
-	// 1. Tokenize
+	//Tokenize
 	e.notify(Event{Type: EventLexStart, TxID: tx.ID, Data: sql})
 	tokens, err := lexer.Tokenize(sql)
 	if err != nil {
@@ -52,7 +52,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	}
 	e.notify(Event{Type: EventLexEnd, TxID: tx.ID, Data: len(tokens)})
 
-	// 2. Parse
+	//Parse
 	e.notify(Event{Type: EventParseStart, TxID: tx.ID})
 	p := parser.New(tokens)
 	stmt, err := p.Parse()
@@ -69,7 +69,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		return &executor.Result{Message: fmt.Sprintf("Database '%s' created", s.Name)}, nil
 
 	case *ast.DropDatabaseStatement:
-		// If dropping currently active DB, unload it first
 		if e.db != nil && e.db.Name == s.Name {
 			e.db = nil
 			e.walManager = nil
@@ -80,7 +79,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		return &executor.Result{Message: fmt.Sprintf("Database '%s' dropped", s.Name)}, nil
 
 	case *ast.AlterDatabaseStatement:
-		// If renaming active DB, unload it (or update it, but unloading is safer for now)
 		if e.db != nil && e.db.Name == s.Name {
 			e.db = nil
 			e.walManager = nil
@@ -91,7 +89,6 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		return &executor.Result{Message: fmt.Sprintf("Database renamed from '%s' to '%s'", s.Name, s.NewName)}, nil
 
 	case *ast.UseDatabaseStatement:
-		// Load/Get new DB from registry
 		newDB, walMgr, err := e.registry.GetWithWAL(s.Name)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load database '%s': %w", s.Name, err)

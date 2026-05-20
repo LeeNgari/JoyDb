@@ -10,7 +10,7 @@ import (
 
 func TestParseCreateTable(t *testing.T) {
 	sql := "CREATE TABLE users (id INT PRIMARY KEY AUTO_INCREMENT, name TEXT NOT NULL UNIQUE, email TEXT);"
-	
+
 	tokens, err := lexer.Tokenize(sql)
 	assert.NoError(t, err)
 
@@ -25,19 +25,16 @@ func TestParseCreateTable(t *testing.T) {
 	assert.Equal(t, "users", createStmt.TableName)
 	assert.Equal(t, 3, len(createStmt.Columns))
 
-	// Check id column
 	assert.Equal(t, "id", createStmt.Columns[0].Name)
 	assert.Equal(t, "INT", createStmt.Columns[0].Type)
 	assert.True(t, createStmt.Columns[0].PrimaryKey)
 	assert.True(t, createStmt.Columns[0].AutoIncrement)
 
-	// Check name column
 	assert.Equal(t, "name", createStmt.Columns[1].Name)
 	assert.Equal(t, "TEXT", createStmt.Columns[1].Type)
 	assert.True(t, createStmt.Columns[1].NotNull)
 	assert.True(t, createStmt.Columns[1].Unique)
 
-	// Check email column
 	assert.Equal(t, "email", createStmt.Columns[2].Name)
 	assert.Equal(t, "TEXT", createStmt.Columns[2].Type)
 	assert.False(t, createStmt.Columns[2].NotNull)
@@ -45,7 +42,7 @@ func TestParseCreateTable(t *testing.T) {
 
 func TestParseDropTable(t *testing.T) {
 	sql := "DROP TABLE users;"
-	
+
 	tokens, err := lexer.Tokenize(sql)
 	assert.NoError(t, err)
 

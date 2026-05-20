@@ -24,7 +24,7 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 		table.RUnlock()
 	}
 
-	// Log to WAL before successful delete (WAL-first execution)
+	// Log to WAL before successful delete
 	if ctx.WALManager != nil && len(oldRows) > 0 {
 		for _, oldRow := range oldRows {
 			key, keyErr := table.GetPrimaryKeyValue(oldRow)

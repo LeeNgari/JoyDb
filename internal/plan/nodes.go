@@ -12,10 +12,10 @@ import (
 type Node interface {
 	// Children returns child nodes for tree walking
 	Children() []Node
-	
+
 	// Metadata returns attached metadata (never nil)
 	Metadata() map[string]any
-	
+
 	// NodeType returns the type identifier (for debugging/logging)
 	NodeType() string
 }
@@ -25,7 +25,7 @@ type ScanNode struct {
 	TableName   string
 	Predicate   func(data.Row) bool
 	Transaction *transaction.Transaction
-	
+
 	metadata map[string]any
 }
 
@@ -46,14 +46,14 @@ func (n *ScanNode) NodeType() string {
 
 // JoinNode represents a JOIN operation (composite node with two children)
 type JoinNode struct {
-	JoinType    join.JoinType
-	LeftOnCol   string
-	RightOnCol  string
-	
+	JoinType   join.JoinType
+	LeftOnCol  string
+	RightOnCol string
+
 	// Tree structure - JOIN has two children
 	left  Node
 	right Node
-	
+
 	metadata map[string]any
 }
 
@@ -99,10 +99,10 @@ type SelectNode struct {
 	Projection *projection.Projection
 	// Transaction context
 	Transaction *transaction.Transaction
-	
+
 	// Tree structure - children are JOINs or other operations
 	children []Node
-	
+
 	metadata map[string]any
 }
 
@@ -127,11 +127,10 @@ func (n *SelectNode) NodeType() string {
 
 // InsertNode represents an INSERT operation
 type InsertNode struct {
-	TableName string
-	Row       data.Row // The row to insert (already parsed/converted)
-	// Transaction context
+	TableName   string
+	Row         data.Row
 	Transaction *transaction.Transaction
-	
+
 	children []Node
 	metadata map[string]any
 }
@@ -153,12 +152,11 @@ func (n *InsertNode) NodeType() string {
 
 // UpdateNode represents an UPDATE operation
 type UpdateNode struct {
-	TableName string
-	Predicate func(data.Row) bool
-	Updates   data.Row // Map of columns to update
-	// Transaction context
+	TableName   string
+	Predicate   func(data.Row) bool
+	Updates     data.Row
 	Transaction *transaction.Transaction
-	
+
 	children []Node
 	metadata map[string]any
 }
@@ -178,13 +176,12 @@ func (n *UpdateNode) NodeType() string {
 	return "UPDATE"
 }
 
-// DeleteNode represents a DELETE operation
 type DeleteNode struct {
 	TableName string
 	Predicate func(data.Row) bool
 	// Transaction context
 	Transaction *transaction.Transaction
-	
+
 	children []Node
 	metadata map[string]any
 }
@@ -204,10 +201,6 @@ func (n *DeleteNode) NodeType() string {
 	return "DELETE"
 }
 
-// ===========================================================================
-// DDL NODES
-// ===========================================================================
-
 // CreateTableNode represents a CREATE TABLE execution plan node
 type CreateTableNode struct {
 	TableName   string
@@ -222,7 +215,7 @@ func (n *CreateTableNode) Metadata() map[string]any {
 	if n.metadata != nil {
 		return n.metadata
 	}
-	// Extract column names for display
+
 	colNames := make([]string, len(n.Columns))
 	for i, c := range n.Columns {
 		colNames[i] = c.Name
@@ -233,7 +226,6 @@ func (n *CreateTableNode) Metadata() map[string]any {
 	}
 }
 
-// DropTableNode represents a DROP TABLE execution plan node
 type DropTableNode struct {
 	TableName   string
 	Transaction *transaction.Transaction

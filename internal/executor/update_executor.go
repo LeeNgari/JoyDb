@@ -35,8 +35,7 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		table.RUnlock()
 	}
 
-	// Log to WAL before successful update (WAL-first execution)
-	// Compute new row by applying updates to old row (safer than index lookup)
+	// Log to WAL before successful update
 	if ctx.WALManager != nil && len(oldRowInfos) > 0 {
 		for _, info := range oldRowInfos {
 			// Compute the new row by applying updates to old row

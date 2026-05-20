@@ -35,14 +35,13 @@ func Plan(stmt ast.Statement, db *schema.Database, tx *transaction.Transaction) 
 }
 
 func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
-	// 1. Validate tables exist
+
 	tableName := stmt.TableName.Value
 	_, ok := db.Tables[tableName]
 	if !ok {
 		return nil, fmt.Errorf("table not found: %s", tableName)
 	}
 
-	// 2. Build Predicate
 	var pred func(data.Row) bool
 	if stmt.Where != nil {
 		p, err := predicate.Build(stmt.Where)
@@ -52,7 +51,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		pred = p
 	}
 
-	// 3. Build Projection
 	var proj *projection.Projection
 	if len(stmt.Fields) == 1 && stmt.Fields[0].Value == "*" {
 		proj = projection.NewProjection()
@@ -69,7 +67,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		}
 	}
 
-	// 4. Build tree structure
 	selectNode := &plan.SelectNode{
 		TableName:   tableName,
 		Predicate:   pred,
@@ -77,12 +74,11 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		Transaction: tx,
 	}
 
-	// Attach metadata
 	selectNode.Metadata()["source_table"] = tableName
 	selectNode.Metadata()["has_predicate"] = pred != nil
 	selectNode.Metadata()["estimated_rows"] = 1000 // Scaffold: naive estimate
 
-	// 5. Build JOINs as tree children
+	// Build JOINs as tree children
 	if len(stmt.Joins) > 0 {
 		// Create base scan node for left table
 		// Note: We don't push down the full filter if there are joins,
@@ -95,18 +91,16 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		leftScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
 		leftScan.Metadata()["table"] = tableName
 
-		// Build JOIN tree
 		currentNode := plan.Node(leftScan)
 
 		for _, joinClause := range stmt.Joins {
-			// Validate join table
+
 			joinTableName := joinClause.RightTable.Value
 			_, ok := db.Tables[joinTableName]
 			if !ok {
 				return nil, fmt.Errorf("right table not found: %s", joinTableName)
 			}
 
-			// Parse ON condition
 			binExpr, ok := joinClause.OnCondition.(*ast.BinaryExpression)
 			if !ok {
 				return nil, fmt.Errorf("JOIN ON condition must be a comparison expression")
@@ -124,7 +118,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 				return nil, fmt.Errorf("right side of JOIN condition must be an identifier")
 			}
 
-			// Convert string type to enum
 			var jt join.JoinType
 			switch joinClause.JoinType {
 			case "INNER":
@@ -139,7 +132,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 				return nil, fmt.Errorf("unsupported JOIN type: %s", joinClause.JoinType)
 			}
 
-			// Create scan node for right table
 			rightScan := &plan.ScanNode{
 				TableName:   joinTableName,
 				Transaction: tx,
@@ -147,7 +139,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 			rightScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
 			rightScan.Metadata()["table"] = joinTableName
 
-			// Create JOIN node with left and right children
 			joinNode := plan.NewJoinNode(
 				currentNode,
 				rightScan,
@@ -162,7 +153,6 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 			currentNode = joinNode
 		}
 
-		// Add the final JOIN tree as child of SelectNode
 		selectNode.AddChild(currentNode)
 	}
 
@@ -250,7 +240,6 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 		Transaction: tx,
 	}
 
-	// Attach metadata
 	node.Metadata()["table"] = tableName
 	node.Metadata()["has_predicate"] = pred != nil
 
@@ -281,18 +270,17 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.
 		Transaction: tx,
 	}
 
-	// Attach metadata
 	node.Metadata()["table"] = tableName
 	node.Metadata()["has_predicate"] = pred != nil
 
 	return node, nil
 }
 
-func planCreateTable(stmt *ast.CreateTableStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+func planCreateTable(stmt *ast.CreateTableStatement, _ *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	// Convert AST ColumnDef to schema.Column
 	columns := make([]schema.Column, len(stmt.Columns))
 	for i, astCol := range stmt.Columns {
-		// Convert type string to enum type
+
 		var colType schema.ColumnType
 		switch astCol.Type {
 		case "INT":
@@ -310,8 +298,7 @@ func planCreateTable(stmt *ast.CreateTableStatement, db *schema.Database, tx *tr
 		case "EMAIL":
 			colType = schema.ColumnTypeEmail
 		default:
-			// Default to TEXT if unknown, or return error? We'll use TEXT for now
-			// as the lexer only recognizes a specific set of keywords
+			// Default to TEXT if unknown
 			colType = schema.ColumnTypeText
 		}
 
@@ -332,7 +319,7 @@ func planCreateTable(stmt *ast.CreateTableStatement, db *schema.Database, tx *tr
 	}, nil
 }
 
-func planDropTable(stmt *ast.DropTableStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+func planDropTable(stmt *ast.DropTableStatement, _ *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 	return &plan.DropTableNode{
 		TableName:   stmt.TableName,
 		Transaction: tx,

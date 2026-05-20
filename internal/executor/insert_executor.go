@@ -12,7 +12,7 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
-	// Log to WAL before successful insert (WAL-first execution)
+	// Log to WAL before successful insert
 	if ctx.WALManager != nil {
 		if err := ctx.WALManager.LogInsert(ctx.Transaction, table, node.Row); err != nil {
 			return nil, err

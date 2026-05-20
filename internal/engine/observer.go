@@ -24,8 +24,6 @@ type Event struct {
 	Data      interface{} // Phase-specific data (e.g., SQL, token count, AST, result)
 }
 
-// Observer interface for event subscribers
-// Observers receive events at major execution phases
 type Observer interface {
 	OnEvent(event Event)
 }

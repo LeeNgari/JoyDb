@@ -70,7 +70,6 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 func (p *Parser) parseJoin() (*ast.JoinClause, error) {
 	join := &ast.JoinClause{}
 
-	// Determine JOIN type
 	switch p.curTok.Type {
 	case lexer.INNER:
 		join.JoinType = "INNER"

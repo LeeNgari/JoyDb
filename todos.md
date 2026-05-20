@@ -53,3 +53,4 @@ This document tracks `TODO` comments and tasks identified in the codebase that a
 
 ## Stale Comments / Cleanup - clean up of unnecessary comments keeping codebase clean and professional, expect that peaople working on the project are already familiear with it and know what going on no need to explain what every line or comment does
 
+### Execution strategy

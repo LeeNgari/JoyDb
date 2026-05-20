@@ -43,7 +43,7 @@ func main() {
 		slog.Warn("WAL disabled - data may be lost on crash")
 	}
 
-	// Base path for databases
+	
 	basePath := "databases"
 
 	if err := os.MkdirAll(basePath, 0755); err != nil {
@@ -51,9 +51,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Use Memory storage engine (binary snapshots)
+	
 	var storageEngine engine.StorageEngine = engine.NewMemoryEngine()
-	slog.Info("Using Memory storage engine (binary snapshots)")
+	
 
 	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval)
 

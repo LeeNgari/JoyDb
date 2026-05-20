@@ -8,15 +8,13 @@ import (
 type TokenType int
 
 const (
-	// Special
 	ILLEGAL TokenType = iota
 	EOF
-	WS // Whitespace
+	WS
 
-	// Literals
 	IDENTIFIER // table_name, column_name
-	STRING     // 'value'
-	NUMBER     // 123, 1.23
+	STRING
+	NUMBER
 
 	// Keywords
 	SELECT
@@ -43,7 +41,6 @@ const (
 	TIME
 	EMAIL
 
-	// DDL & Database Management
 	CREATE
 	DROP
 	ALTER
@@ -52,52 +49,51 @@ const (
 	RENAME
 	TO
 
-	// Operators & Punctuation
-	ASTERISK    // *
-	COMMA       // ,
-	PAREN_OPEN  // (
-	PAREN_CLOSE // )
-	EQUALS      // =
-	LESS_THAN   // <
-	GREATER_THAN // >
-	LESS_EQUAL   // <=
+	ASTERISK      // *
+	COMMA         // ,
+	PAREN_OPEN    // (
+	PAREN_CLOSE   // )
+	EQUALS        // =
+	LESS_THAN     // <
+	GREATER_THAN  // >
+	LESS_EQUAL    // <=
 	GREATER_EQUAL // >=
-	NOT_EQUAL    // != or <>
-	DOT          // .
-	SEMICOLON   // ;
+	NOT_EQUAL     // != or <>
+	DOT           // .
+	SEMICOLON     // ;
 )
 
 var keywords = map[string]TokenType{
-	"SELECT": SELECT,
-	"FROM":   FROM,
-	"WHERE":  WHERE,
-	"INSERT": INSERT,
-	"INTO":   INTO,
-	"VALUES": VALUES,
-	"UPDATE": UPDATE,
-	"SET":    SET,
-	"DELETE": DELETE,
-	"AND":    AND,
-	"OR":     OR,
-	"TRUE":   TRUE,
-	"FALSE":  FALSE,
-	"JOIN":   JOIN,
-	"INNER":  INNER,
-	"LEFT":   LEFT,
-	"RIGHT":  RIGHT,
-	"FULL":   FULL,
-	"OUTER":  OUTER,
-	"ON":     ON,
-	"DATE":   DATE,
-	"TIME":   TIME,
-	"EMAIL":  EMAIL,
-	"CREATE": CREATE,
-	"DROP":   DROP,
-	"ALTER":  ALTER,
+	"SELECT":   SELECT,
+	"FROM":     FROM,
+	"WHERE":    WHERE,
+	"INSERT":   INSERT,
+	"INTO":     INTO,
+	"VALUES":   VALUES,
+	"UPDATE":   UPDATE,
+	"SET":      SET,
+	"DELETE":   DELETE,
+	"AND":      AND,
+	"OR":       OR,
+	"TRUE":     TRUE,
+	"FALSE":    FALSE,
+	"JOIN":     JOIN,
+	"INNER":    INNER,
+	"LEFT":     LEFT,
+	"RIGHT":    RIGHT,
+	"FULL":     FULL,
+	"OUTER":    OUTER,
+	"ON":       ON,
+	"DATE":     DATE,
+	"TIME":     TIME,
+	"EMAIL":    EMAIL,
+	"CREATE":   CREATE,
+	"DROP":     DROP,
+	"ALTER":    ALTER,
 	"DATABASE": DATABASE,
-	"USE":    USE,
-	"RENAME": RENAME,
-	"TO":     TO,
+	"USE":      USE,
+	"RENAME":   RENAME,
+	"TO":       TO,
 }
 
 type Token struct {
@@ -113,7 +109,7 @@ func (t Token) String() string {
 
 type Lexer struct {
 	input        string
-	position     int  // current position in input (points to current char)
+	position     int  // current position in input
 	readPosition int  // current reading position in input (after current char)
 	ch           byte // current char under examination
 	line         int
@@ -196,7 +192,7 @@ func (l *Lexer) NextToken() Token {
 			l.readChar()
 			tok = Token{Type: NOT_EQUAL, Literal: string(ch) + string(l.ch), Line: l.line, Column: col}
 		} else {
-			// ! by itself is illegal in SQL
+			// ! by itself is illegal
 			tok = newToken(ILLEGAL, l.ch, l.line, l.column)
 		}
 	case '.':
@@ -270,12 +266,11 @@ func (l *Lexer) readString() string {
 		}
 	}
 	lit := l.input[position:l.position]
-	
-	// Consume the closing quote
+
 	if l.ch == '\'' {
 		l.readChar()
 	}
-	
+
 	return lit
 }
 
@@ -298,7 +293,6 @@ func isDigit(ch byte) bool {
 	return '0' <= ch && ch <= '9'
 }
 
-// Helper to tokenize entire string at once
 func Tokenize(input string) ([]Token, error) {
 	l := New(input)
 	var tokens []Token

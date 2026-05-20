@@ -102,27 +102,28 @@ func (p *Parser) parseColumnDef() *ast.ColumnDef {
 	for {
 		if p.curTok.Type == lexer.IDENTIFIER {
 			upperLit := strings.ToUpper(p.curTok.Literal)
-			if upperLit == "PRIMARY" {
+			switch upperLit {
+			case "PRIMARY":
 				if p.peekTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.peekTok.Literal) == "KEY" {
 					p.nextToken() // consume PRIMARY (curTok -> KEY)
 					col.PrimaryKey = true
 				} else {
 					return nil
 				}
-			} else if upperLit == "AUTO_INCREMENT" {
+			case "AUTO_INCREMENT":
 				col.AutoIncrement = true
-			} else if upperLit == "UNIQUE" {
+			case "UNIQUE":
 				col.Unique = true
-			} else if upperLit == "NOT" {
+			case "NOT":
 				if p.peekTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.peekTok.Literal) == "NULL" {
 					p.nextToken() // consume NOT (curTok -> NULL)
 					col.NotNull = true
 				} else {
 					return nil
 				}
-			} else if upperLit == "KEY" || upperLit == "NULL" {
+			case "KEY", "NULL":
 				// Already handled as part of composite modifiers
-			} else {
+			default:
 				// Not a modifier, break out
 				break
 			}

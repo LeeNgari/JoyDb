@@ -1,10 +1,11 @@
 package executor
 
 import (
-"testing"
-"github.com/leengari/mini-rdbms/internal/domain/schema"
-"github.com/leengari/mini-rdbms/internal/plan"
-"github.com/stretchr/testify/assert"
+	"testing"
+
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestExecuteCreateTable(t *testing.T) {
@@ -43,7 +44,6 @@ func TestExecuteDropTable(t *testing.T) {
 		Database: db,
 	}
 
-	// Create table first
 	db.Tables["users"] = &schema.Table{
 		Name: "users",
 	}
