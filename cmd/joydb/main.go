@@ -51,8 +51,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Create storage engine currently JSON, will be swapped for binary
-	storageEngine := engine.NewJSONEngine()
+	// Use Memory storage engine (binary snapshots)
+	var storageEngine engine.StorageEngine = engine.NewMemoryEngine()
+	slog.Info("Using Memory storage engine (binary snapshots)")
 
 	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval)
 

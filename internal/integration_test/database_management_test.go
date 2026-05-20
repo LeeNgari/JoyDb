@@ -19,7 +19,7 @@ func TestDatabaseManagement(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// 2. Initialize Engine with no DB selected
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(tmpDir, storageEng)
 	eng := engine.New(nil, registry)
 

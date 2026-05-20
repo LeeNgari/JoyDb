@@ -3,7 +3,6 @@ package manager
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -470,16 +469,10 @@ func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte
 		return fmt.Errorf("failed to decode table schema during replay: %w", err)
 	}
 
-	// Create table directory (needed for JSON engine compatibility)
-	tablePath := filepath.Join(t.db.Path, name)
-	if err := os.MkdirAll(tablePath, 0755); err != nil {
-		return fmt.Errorf("failed to create table directory during replay: %w", err)
-	}
-
 	// Create new table instance
 	table := &schema.Table{
 		Name:    name,
-		Path:    tablePath,
+		Path:    t.db.Path,
 		Schema:  s,
 		Rows:    []data.Row{},
 		Indexes: make(map[string]*data.Index),

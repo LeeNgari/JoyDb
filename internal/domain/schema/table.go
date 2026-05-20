@@ -15,7 +15,7 @@ import (
 type Table struct {
 	mu           sync.RWMutex
 	Name         string
-	Path         string // filesystem path to table directory
+	Path         string // database directory path (used for WAL/snapshot context)
 	Schema       *TableSchema
 	Rows         []data.Row
 	PKIndex      *btree.BPlusTree   // primary key B+Tree index (nil if no PK)

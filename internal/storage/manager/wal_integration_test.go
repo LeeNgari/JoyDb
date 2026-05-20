@@ -86,7 +86,7 @@ func TestWALManagerCreate(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -106,7 +106,7 @@ func TestWALManagerDisabled(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, false, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, false, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -134,7 +134,7 @@ func TestWALManagerInsert(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -178,7 +178,7 @@ func TestWALManagerUpdate(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -218,7 +218,7 @@ func TestWALManagerDelete(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -259,7 +259,7 @@ func TestWALManagerFullCycle(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, "testdb")
@@ -273,7 +273,7 @@ func TestWALManagerFullCycle(t *testing.T) {
 	wm.Close()
 
 	// Reopen
-	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewJSONEngine())
+	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -378,7 +378,7 @@ func TestRegistryGetWithWAL(t *testing.T) {
 	dbName := "testdb"
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
-	eng := engine.NewJSONEngine()
+	eng := engine.NewMemoryEngine()
 	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg.CloseAll()
 
@@ -402,7 +402,7 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
 	// Create WAL with committed transaction
-	wm, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, nil, engine.NewJSONEngine())
+	wm, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 
 	// Need a schema to log insert, but we can fake it or use createTestDatabase's table
@@ -418,7 +418,7 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 	wm.Close()
 
 	// Now load via Registry
-	eng := engine.NewJSONEngine()
+	eng := engine.NewMemoryEngine()
 	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg.CloseAll()
 
@@ -445,7 +445,7 @@ func TestRegistrySaveAllCheckpoint(t *testing.T) {
 	dbName := "testdb"
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
-	eng := engine.NewJSONEngine()
+	eng := engine.NewMemoryEngine()
 	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 	defer reg.CloseAll()
 
@@ -489,7 +489,7 @@ func TestRegistryCloseAll(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, "db1", "t1")
 	createMinimalDatabaseFiles(t, tempDir, "db2", "t2")
 
-	eng := engine.NewJSONEngine()
+	eng := engine.NewMemoryEngine()
 	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
 
 	_, _, err := reg.GetWithWAL("db1")
@@ -515,33 +515,36 @@ func TestWriteCheckpointWithTables(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	// Create DB structure manually
 	dbPath := filepath.Join(tempDir, dbName)
 	os.MkdirAll(dbPath, 0755)
-
-	// Create tables
-	t1Path := filepath.Join(dbPath, "t1")
-	t2Path := filepath.Join(dbPath, "t2")
-	os.MkdirAll(t1Path, 0755)
-	os.MkdirAll(t2Path, 0755)
-
-	// Write files
-	os.WriteFile(filepath.Join(t1Path, "data.json"), []byte("{}"), 0644)
-	os.WriteFile(filepath.Join(t1Path, "meta.json"), []byte("{}"), 0644)
-	os.WriteFile(filepath.Join(t2Path, "data.json"), []byte("{}"), 0644)
-	os.WriteFile(filepath.Join(t2Path, "meta.json"), []byte("{}"), 0644)
-	os.WriteFile(filepath.Join(dbPath, "meta.json"), []byte("{}"), 0644)
 
 	db := &schema.Database{
 		Name: dbName,
 		Path: dbPath,
 		Tables: map[string]*schema.Table{
-			"t1": {Name: "t1", Path: t1Path},
-			"t2": {Name: "t2", Path: t2Path},
+			"t1": {
+				Name: "t1", 
+				Path: dbPath,
+				Schema: &schema.TableSchema{
+					Columns: []schema.Column{{Name: "id", Type: schema.ColumnTypeInt}},
+				},
+			},
+			"t2": {
+				Name: "t2", 
+				Path: dbPath,
+				Schema: &schema.TableSchema{
+					Columns: []schema.Column{{Name: "id", Type: schema.ColumnTypeInt}},
+				},
+			},
 		},
 	}
 
-	wm, err := NewWALManager(nil, dbPath, dbName, true, 0, nil, engine.NewJSONEngine())
+	eng := engine.NewMemoryEngine()
+	if _, _, err := eng.CreateSnapshot(db, dbPath); err != nil {
+		t.Fatalf("failed to create snapshot: %v", err)
+	}
+
+	wm, err := NewWALManager(nil, dbPath, dbName, true, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -566,40 +569,32 @@ func TestWriteCheckpointWithTables(t *testing.T) {
 func createMinimalDatabaseFiles(t *testing.T, basePath, dbName, tableName string) {
 	t.Helper()
 	dbPath := filepath.Join(basePath, dbName)
-	tablePath := filepath.Join(dbPath, tableName)
 
-	// Create directories
-	if err := os.MkdirAll(tablePath, 0755); err != nil {
-		t.Fatalf("failed to create table dir: %v", err)
+	if err := os.MkdirAll(dbPath, 0755); err != nil {
+		t.Fatalf("failed to create db dir: %v", err)
 	}
 
-	// Write db meta.json
-	dbMeta := `{"name":"` + dbName + `","version":1,"tables":["` + tableName + `"]}`
-	if err := os.WriteFile(filepath.Join(dbPath, "meta.json"), []byte(dbMeta), 0644); err != nil {
-		t.Fatal(err)
+	db := &schema.Database{
+		Name: dbName,
+		Path: dbPath,
+		Tables: map[string]*schema.Table{
+			tableName: {
+				Name: tableName,
+				Path: dbPath,
+				Schema: &schema.TableSchema{
+					Columns: []schema.Column{
+						{Name: "id", Type: schema.ColumnTypeInt, PrimaryKey: true},
+						{Name: "name", Type: schema.ColumnTypeText},
+					},
+				},
+				Rows:    []data.Row{},
+				Indexes: make(map[string]*data.Index),
+			},
+		},
 	}
 
-	// Write table meta.json (with schema)
-	// Schema must match what engine expects.
-	tableMeta := `{
-		"name": "` + tableName + `",
-		"columns": [
-			{"name": "id", "type": "INT", "primary_key": true},
-			{"name": "name", "type": "TEXT"}
-		]
-	}`
-	if err := os.WriteFile(filepath.Join(tablePath, "meta.json"), []byte(tableMeta), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Write table data.json (empty rows)
-	if err := os.WriteFile(filepath.Join(tablePath, "data.json"), []byte("[]"), 0644); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create dummy snapshot file for checkpoint testing
-	snapshotPath := filepath.Join(dbPath, "0.snap")
-	if err := os.WriteFile(snapshotPath, []byte{}, 0644); err != nil {
-		t.Fatal(err)
+	eng := engine.NewMemoryEngine()
+	if _, _, err := eng.CreateSnapshot(db, dbPath); err != nil {
+		t.Fatalf("failed to create snapshot: %v", err)
 	}
 }

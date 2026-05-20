@@ -15,7 +15,7 @@ func TestQueryLifecycleEvents(t *testing.T) {
 	defer teardownTestDB(t, db)
 
 	// Create engine with mock observer
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}
@@ -76,7 +76,7 @@ func TestEventDataContent(t *testing.T) {
 	db := setupTestDB(t)
 	defer teardownTestDB(t, db)
 
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}
@@ -128,7 +128,7 @@ func TestMultipleQueries(t *testing.T) {
 	db := setupTestDB(t)
 	defer teardownTestDB(t, db)
 
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry("../../databases", storageEng)
 	eng := engine.New(db, registry)
 	observer := &MockObserver{}

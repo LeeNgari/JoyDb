@@ -37,8 +37,8 @@ func TestServerJSON(t *testing.T) {
 
 	port := 54321
 
-	basePath := filepath.Dir(testDBPath)
-	storageEng := storageEngine.NewJSONEngine()
+	basePath := filepath.Dir(db.Path)
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(basePath, storageEng)
 
 	// Start server in goroutine

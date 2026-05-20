@@ -5,26 +5,16 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/query/indexing"
 	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/loader"
 	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // TestSQLUpdateStatement tests UPDATE statements end-to-end via SQL
 func TestSQLUpdateStatement(t *testing.T) {
-	// Load test database
-	db, err := loader.LoadDatabase("../../databases/testdb")
-	if err != nil {
-		t.Fatalf("Failed to load database: %v", err)
-	}
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
 
-	// Build indexes
-	if err := indexing.BuildDatabaseIndexes(db); err != nil {
-		t.Fatalf("Failed to build indexes: %v", err)
-	}
-
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
 	eng := engine.New(db, registry)
 
@@ -75,6 +65,9 @@ func TestSQLUpdateStatement(t *testing.T) {
 	})
 
 	t.Run("UPDATE multiple columns", func(t *testing.T) {
+		// Insert id=5 for this test
+		eng.Execute("INSERT INTO users (id, username, email) VALUES (5, 'olduser', 'old@test.com');")
+		
 		// Update multiple columns at once (using id=5 which exists)
 		updateSQL := "UPDATE users SET email = 'multi@test.com', username = 'multiuser' WHERE id = 5;"
 		result, err := eng.Execute(updateSQL)
@@ -126,18 +119,10 @@ func TestSQLUpdateStatement(t *testing.T) {
 
 // TestSQLDeleteStatement tests DELETE statements end-to-end via SQL
 func TestSQLDeleteStatement(t *testing.T) {
-	// Load test database
-	db, err := loader.LoadDatabase("../../databases/testdb")
-	if err != nil {
-		t.Fatalf("Failed to load database: %v", err)
-	}
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
 
-	// Build indexes
-	if err := indexing.BuildDatabaseIndexes(db); err != nil {
-		t.Fatalf("Failed to build indexes: %v", err)
-	}
-
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
 	eng := engine.New(db, registry)
 
@@ -221,18 +206,10 @@ func TestSQLDeleteStatement(t *testing.T) {
 
 // TestSQLCombinedOperations tests combinations of CRUD operations
 func TestSQLCombinedOperations(t *testing.T) {
-	// Load test database
-	db, err := loader.LoadDatabase("../../databases/testdb")
-	if err != nil {
-		t.Fatalf("Failed to load database: %v", err)
-	}
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
 
-	// Build indexes
-	if err := indexing.BuildDatabaseIndexes(db); err != nil {
-		t.Fatalf("Failed to build indexes: %v", err)
-	}
-
-	storageEng := storageEngine.NewJSONEngine()
+	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
 	eng := engine.New(db, registry)
 
