@@ -74,7 +74,72 @@ DROP DATABASE my_database;
 
 ---
 
-### 2. SELECT Statement
+### 2. Table Management
+
+#### CREATE TABLE
+Creates a new table with defined columns, data types, column modifiers, and optional foreign key constraints.
+
+**Syntax:**
+```sql
+CREATE TABLE table_name (
+    column_name data_type [PRIMARY KEY] [AUTO_INCREMENT] [UNIQUE] [NOT NULL] [REFERENCES parent_table(parent_column)],
+    ...
+    [FOREIGN KEY (column_name) REFERENCES parent_table(parent_column)]
+);
+```
+
+##### Supported Column Modifiers:
+- `PRIMARY KEY`: Marks the column as the primary key. Exactly one primary key column is required per table.
+- `AUTO_INCREMENT`: Automatically increments integer values for new rows (only valid on `INT` primary keys).
+- `UNIQUE`: Enforces that all values in the column are unique across the table.
+- `NOT NULL`: Restricts `NULL` values from being inserted into the column.
+- `REFERENCES parent_table(parent_column)`: Inline (column-level) foreign key constraint.
+
+##### Supported Table-Level Constraints:
+- `FOREIGN KEY (column_name) REFERENCES parent_table(parent_column)`: Enforces a foreign key constraint linking a local column to a parent table column.
+
+**Examples:**
+```sql
+-- Create a parent table
+CREATE TABLE users (
+    id INT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    role TEXT
+);
+
+-- Create a child table with an inline foreign key constraint
+CREATE TABLE orders (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT REFERENCES users(id),
+    product TEXT NOT NULL,
+    amount FLOAT
+);
+
+-- Create a child table with a table-level foreign key constraint
+CREATE TABLE order_items (
+    id INT PRIMARY KEY,
+    order_id INT,
+    item_name TEXT,
+    FOREIGN KEY (order_id) REFERENCES orders(id)
+);
+```
+
+#### DROP TABLE
+Deletes an existing table and its schema.
+
+**Syntax:**
+```sql
+DROP TABLE table_name;
+```
+
+**Example:**
+```sql
+DROP TABLE orders;
+```
+
+---
+
+### 3. SELECT Statement
 
 #### Basic Syntax
 ```sql
@@ -110,7 +175,7 @@ SELECT username, email FROM users WHERE is_active = true;
 
 ---
 
-### 3. INSERT Statement
+### 4. INSERT Statement
 
 #### Syntax
 ```sql
@@ -131,7 +196,7 @@ INSERT INTO users (id, username, email) VALUES (102, 'charlie', NULL);
 
 ---
 
-### 4. UPDATE Statement
+### 5. UPDATE Statement
 
 #### Syntax
 ```sql
@@ -155,7 +220,7 @@ UPDATE users SET is_active = true;
 
 ---
 
-### 5. DELETE Statement
+### 6. DELETE Statement
 
 #### Syntax
 ```sql
@@ -302,21 +367,64 @@ FULL OUTER JOIN orders ON users.id = orders.user_id;
 
 ---
 
+## Foreign Key & Referential Integrity Constraints
+
+JoyDB supports referential integrity constraints using **Foreign Keys**. A foreign key relationship establishes a link between a referencing (child) table column and a referenced (parent) table column.
+
+### Enforced Rules & Lifecycle
+
+When a foreign key relationship is established (either via inline column-level `REFERENCES` or table-level `FOREIGN KEY`), JoyDB automatically enforces referential integrity on all subsequent mutations:
+
+#### 1. Insert & Update on Child Table (Referencing Key Validation)
+- When inserting a new row or updating a referencing column value in a child table, JoyDB validates that the new value exists in the referenced column of the parent table.
+- **Result on Violation:** The operation is rejected with an execution error.
+- **Example:**
+  ```sql
+  -- This will fail if user_id 999 does not exist in the users table:
+  INSERT INTO orders (id, user_id, product, amount) VALUES (1, 999, 'Laptop', 1200.0);
+  -- Error: execution error: foreign key constraint violation: value 999 not found in parent table users(id)
+  ```
+
+#### 2. Delete & Update on Parent Table (Referenced Restriction)
+- When deleting a row or updating a referenced key value in the parent table, JoyDB checks if any rows in the child table reference that key value.
+- **Result on Violation:** The operation is rejected with a restrict behavior (preventing orphaned records).
+- **Example:**
+  ```sql
+  -- This will fail if there are any orders referencing user_id 1:
+  DELETE FROM users WHERE id = 1;
+  -- Error: execution error: foreign key constraint violation: cannot delete/update parent row: referenced by child table orders(user_id)
+  ```
+
+---
+
 ## Data Types
+
+### Supported Schema Column Types
+When creating a table via `CREATE TABLE`, the following column data types are supported:
+
+| Schema Type | Description | Equivalent Literal Type |
+|-------------|-------------|-------------------------|
+| **`INT`** | 64-bit integer values | Integer literal (e.g., `42`, `-7`) |
+| **`FLOAT`** | 64-bit floating-point decimal values | Float literal (e.g., `3.14`, `-0.01`) |
+| **`TEXT`** | UTF-8 encoded text strings | String literal (e.g., `'alice'`) |
+| **`BOOL`** | Boolean logical values | Boolean literal (`true`, `false`) |
+| **`DATE`** | Date values (format: `YYYY-MM-DD`) | String literal matching format |
+| **`TIME`** | Time values (format: `HH:MM:SS`) | String literal matching format |
+| **`EMAIL`** | Email address values (with format validation) | String literal containing valid email |
 
 ### Supported Literal Types
 
-| Type | Example | Description |
-|------|---------|-------------|
+| Literal Type | Example | Description |
+|--------------|---------|-------------|
 | **Integer** | `42`, `0`, `-10` | Whole numbers |
 | **Float** | `3.14`, `99.99`, `-0.5` | Decimal numbers |
 | **String** | `'hello'`, `'user@example.com'` | Text enclosed in single quotes |
 | **Boolean** | `true`, `false` | Boolean values (case-insensitive) |
 
 ### Type Comparison Rules
-- **Numeric types** (int, float) are compared numerically
-- **Strings** are compared lexicographically (alphabetically)
-- **Booleans** support equality/inequality only (=, !=, <>)
+- **Numeric types** (int, float) are compared numerically (automatic casting between int/float is handled safely without losing precision).
+- **Strings** are compared lexicographically (alphabetically).
+- **Booleans** support equality/inequality comparisons only (`=`, `!=`, `<>`).
 
 ---
 
@@ -406,7 +514,6 @@ WHERE users.is_active = true AND orders.amount > 100;
 6. **No subqueries**: Nested SELECT statements not supported
 7. **No DISTINCT**: Duplicate removal not supported
 8. **Literal values only in SET**: UPDATE SET clause only supports literal values, not expressions
-9. **DDL not WAL-logged**: CREATE TABLE, DROP TABLE, and ALTER TABLE are NOT logged to the Write-Ahead Log. Only DML operations (INSERT, UPDATE, DELETE) are crash-recoverable. DDL changes persist to disk immediately via JSON.
 
 
 

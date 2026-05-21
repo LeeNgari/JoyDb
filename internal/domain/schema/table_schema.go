@@ -2,10 +2,18 @@ package schema
 
 import "fmt"
 
+// ForeignKey represents a foreign key constraint on the table
+type ForeignKey struct {
+	ColumnName    string `json:"column_name"`
+	RefTableName  string `json:"ref_table_name"`
+	RefColumnName string `json:"ref_column_name"`
+}
+
 // TableSchema represents table metadata (from meta.json)
 type TableSchema struct {
-	TableName string
-	Columns   []Column
+	TableName   string       `json:"table_name"`
+	Columns     []Column     `json:"columns"`
+	ForeignKeys []ForeignKey `json:"foreign_keys,omitempty"`
 }
 
 // GetPrimaryKeyColumn returns the primary key column if it exists

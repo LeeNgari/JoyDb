@@ -45,21 +45,21 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	defer tx.Close()
 
 	//Tokenize
-	e.notify(Event{Type: EventLexStart, TxID: tx.ID, Data: sql})
+	e.notify(Event{Type: EventLexStart, TxID: tx.TxID, Data: sql})
 	tokens, err := lexer.Tokenize(sql)
 	if err != nil {
 		return nil, fmt.Errorf("lexer error: %w", err)
 	}
-	e.notify(Event{Type: EventLexEnd, TxID: tx.ID, Data: len(tokens)})
+	e.notify(Event{Type: EventLexEnd, TxID: tx.TxID, Data: len(tokens)})
 
 	//Parse
-	e.notify(Event{Type: EventParseStart, TxID: tx.ID})
+	e.notify(Event{Type: EventParseStart, TxID: tx.TxID})
 	p := parser.New(tokens)
 	stmt, err := p.Parse()
 	if err != nil {
 		return nil, fmt.Errorf("parse error: %w", err)
 	}
-	e.notify(Event{Type: EventParseEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", stmt)})
+	e.notify(Event{Type: EventParseEnd, TxID: tx.TxID, Data: fmt.Sprintf("%T", stmt)})
 
 	switch s := stmt.(type) {
 	case *ast.CreateDatabaseStatement:
@@ -101,12 +101,12 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 	if e.db == nil {
 		return nil, fmt.Errorf("no database selected. Use 'USE <database_name>' to select one")
 	}
-	e.notify(Event{Type: EventPlanStart, TxID: tx.ID})
+	e.notify(Event{Type: EventPlanStart, TxID: tx.TxID})
 	planNode, err := planner.Plan(stmt, e.db, tx)
 	if err != nil {
 		return nil, fmt.Errorf("planning error: %w", err)
 	}
-	e.notify(Event{Type: EventPlanEnd, TxID: tx.ID, Data: fmt.Sprintf("%T", planNode)})
+	e.notify(Event{Type: EventPlanEnd, TxID: tx.TxID, Data: fmt.Sprintf("%T", planNode)})
 
 	needsWAL := false
 	switch planNode.(type) {
@@ -120,7 +120,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		}
 	}
 
-	e.notify(Event{Type: EventExecStart, TxID: tx.ID})
+	e.notify(Event{Type: EventExecStart, TxID: tx.TxID})
 	var walMgr *manager.WALManager
 	if needsWAL {
 		walMgr = e.walManager
@@ -132,7 +132,7 @@ func (e *Engine) Execute(sql string) (*executor.Result, error) {
 		}
 		return nil, fmt.Errorf("execution error: %w", err)
 	}
-	e.notify(Event{Type: EventExecEnd, TxID: tx.ID, Data: map[string]interface{}{
+	e.notify(Event{Type: EventExecEnd, TxID: tx.TxID, Data: map[string]interface{}{
 		"rows_affected": result.RowsAffected,
 		"rows_returned": len(result.Rows),
 	}})

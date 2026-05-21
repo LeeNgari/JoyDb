@@ -68,7 +68,7 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	defer t.Unlock()
 
 	if tx != nil {
-		slog.Debug("Insert operation", "table", t.Name, "tx_id", tx.ID)
+		slog.Debug("Insert operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
 	// 1. Handle auto-increment primary key FIRST (before validation)
@@ -197,7 +197,7 @@ func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 	defer t.RUnlock()
 
 	if tx != nil {
-		slog.Debug("SelectAll operation", "table", t.Name, "tx_id", tx.ID)
+		slog.Debug("SelectAll operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
 	rows := make([]data.Row, len(t.Rows))
@@ -211,7 +211,7 @@ func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transactio
 	defer t.RUnlock()
 
 	if tx != nil {
-		slog.Debug("Select operation", "table", t.Name, "tx_id", tx.ID)
+		slog.Debug("Select operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
 	var result []data.Row
@@ -230,7 +230,7 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 	defer t.RUnlock()
 
 	if tx != nil {
-		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.ID)
+		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.TxID)
 	}
 
 	// Fast path: use B+Tree for PK lookups — O(log n) instead of hash lookup
@@ -271,7 +271,7 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 	defer t.Unlock()
 
 	if tx != nil {
-		slog.Debug("Update operation", "table", t.Name, "tx_id", tx.ID)
+		slog.Debug("Update operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
 	count := 0
@@ -317,7 +317,7 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 	defer t.Unlock()
 
 	if tx != nil {
-		slog.Debug("Delete operation", "table", t.Name, "tx_id", tx.ID)
+		slog.Debug("Delete operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
 	var newRows []data.Row

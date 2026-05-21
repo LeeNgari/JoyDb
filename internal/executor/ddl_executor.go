@@ -21,8 +21,9 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 
 	// Validate schema
 	tableSchema := &schema.TableSchema{
-		TableName: n.TableName,
-		Columns:   n.Columns,
+		TableName:   n.TableName,
+		Columns:     n.Columns,
+		ForeignKeys: n.ForeignKeys,
 	}
 	if err := tableSchema.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid table schema: %w", err)

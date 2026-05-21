@@ -205,6 +205,7 @@ func (n *DeleteNode) NodeType() string {
 type CreateTableNode struct {
 	TableName   string
 	Columns     []schema.Column
+	ForeignKeys []schema.ForeignKey
 	Transaction *transaction.Transaction
 	metadata    map[string]any
 }

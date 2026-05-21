@@ -59,7 +59,7 @@ func TestQueryLifecycleEvents(t *testing.T) {
 	txID := observer.Events[0].TxID
 	for i, event := range observer.Events {
 		if event.TxID != txID {
-			t.Errorf("Event %d: TxID mismatch. Expected %s, got %s", i, txID, event.TxID)
+			t.Errorf("Event %d: TxID mismatch. Expected %d, got %d", i, txID, event.TxID)
 		}
 	}
 

@@ -12,6 +12,22 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
+	// Validate foreign keys for all affected rows BEFORE any mutations or logging
+	table.RLock()
+	var rowsToDelete []data.Row
+	for _, row := range table.Rows {
+		if node.Predicate(row) {
+			rowsToDelete = append(rowsToDelete, row.Copy())
+		}
+	}
+	table.RUnlock()
+
+	for _, oldRow := range rowsToDelete {
+		if err := validateDeleteFKs(node.TableName, oldRow, ctx); err != nil {
+			return nil, err
+		}
+	}
+
 	// If WAL is enabled, we need to capture old rows before delete
 	var oldRows []data.Row
 	if ctx.WALManager != nil {

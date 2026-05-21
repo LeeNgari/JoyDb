@@ -38,7 +38,7 @@ func TestRemoveObserver(t *testing.T) {
 func TestNotifyWithNoObservers(t *testing.T) {
 	eng := New(nil, nil)
 
-	eng.notify(Event{Type: EventLexStart, TxID: "test-tx"})
+	eng.notify(Event{Type: EventLexStart, TxID: 123})
 }
 
 func TestNotifyWithMultipleObservers(t *testing.T) {
@@ -49,7 +49,7 @@ func TestNotifyWithMultipleObservers(t *testing.T) {
 	eng.AddObserver(observer1)
 	eng.AddObserver(observer2)
 
-	testEvent := Event{Type: EventLexStart, TxID: "test-tx", Data: "SELECT * FROM users"}
+	testEvent := Event{Type: EventLexStart, TxID: 123, Data: "SELECT * FROM users"}
 	eng.notify(testEvent)
 
 	if len(observer1.Events) != 1 {
@@ -72,7 +72,7 @@ func TestEventTimestamp(t *testing.T) {
 	observer := &MockObserver{}
 	eng.AddObserver(observer)
 
-	eng.notify(Event{Type: EventLexStart, TxID: "test-tx"})
+	eng.notify(Event{Type: EventLexStart, TxID: 123})
 
 	if observer.Events[0].Timestamp.IsZero() {
 		t.Error("Expected timestamp to be set, got zero value")

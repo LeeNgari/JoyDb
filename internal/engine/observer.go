@@ -19,7 +19,7 @@ const (
 // Event represents a lifecycle event in query execution
 type Event struct {
 	Type      EventType   // Type of event
-	TxID      string      // Transaction ID for tracing
+	TxID      uint64      // Transaction ID for tracing
 	Timestamp time.Time   // When the event occurred
 	Data      interface{} // Phase-specific data (e.g., SQL, token count, AST, result)
 }

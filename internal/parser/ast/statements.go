@@ -227,10 +227,18 @@ func (c *ColumnDef) String() string {
 	return out.String()
 }
 
+// ForeignKey represents a foreign key constraint in a CREATE TABLE statement
+type ForeignKey struct {
+	ColumnName    string
+	RefTableName  string
+	RefColumnName string
+}
+
 // CreateTableStatement: CREATE TABLE name (col1 type1, ...)
 type CreateTableStatement struct {
-	TableName string
-	Columns   []*ColumnDef
+	TableName   string
+	Columns     []*ColumnDef
+	ForeignKeys []*ForeignKey
 }
 
 func (s *CreateTableStatement) statementNode()       {}
@@ -243,7 +251,20 @@ func (s *CreateTableStatement) String() string {
 	
 	for i, col := range s.Columns {
 		out.WriteString(col.String())
-		if i < len(s.Columns)-1 {
+		if i < len(s.Columns)-1 || len(s.ForeignKeys) > 0 {
+			out.WriteString(", ")
+		}
+	}
+
+	for i, fk := range s.ForeignKeys {
+		out.WriteString("FOREIGN KEY (")
+		out.WriteString(fk.ColumnName)
+		out.WriteString(") REFERENCES ")
+		out.WriteString(fk.RefTableName)
+		out.WriteString("(")
+		out.WriteString(fk.RefColumnName)
+		out.WriteString(")")
+		if i < len(s.ForeignKeys)-1 {
 			out.WriteString(", ")
 		}
 	}

@@ -73,84 +73,102 @@ func (t *BPlusTree) Clear() {
 	t.size = 0
 }
 
-// ---------------------------------------------------------------------
-// Key comparison
-// ---------------------------------------------------------------------
+// Key represents a strictly typed B+Tree key.
+type Key interface {
+	Compare(other Key) int
+}
+
+type IntKey int64
+
+func (k IntKey) Compare(other Key) int {
+	switch o := other.(type) {
+	case IntKey:
+		if k < o {
+			return -1
+		}
+		if k > o {
+			return 1
+		}
+		return 0
+	case FloatKey:
+		fk := float64(k)
+		fo := float64(o)
+		if fk < fo {
+			return -1
+		}
+		if fk > fo {
+			return 1
+		}
+		return 0
+	default:
+		panic(fmt.Sprintf("btree: incompatible key type for comparison: %T and %T", k, other))
+	}
+}
+
+type FloatKey float64
+
+func (k FloatKey) Compare(other Key) int {
+	switch o := other.(type) {
+	case FloatKey:
+		if k < o {
+			return -1
+		}
+		if k > o {
+			return 1
+		}
+		return 0
+	case IntKey:
+		fk := float64(k)
+		fo := float64(o)
+		if fk < fo {
+			return -1
+		}
+		if fk > fo {
+			return 1
+		}
+		return 0
+	default:
+		panic(fmt.Sprintf("btree: incompatible key type for comparison: %T and %T", k, other))
+	}
+}
+
+type StringKey string
+
+func (k StringKey) Compare(other Key) int {
+	o, ok := other.(StringKey)
+	if !ok {
+		panic(fmt.Sprintf("btree: incompatible key type for comparison: %T and %T", k, other))
+	}
+	if k < o {
+		return -1
+	}
+	if k > o {
+		return 1
+	}
+	return 0
+}
+
+// ToKey converts a supported interface{} value into a strict Key.
+func ToKey(val interface{}) Key {
+	switch v := val.(type) {
+	case Key:
+		return v
+	case int64:
+		return IntKey(v)
+	case int:
+		return IntKey(int64(v))
+	case float64:
+		return FloatKey(v)
+	case string:
+		return StringKey(v)
+	default:
+		panic(fmt.Sprintf("btree: unsupported key type: %T", val))
+	}
+}
 
 // compareKeys compares two keys. Returns -1 if a < b, 0 if a == b, 1 if a > b.
-// Handles int, int64, float64, and string — the PK types JoyDB supports.
-// Cross-type numeric comparison is supported (int vs int64 vs float64).
 func compareKeys(a, b interface{}) int {
-	// Fast path: same concrete type
-	switch av := a.(type) {
-	case int64:
-		switch bv := b.(type) {
-		case int64:
-			return cmpInt64(av, bv)
-		case int:
-			return cmpInt64(av, int64(bv))
-		case float64:
-			return cmpFloat64(float64(av), bv)
-		}
-	case int:
-		switch bv := b.(type) {
-		case int:
-			return cmpInt64(int64(av), int64(bv))
-		case int64:
-			return cmpInt64(int64(av), bv)
-		case float64:
-			return cmpFloat64(float64(av), bv)
-		}
-	case float64:
-		switch bv := b.(type) {
-		case float64:
-			return cmpFloat64(av, bv)
-		case int64:
-			return cmpFloat64(av, float64(bv))
-		case int:
-			return cmpFloat64(av, float64(bv))
-		}
-	case string:
-		if bv, ok := b.(string); ok {
-			if av < bv {
-				return -1
-			}
-			if av > bv {
-				return 1
-			}
-			return 0
-		}
-	}
-	// Fallback: compare by formatted string (should not happen with valid PKs)
-	as := fmt.Sprintf("%v", a)
-	bs := fmt.Sprintf("%v", b)
-	if as < bs {
-		return -1
-	}
-	if as > bs {
-		return 1
-	}
-	return 0
-}
-
-func cmpInt64(a, b int64) int {
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
-}
-
-func cmpFloat64(a, b float64) int {
-	if a < b {
-		return -1
-	}
-	if a > b {
-		return 1
-	}
-	return 0
+	return ToKey(a).Compare(ToKey(b))
 }
 
 // ---------------------------------------------------------------------

@@ -56,6 +56,10 @@ func EncodeTableSchema(s *schema.TableSchema) []byte {
 	for _, col := range s.Columns {
 		size += encodedColumnSize(col)
 	}
+	size += 2 // FKCount
+	for _, fk := range s.ForeignKeys {
+		size += encodedForeignKeySize(fk)
+	}
 
 	buf := make([]byte, size)
 	offset := 0
@@ -73,6 +77,16 @@ func EncodeTableSchema(s *schema.TableSchema) []byte {
 	// Columns
 	for _, col := range s.Columns {
 		n := encodeColumnInto(col, buf[offset:])
+		offset += n
+	}
+
+	// FKCount (2 bytes)
+	ByteOrder.PutUint16(buf[offset:], uint16(len(s.ForeignKeys)))
+	offset += 2
+
+	// ForeignKeys
+	for _, fk := range s.ForeignKeys {
+		n := encodeForeignKeyInto(fk, buf[offset:])
 		offset += n
 	}
 
@@ -113,7 +127,23 @@ func DecodeTableSchema(data []byte) (*schema.TableSchema, error) {
 		offset = newOffset
 	}
 
-	return &schema.TableSchema{TableName: tableName, Columns: columns}, nil
+	// Read ForeignKeys if they are present in the encoded bytes (backwards-compatible)
+	var fks []schema.ForeignKey
+	if offset+2 <= len(data) {
+		fkCount := int(ByteOrder.Uint16(data[offset:]))
+		offset += 2
+		fks = make([]schema.ForeignKey, 0, fkCount)
+		for i := 0; i < fkCount; i++ {
+			fk, newOffset, err := decodeForeignKeyFrom(data, offset)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode foreign key %d: %w", i, err)
+			}
+			fks = append(fks, fk)
+			offset = newOffset
+		}
+	}
+
+	return &schema.TableSchema{TableName: tableName, Columns: columns, ForeignKeys: fks}, nil
 }
 
 // EncodeColumn encodes a single Column to a binary byte slice.
@@ -219,4 +249,79 @@ func decodeColumnFrom(data []byte, offset int) (schema.Column, int, error) {
 	}
 
 	return col, offset, nil
+}
+
+// encodedForeignKeySize returns the byte size of an encoded foreign key
+func encodedForeignKeySize(fk schema.ForeignKey) int {
+	return 2 + len(fk.ColumnName) + 2 + len(fk.RefTableName) + 2 + len(fk.RefColumnName)
+}
+
+// encodeForeignKeyInto encodes a foreign key into dst starting at offset 0.
+// Returns the number of bytes written.
+func encodeForeignKeyInto(fk schema.ForeignKey, dst []byte) int {
+	offset := 0
+
+	// ColumnName
+	ByteOrder.PutUint16(dst[offset:], uint16(len(fk.ColumnName)))
+	offset += 2
+	copy(dst[offset:], fk.ColumnName)
+	offset += len(fk.ColumnName)
+
+	// RefTableName
+	ByteOrder.PutUint16(dst[offset:], uint16(len(fk.RefTableName)))
+	offset += 2
+	copy(dst[offset:], fk.RefTableName)
+	offset += len(fk.RefTableName)
+
+	// RefColumnName
+	ByteOrder.PutUint16(dst[offset:], uint16(len(fk.RefColumnName)))
+	offset += 2
+	copy(dst[offset:], fk.RefColumnName)
+	offset += len(fk.RefColumnName)
+
+	return offset
+}
+
+// decodeForeignKeyFrom decodes a single foreign key from data at the given offset.
+// Returns the foreign key, the new offset, and any error.
+func decodeForeignKeyFrom(data []byte, offset int) (schema.ForeignKey, int, error) {
+	if offset+2 > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for columnName length at offset %d", offset)
+	}
+	colNameLen := int(ByteOrder.Uint16(data[offset:]))
+	offset += 2
+	if offset+colNameLen > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for columnName of length %d", colNameLen)
+	}
+	colName := string(data[offset : offset+colNameLen])
+	offset += colNameLen
+
+	if offset+2 > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for refTableName length at offset %d", offset)
+	}
+	refTableLen := int(ByteOrder.Uint16(data[offset:]))
+	offset += 2
+	if offset+refTableLen > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for refTableName of length %d", refTableLen)
+	}
+	refTableName := string(data[offset : offset+refTableLen])
+	offset += refTableLen
+
+	if offset+2 > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for refColumnName length at offset %d", offset)
+	}
+	refColLen := int(ByteOrder.Uint16(data[offset:]))
+	offset += 2
+	if offset+refColLen > len(data) {
+		return schema.ForeignKey{}, 0, fmt.Errorf("not enough data for refColumnName of length %d", refColLen)
+	}
+	refColName := string(data[offset : offset+refColLen])
+	offset += refColLen
+
+	fk := schema.ForeignKey{
+		ColumnName:    colName,
+		RefTableName:  refTableName,
+		RefColumnName: refColName,
+	}
+	return fk, offset, nil
 }

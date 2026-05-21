@@ -10,8 +10,11 @@ import (
 // parseCreateTable parses a CREATE TABLE statement
 // Expected syntax: CREATE TABLE <name> ( <col_def>, ... )
 // Where <col_def> is: <name> <type> [PRIMARY KEY] [AUTO_INCREMENT] [UNIQUE] [NOT NULL]
+// Or table-level foreign key: FOREIGN KEY (col) REFERENCES ref_table(ref_col)
 func (p *Parser) parseCreateTable() *ast.CreateTableStatement {
-	stmt := &ast.CreateTableStatement{}
+	stmt := &ast.CreateTableStatement{
+		ForeignKeys: make([]*ast.ForeignKey, 0),
+	}
 
 	// Skip CREATE (already checked by Parse())
 	p.nextToken()
@@ -35,44 +38,118 @@ func (p *Parser) parseCreateTable() *ast.CreateTableStatement {
 	}
 	p.nextToken() // consume '('
 
-	// Parse columns
-	stmt.Columns = p.parseColumnDefs()
-	if stmt.Columns == nil {
-		return nil
+	// Parse columns and foreign keys
+	for {
+		if p.curTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.curTok.Literal) == "FOREIGN" {
+			// Parse table-level foreign key!
+			p.nextToken() // consume FOREIGN
+			if p.curTok.Type != lexer.IDENTIFIER || strings.ToUpper(p.curTok.Literal) != "KEY" {
+				return nil
+			}
+			p.nextToken() // consume KEY
+
+			if p.curTok.Type != lexer.PAREN_OPEN {
+				return nil
+			}
+			p.nextToken() // consume '('
+
+			if p.curTok.Type != lexer.IDENTIFIER {
+				return nil
+			}
+			colName := p.curTok.Literal
+			p.nextToken()
+
+			if p.curTok.Type != lexer.PAREN_CLOSE {
+				return nil
+			}
+			p.nextToken() // consume ')'
+
+			if p.curTok.Type != lexer.IDENTIFIER || strings.ToUpper(p.curTok.Literal) != "REFERENCES" {
+				return nil
+			}
+			p.nextToken() // consume REFERENCES
+
+			if p.curTok.Type != lexer.IDENTIFIER {
+				return nil
+			}
+			refTable := p.curTok.Literal
+			p.nextToken()
+
+			if p.curTok.Type != lexer.PAREN_OPEN {
+				return nil
+			}
+			p.nextToken() // consume '('
+
+			if p.curTok.Type != lexer.IDENTIFIER {
+				return nil
+			}
+			refCol := p.curTok.Literal
+			p.nextToken()
+
+			if p.curTok.Type != lexer.PAREN_CLOSE {
+				return nil
+			}
+			p.nextToken() // consume ')'
+
+			stmt.ForeignKeys = append(stmt.ForeignKeys, &ast.ForeignKey{
+				ColumnName:    colName,
+				RefTableName:  refTable,
+				RefColumnName: refCol,
+			})
+		} else {
+			// Parse column definition
+			col := p.parseColumnDef()
+			if col == nil {
+				return nil
+			}
+
+			// Support column-level inline foreign key: REFERENCES parent_table(parent_col)
+			if p.curTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.curTok.Literal) == "REFERENCES" {
+				p.nextToken() // consume REFERENCES
+				if p.curTok.Type != lexer.IDENTIFIER {
+					return nil
+				}
+				refTable := p.curTok.Literal
+				p.nextToken()
+
+				if p.curTok.Type != lexer.PAREN_OPEN {
+					return nil
+				}
+				p.nextToken() // consume '('
+
+				if p.curTok.Type != lexer.IDENTIFIER {
+					return nil
+				}
+				refCol := p.curTok.Literal
+				p.nextToken()
+
+				if p.curTok.Type != lexer.PAREN_CLOSE {
+					return nil
+				}
+				p.nextToken() // consume ')'
+
+				stmt.ForeignKeys = append(stmt.ForeignKeys, &ast.ForeignKey{
+					ColumnName:    col.Name,
+					RefTableName:  refTable,
+					RefColumnName: refCol,
+				})
+			}
+
+			stmt.Columns = append(stmt.Columns, col)
+		}
+
+		if p.curTok.Type == lexer.COMMA {
+			p.nextToken() // consume COMMA
+			continue
+		}
+		if p.curTok.Type == lexer.PAREN_CLOSE {
+			p.nextToken() // consume ')'
+			break
+		}
+		return nil // illegal token
 	}
 
 	return stmt
-}
-
-// parseColumnDefs parses the list of column definitions inside the parentheses
-func (p *Parser) parseColumnDefs() []*ast.ColumnDef {
-	var columns []*ast.ColumnDef
-
-	// Parse first column
-	col := p.parseColumnDef()
-	if col == nil {
-		return nil
-	}
-	columns = append(columns, col)
-
-	// Parse subsequent columns if separated by commas
-	for p.curTok.Type == lexer.COMMA {
-		p.nextToken() // consume COMMA
-
-		col := p.parseColumnDef()
-		if col == nil {
-			return nil
-		}
-		columns = append(columns, col)
-	}
-
-	// Ensure we end with ')'
-	if p.curTok.Type != lexer.PAREN_CLOSE {
-		return nil
-	}
-	p.nextToken() // consume ')'
-
-	return columns
 }
 
 // parseColumnDef parses a single column definition
@@ -99,6 +176,7 @@ func (p *Parser) parseColumnDef() *ast.ColumnDef {
 
 	// Check for optional modifiers (PRIMARY KEY, AUTO_INCREMENT, UNIQUE, NOT NULL)
 	// Modifiers can come in any order
+	modifiersLoop:
 	for {
 		if p.curTok.Type == lexer.IDENTIFIER {
 			upperLit := strings.ToUpper(p.curTok.Literal)
@@ -126,7 +204,7 @@ func (p *Parser) parseColumnDef() *ast.ColumnDef {
 				// Already handled as part of composite modifiers
 			default:
 				// Not a modifier, break out
-				break
+				break modifiersLoop
 			}
 			p.nextToken() // Advance past modifier (or its last word)
 		} else {

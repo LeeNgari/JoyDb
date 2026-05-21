@@ -12,6 +12,54 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
+	// Validate foreign keys for all affected rows BEFORE any mutations or logging
+	table.RLock()
+	var rowsToValidate []struct{ oldRow, newRow data.Row }
+	for _, row := range table.Rows {
+		if node.Predicate(row) {
+			// Compute newRow
+			newRow := row.Copy()
+			for col, val := range node.Updates.Data {
+				newRow.Data[col] = val
+			}
+			rowsToValidate = append(rowsToValidate, struct{ oldRow, newRow data.Row }{row.Copy(), newRow})
+		}
+	}
+	table.RUnlock()
+
+	for _, item := range rowsToValidate {
+		// 1. Check if this is a child table and we are inserting/updating referencing column value
+		if err := validateInsertFKs(node.TableName, item.newRow, ctx); err != nil {
+			return nil, err
+		}
+
+		// 2. Check if this is a parent table and we are modifying a referenced column value
+		hasKeyChange := false
+		for _, childTable := range ctx.Database.Tables {
+			if childTable.Schema == nil {
+				continue
+			}
+			for _, fk := range childTable.Schema.ForeignKeys {
+				if fk.RefTableName == node.TableName {
+					oldVal := item.oldRow.Data[fk.RefColumnName]
+					newVal := item.newRow.Data[fk.RefColumnName]
+					if oldVal != newVal {
+						hasKeyChange = true
+						break
+					}
+				}
+			}
+			if hasKeyChange {
+				break
+			}
+		}
+		if hasKeyChange {
+			if err := validateDeleteFKs(node.TableName, item.oldRow, ctx); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	// If WAL is enabled, capture old rows and their keys before update
 	type oldRowInfo struct {
 		key    string

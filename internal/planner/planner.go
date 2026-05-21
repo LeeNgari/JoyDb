@@ -323,9 +323,19 @@ func planCreateTable(stmt *ast.CreateTableStatement, _ *schema.Database, tx *tra
 		}
 	}
 
+	fks := make([]schema.ForeignKey, len(stmt.ForeignKeys))
+	for i, astFk := range stmt.ForeignKeys {
+		fks[i] = schema.ForeignKey{
+			ColumnName:    astFk.ColumnName,
+			RefTableName:  astFk.RefTableName,
+			RefColumnName: astFk.RefColumnName,
+		}
+	}
+
 	return &plan.CreateTableNode{
 		TableName:   stmt.TableName,
 		Columns:     columns,
+		ForeignKeys: fks,
 		Transaction: tx,
 	}, nil
 }

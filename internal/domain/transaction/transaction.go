@@ -3,8 +3,6 @@ package transaction
 import (
 	"sync/atomic"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // txIDCounter is an atomic counter for generating unique transaction IDs
@@ -31,7 +29,6 @@ type Change struct {
 
 // Transaction represents a database transaction context
 type Transaction struct {
-	ID        string    // Unique transaction identifier (UUID - to be phased out)
 	TxID      uint64    // Numeric transaction ID for WAL integration
 	Active    bool      // Whether transaction is currently active
 	StartTime time.Time // When the transaction began
@@ -40,7 +37,6 @@ type Transaction struct {
 
 func NewTransaction() *Transaction {
 	return &Transaction{
-		ID:        uuid.New().String(),
 		TxID:      atomic.AddUint64(&txIDCounter, 1),
 		Active:    true,
 		StartTime: time.Now(),

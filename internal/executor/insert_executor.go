@@ -12,6 +12,11 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		return nil, newTableNotFoundError(node.TableName)
 	}
 
+	// Validate foreign keys before successful insert
+	if err := validateInsertFKs(node.TableName, node.Row, ctx); err != nil {
+		return nil, err
+	}
+
 	// Log to WAL before successful insert
 	if ctx.WALManager != nil {
 		if err := ctx.WALManager.LogInsert(ctx.Transaction, table, node.Row); err != nil {

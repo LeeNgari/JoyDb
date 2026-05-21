@@ -27,7 +27,7 @@ func ExecuteJoin(
 	tx *transaction.Transaction,
 ) ([]data.JoinedRow, error) {
 	if tx != nil {
-		slog.Debug("ExecuteJoin operation", "type", joinType, "tx_id", tx.ID)
+		slog.Debug("ExecuteJoin operation", "type", joinType, "tx_id", tx.TxID)
 	}
 	// Validate join condition and resolve qualified names
 	if err := validateJoinCondition(leftTable, rightTable, &leftColumn, &rightColumn); err != nil {

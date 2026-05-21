@@ -64,6 +64,13 @@
   - Introduce an `IndexScanNode` to the physical plan.
   - Enhance the query planner to map range predicates to B+Tree leaf traversal operations.
 
+### 2. Multi-Way JOIN Support & Schema Lineage
+- **Context:** Currently, JoyDB only supports a single `JOIN` because intermediate joined table schemas dynamically prefix columns with intermediate pointer strings (e.g., `join_0x...`), corrupting query projections and ON conditions for subsequent joins.
+- **Action:**
+  - Introduce **explicit output schema propagation** in the Query Planner so each plan node pre-calculates its resulting column names.
+  - Standardize column identifier resolution to resolve both fully qualified and unqualified names cleanly.
+  - Update `join_executor.go` to safely preserve already-qualified columns (e.g., `users.id`) instead of blindly prepending intermediate pointer-based prefixes.
+
 ---
 
 ## Phase 5: Concurrency & Storage Overhaul
