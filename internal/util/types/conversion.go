@@ -14,6 +14,10 @@ import (
 // This enables implicit type detection based on schema.
 func ConvertLiteralToSchemaType(lit *ast.Literal, schemaType schema.ColumnType) (*ast.Literal, error) {
 	// If types already match, no conversion needed
+	// If literal is NULL, always allow it (handled later by NOT NULL constraint)
+	if lit.Kind == ast.LiteralNull {
+		return lit, nil
+	}
 	if TypesMatch(lit.Kind, schemaType) {
 		return lit, nil
 	}

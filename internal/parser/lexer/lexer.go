@@ -30,6 +30,7 @@ const (
 	OR
 	TRUE
 	FALSE
+	NULL_KW
 	JOIN
 	INNER
 	LEFT
@@ -77,6 +78,7 @@ var keywords = map[string]TokenType{
 	"OR":       OR,
 	"TRUE":     TRUE,
 	"FALSE":    FALSE,
+	"NULL":     NULL_KW,
 	"JOIN":     JOIN,
 	"INNER":    INNER,
 	"LEFT":     LEFT,
@@ -149,6 +151,20 @@ func (l *Lexer) NextToken() Token {
 	tok.Column = l.column
 
 	switch l.ch {
+	case '-':
+		if l.peekChar() == '-' {
+			for l.ch != '\n' && l.ch != 0 {
+				l.readChar()
+			}
+			return l.NextToken()
+		}
+		if isDigit(l.peekChar()) {
+			l.readChar()
+			tok.Type = NUMBER
+			tok.Literal = "-" + l.readNumber()
+			return tok
+		}
+		tok = newToken(ILLEGAL, l.ch, l.line, l.column)
 	case '*':
 		tok = newToken(ASTERISK, l.ch, l.line, l.column)
 	case ',':

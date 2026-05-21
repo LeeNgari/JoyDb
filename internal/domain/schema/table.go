@@ -371,6 +371,9 @@ func (t *Table) validateRow(row data.Row) error {
 
 // validateType validates that a value matches the expected column type
 func (t *Table) validateType(colName string, value interface{}, expectedType ColumnType) error {
+	if value == nil {
+		return nil
+	}
 	switch expectedType {
 	case ColumnTypeInt:
 		if _, ok := value.(int64); !ok {
