@@ -50,11 +50,16 @@ func (m *multiHandler) WithGroup(name string) slog.Handler {
 }
 
 // SetupLogger initializes the global logger and returns a cleanup function
-func SetupLogger() (*slog.Logger, func()) {
+func SetupLogger(debug bool) (*slog.Logger, func()) {
+	level := slog.LevelInfo
+	if debug {
+		level = slog.LevelDebug
+	}
+
 	// Console handler
 	consoleHandler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level:     slog.LevelDebug,
-		AddSource: true,
+		Level:     level,
+		AddSource: debug,
 	})
 
 	// Seq handler
@@ -63,8 +68,8 @@ func SetupLogger() (*slog.Logger, func()) {
 		slogseq.WithBatchSize(1),
 		slogseq.WithFlushInterval(500*time.Millisecond),
 		slogseq.WithHandlerOptions(&slog.HandlerOptions{
-			Level:     slog.LevelDebug,
-			AddSource: true,
+			Level:     level,
+			AddSource: debug,
 		}),
 	)
 

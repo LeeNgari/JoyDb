@@ -166,12 +166,23 @@ func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.
 		return nil, fmt.Errorf("table not found: %s", tableName)
 	}
 
-	if len(stmt.Columns) != len(stmt.Values) {
-		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(stmt.Columns), len(stmt.Values))
+	cols := stmt.Columns
+	if len(cols) == 0 {
+		cols = make([]*ast.Identifier, len(table.Schema.Columns))
+		for i, col := range table.Schema.Columns {
+			cols[i] = &ast.Identifier{
+				TokenLiteralValue: col.Name,
+				Value:             col.Name,
+			}
+		}
+	}
+
+	if len(cols) != len(stmt.Values) {
+		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(cols), len(stmt.Values))
 	}
 
 	row := make(map[string]interface{})
-	for i, col := range stmt.Columns {
+	for i, col := range cols {
 		lit, ok := stmt.Values[i].(*ast.Literal)
 		if !ok {
 			return nil, fmt.Errorf("only literals supported in VALUES")

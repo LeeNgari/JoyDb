@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
@@ -21,9 +23,10 @@ func main() {
 	noWAL := flag.Bool("no-wal", false, "Disable Write-Ahead Logging (reduces durability)")
 	walSyncInterval := flag.Duration("wal-sync-interval", 0, "Interval between WAL fsyncs (0 = sync on every commit, e.g., '100ms', '1s')")
 	checkpointInterval := flag.Duration("checkpoint-interval", 5*time.Second, "Interval between automatic checkpoints (e.g., '5s', '1m')")
+	debug := flag.Bool("debug", false, "Enable debug-level logging")
 	flag.Parse()
 
-	logger, closeFn := logging.SetupLogger()
+	logger, closeFn := logging.SetupLogger(*debug)
 	defer closeFn()
 
 	slog.SetDefault(logger)
@@ -35,8 +38,7 @@ func main() {
 	if walEnabled {
 		slog.Info("WAL enabled for crash recovery")
 		if *walSyncInterval > 0 {
-			// TODO: Wire this into WALManager for periodic fsync
-			slog.Info("WAL sync interval configured", "interval", *walSyncInterval)
+			slog.Info("WAL periodic sync enabled", "interval", *walSyncInterval)
 		}
 		slog.Info("Checkpoint interval configured", "interval", *checkpointInterval)
 	} else {
@@ -55,7 +57,7 @@ func main() {
 	var storageEngine engine.StorageEngine = engine.NewMemoryEngine()
 	
 
-	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval)
+	registry := manager.NewRegistryWithWAL(basePath, storageEngine, walEnabled, *checkpointInterval, *walSyncInterval)
 
 	defer func() {
 		slog.Info("Shutting down - saving databases...")
@@ -69,7 +71,19 @@ func main() {
 
 	if *serverMode {
 		slog.Info("Starting Server mode...")
-		network.Start(*port, registry)
+		srv, err := network.StartServer(*port, registry)
+		if err != nil {
+			slog.Error("Failed to start server", "error", err)
+			os.Exit(1)
+		}
+
+		// Wait for interrupt signal
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+		<-sigCh
+
+		slog.Info("Interrupt received, stopping server...")
+		srv.Stop()
 	} else {
 		slog.Info("Starting REPL mode...")
 		repl.Start(registry)

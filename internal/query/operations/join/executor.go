@@ -122,7 +122,7 @@ func executeInnerJoin(
 		}
 	}
 
-	slog.Info("INNER JOIN completed",
+	slog.Debug("INNER JOIN completed",
 		slog.String("left_table", leftTable.Name),
 		slog.String("right_table", rightTable.Name),
 		slog.Int("result_rows", len(results)),
@@ -185,7 +185,7 @@ func executeLeftJoin(
 		}
 	}
 
-	slog.Info("LEFT JOIN completed",
+	slog.Debug("LEFT JOIN completed",
 		slog.Int("result_rows", len(results)),
 		slog.Int("unmatched_left", len(leftTable.Rows)-len(matchedLeftRows)),
 	)
@@ -246,7 +246,7 @@ func executeRightJoin(
 		}
 	}
 
-	slog.Info("RIGHT JOIN completed",
+	slog.Debug("RIGHT JOIN completed",
 		slog.Int("result_rows", len(results)),
 		slog.Int("unmatched_right", len(rightTable.Rows)-len(matchedRightRows)),
 	)
@@ -319,7 +319,7 @@ func executeFullJoin(
 		}
 	}
 
-	slog.Info("FULL OUTER JOIN completed",
+	slog.Debug("FULL OUTER JOIN completed",
 		slog.Int("result_rows", len(results)),
 		slog.Int("unmatched_left", len(leftTable.Rows)-len(matchedLeftRows)),
 		slog.Int("unmatched_right", len(rightTable.Rows)-len(matchedRightRows)),

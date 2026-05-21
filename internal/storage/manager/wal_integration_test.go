@@ -86,7 +86,7 @@ func TestWALManagerCreate(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -106,7 +106,7 @@ func TestWALManagerDisabled(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, false, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, false, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -134,7 +134,7 @@ func TestWALManagerInsert(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 
 	dbName := "testdb"
-	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, dbName, true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -178,7 +178,7 @@ func TestWALManagerUpdate(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -218,7 +218,7 @@ func TestWALManagerDelete(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 
@@ -259,7 +259,7 @@ func TestWALManagerFullCycle(t *testing.T) {
 	tempDir := createTempDir(t)
 	defer os.RemoveAll(tempDir)
 
-	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, tempDir, "testdb", true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 
 	db := createTestDatabase(t, "testdb")
@@ -273,7 +273,7 @@ func TestWALManagerFullCycle(t *testing.T) {
 	wm.Close()
 
 	// Reopen
-	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, nil, engine.NewMemoryEngine())
+	wm2, err := NewWALManager(nil, tempDir, "testdb", true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm2.Close()
 
@@ -377,7 +377,7 @@ func TestRegistryGetWithWAL(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
 	eng := engine.NewMemoryEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0, 0)
 	defer reg.CloseAll()
 
 	db, wm, err := reg.GetWithWAL(dbName)
@@ -400,7 +400,7 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
 	// Create WAL with committed transaction
-	wm, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, filepath.Join(tempDir, dbName), dbName, true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 
 	// Need a schema to log insert, but we can fake it or use createTestDatabase's table
@@ -417,7 +417,7 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 
 	// Now load via Registry
 	eng := engine.NewMemoryEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0, 0)
 	defer reg.CloseAll()
 
 	loadedDB, _, err := reg.GetWithWAL(dbName)
@@ -444,7 +444,7 @@ func TestRegistrySaveAllCheckpoint(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, dbName, "users")
 
 	eng := engine.NewMemoryEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0, 0)
 	defer reg.CloseAll()
 
 	db, wm, err := reg.GetWithWAL(dbName)
@@ -488,7 +488,7 @@ func TestRegistryCloseAll(t *testing.T) {
 	createMinimalDatabaseFiles(t, tempDir, "db2", "t2")
 
 	eng := engine.NewMemoryEngine()
-	reg := NewRegistryWithWAL(tempDir, eng, true, 0)
+	reg := NewRegistryWithWAL(tempDir, eng, true, 0, 0)
 
 	_, _, err := reg.GetWithWAL("db1")
 	assert.NilError(t, err)
@@ -542,7 +542,7 @@ func TestWriteCheckpointWithTables(t *testing.T) {
 		t.Fatalf("failed to create snapshot: %v", err)
 	}
 
-	wm, err := NewWALManager(nil, dbPath, dbName, true, 0, nil, engine.NewMemoryEngine())
+	wm, err := NewWALManager(nil, dbPath, dbName, true, 0, 0, nil, engine.NewMemoryEngine())
 	assert.NilError(t, err)
 	defer wm.Close()
 

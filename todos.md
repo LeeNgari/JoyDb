@@ -4,14 +4,7 @@ This document tracks `TODO` comments and tasks identified in the codebase that a
 
 ## High Priority / Core Features
 
-### 1. Storage Engine Upgrade
-- **Location**: `cmd/joydb/main.go:54`
-- **Task**: Swap the current JSON-based storage engine for a high-performance binary format.
-- **Context**: `// Create storage engine (currently JSON, will be swapped for binary)`
 
-### 2. WAL Synchronization Configuration
-- **Location**: `cmd/joydb/main.go:38`
-- **Task**: Wire the `wal-sync-interval` flag into `WALManager` to support periodic fsync instead of only syncing on every commit.
 
 ### 3. Transaction ID Consolidation
 - **Location**: `internal/domain/transaction/transaction.go:34`
@@ -50,7 +43,3 @@ This document tracks `TODO` comments and tasks identified in the codebase that a
 - **Context**: `// (unique, primary key, not null, type mismatch, foreign key later, etc.)`
 
 ---
-
-## Stale Comments / Cleanup - clean up of unnecessary comments keeping codebase clean and professional, expect that peaople working on the project are already familiear with it and know what going on no need to explain what every line or comment does
-
-### Execution strategy

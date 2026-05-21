@@ -28,6 +28,11 @@ type WAL struct {
 
 	// Transaction tracking
 	activeTxns map[uint64]*TxnState // Currently active transactions
+
+	// Background sync
+	syncInterval time.Duration
+	stopSync     chan struct{}
+	syncWg       sync.WaitGroup
 }
 
 // NewWAL creates or opens a WAL at the specified path
@@ -151,6 +156,8 @@ func (w *WAL) writeFileHeader() error {
 
 // Close flushes, syncs and closes the WAL file
 func (w *WAL) Close() error {
+	w.StopPeriodicSync()
+
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -263,4 +270,57 @@ func (w *WAL) allocateLSN() uint64 {
 	lsn := w.nextLSN
 	w.nextLSN++
 	return lsn
+}
+
+// StartPeriodicSync starts a background goroutine that fsyncs the WAL periodically
+func (w *WAL) StartPeriodicSync(interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+
+	w.mu.Lock()
+	if w.stopSync != nil {
+		w.mu.Unlock()
+		return // already running
+	}
+	w.syncInterval = interval
+	w.stopSync = make(chan struct{})
+	w.syncWg.Add(1)
+	w.mu.Unlock()
+
+	go func() {
+		defer w.syncWg.Done()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-w.stopSync:
+				return
+			case <-ticker.C:
+				if err := w.Sync(); err != nil {
+					slog.Error("WAL: periodic sync failed", "database", w.dbName, "error", err)
+				}
+			}
+		}
+	}()
+}
+
+// StopPeriodicSync stops the background sync goroutine and performs a final sync
+func (w *WAL) StopPeriodicSync() {
+	w.mu.Lock()
+	if w.stopSync == nil {
+		w.mu.Unlock()
+		return
+	}
+	close(w.stopSync)
+	w.stopSync = nil
+	w.mu.Unlock()
+
+	w.syncWg.Wait()
+
+	// Final sync to ensure everything is flushed
+	if err := w.Sync(); err != nil {
+		slog.Error("WAL: final sync failed", "database", w.dbName, "error", err)
+	}
 }

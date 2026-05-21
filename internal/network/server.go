@@ -2,6 +2,7 @@ package network
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,26 +17,49 @@ type Request struct {
 	Query string `json:"query"`
 }
 
-// Start starts the TCP database server
-func Start(port int, registry *manager.Registry) {
+type Server struct {
+	listener net.Listener
+	registry *manager.Registry
+}
+
+// StartServer starts the TCP database server and returns a stoppable Server instance
+func StartServer(port int, registry *manager.Registry) (*Server, error) {
 	addr := fmt.Sprintf(":%d", port)
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		slog.Error("Failed to bind to port", "port", port, "error", err)
-		return
+		return nil, fmt.Errorf("failed to bind to port: %w", err)
 	}
-	defer listener.Close()
+
+	srv := &Server{
+		listener: listener,
+		registry: registry,
+	}
 
 	slog.Info("Running on port", "port", port)
 
+	go srv.serve()
+	return srv, nil
+}
+
+func (s *Server) serve() {
 	for {
-		conn, err := listener.Accept()
+		conn, err := s.listener.Accept()
 		if err != nil {
-			slog.Error("Failed to accept connection", "error", err)
-			continue
+			if !errors.Is(err, net.ErrClosed) {
+				slog.Error("Failed to accept connection", "error", err)
+			}
+			return
 		}
-		go handleConnection(conn, registry)
+		go handleConnection(conn, s.registry)
 	}
+}
+
+// Stop stops the server from accepting new connections
+func (s *Server) Stop() error {
+	if s.listener != nil {
+		return s.listener.Close()
+	}
+	return nil
 }
 
 func handleConnection(conn net.Conn, registry *manager.Registry) {

@@ -41,8 +41,18 @@ func TestServerJSON(t *testing.T) {
 	storageEng := storageEngine.NewMemoryEngine()
 	registry := manager.NewRegistry(basePath, storageEng)
 
-	// Start server in goroutine
-	go network.Start(port, registry)
+	// Start server
+	srv, err := network.StartServer(port, registry)
+	if err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+
+	t.Cleanup(func() {
+		if srv != nil {
+			srv.Stop()
+		}
+		registry.CloseAll()
+	})
 
 	// Wait a bit for server
 	time.Sleep(100 * time.Millisecond)

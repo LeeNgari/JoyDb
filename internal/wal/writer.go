@@ -141,9 +141,16 @@ func (w *WAL) Commit(txID uint64) (uint64, error) {
 		return 0, fmt.Errorf("failed to write Commit record: %w", err)
 	}
 
-	// Flush buffer and fsync to ensure durability
-	if err := w.flushAndSync(); err != nil {
-		return 0, fmt.Errorf("failed to sync after commit: %w", err)
+	// If syncInterval > 0, only flush buffer (no fsync) — background syncer handles fsync
+	// If syncInterval == 0, flush + fsync immediately (current behavior)
+	if w.syncInterval > 0 {
+		if err := w.buf.Flush(); err != nil {
+			return 0, fmt.Errorf("failed to flush after commit: %w", err)
+		}
+	} else {
+		if err := w.flushAndSync(); err != nil {
+			return 0, fmt.Errorf("failed to sync after commit: %w", err)
+		}
 	}
 
 	// Update flushed LSN

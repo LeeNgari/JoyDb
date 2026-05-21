@@ -33,6 +33,7 @@ func NewWALManager(
 	dbPath, dbName string,
 	enabled bool,
 	checkpointInterval time.Duration,
+	syncInterval time.Duration,
 	saveFunc func() error,
 	storageEngine engine.StorageEngine,
 ) (*WALManager, error) {
@@ -50,6 +51,10 @@ func NewWALManager(
 	w, err := wal.NewWAL(walPath, dbName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create WAL: %w", err)
+	}
+
+	if syncInterval > 0 {
+		w.StartPeriodicSync(syncInterval)
 	}
 
 	wm := &WALManager{
@@ -85,7 +90,7 @@ func NewWALManager(
 	wm.checkpointer = wal.NewAsyncCheckpointer(checkpointInterval, checkpointAction)
 	wm.checkpointer.Start()
 
-	slog.Info("WAL initialized", "database", dbName, "path", walPath, "checkpoint_interval", checkpointInterval)
+	slog.Debug("WAL initialized", "database", dbName, "path", walPath, "checkpoint_interval", checkpointInterval)
 
 	return wm, nil
 }
@@ -287,7 +292,7 @@ func (m *WALManager) WriteCheckpoint(db *schema.Database) error {
 		return fmt.Errorf("WAL WriteCheckpoint failed: %w", err)
 	}
 
-	slog.Info("WAL: Checkpoint written", "database", m.dbName, "snapshot_lsn", snapshotLSN, "lsn", lsn)
+	slog.Debug("WAL: Checkpoint written", "database", m.dbName, "snapshot_lsn", snapshotLSN, "lsn", lsn)
 	return nil
 }
 
@@ -323,7 +328,7 @@ func (m *WALManager) RecoverWithProgress(callback wal.ProgressCallback) (*wal.Re
 		return nil, fmt.Errorf("WAL recovery failed: %w", err)
 	}
 
-	slog.Info("WAL: Recovery complete",
+	slog.Debug("WAL: Recovery complete",
 		"database", m.dbName,
 		"records_scanned", result.RecordsScanned,
 		"txns_replayed", result.TransactionsReplay,
@@ -351,7 +356,9 @@ func (m *WALManager) Close() error {
 		m.checkpointer.Stop()
 	}
 
-	slog.Info("WAL: Closing", "database", m.dbName)
+	m.wal.StopPeriodicSync()
+
+	slog.Debug("WAL: Closing", "database", m.dbName)
 	return m.wal.Close()
 }
 

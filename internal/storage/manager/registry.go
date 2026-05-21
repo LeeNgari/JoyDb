@@ -24,11 +24,12 @@ type Registry struct {
 	storageEngine      engine.StorageEngine
 	walEnabled         bool          // Whether WAL is enabled globally
 	checkpointInterval time.Duration // Interval for auto-checkpoints
+	walSyncInterval    time.Duration // Interval for periodic background WAL sync
 }
 
 // NewRegistry creates a new database registry with the given storage engine
 func NewRegistry(basePath string, storageEngine engine.StorageEngine) *Registry {
-	return NewRegistryWithWAL(basePath, storageEngine, true, 5*time.Second) // WAL enabled by default, 5s checkpoint
+	return NewRegistryWithWAL(basePath, storageEngine, true, 5*time.Second, 0) // WAL enabled by default, 5s checkpoint, sync on commit
 }
 
 // NewRegistryWithWAL creates a new database registry with explicit WAL configuration
@@ -37,6 +38,7 @@ func NewRegistryWithWAL(
 	storageEngine engine.StorageEngine,
 	walEnabled bool,
 	checkpointInterval time.Duration,
+	syncInterval time.Duration,
 ) *Registry {
 	if checkpointInterval == 0 {
 		checkpointInterval = 5 * time.Second
@@ -48,6 +50,7 @@ func NewRegistryWithWAL(
 		storageEngine:      storageEngine,
 		walEnabled:         walEnabled,
 		checkpointInterval: checkpointInterval,
+		walSyncInterval:    syncInterval,
 	}
 }
 
@@ -91,7 +94,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 			return r.storageEngine.SaveDatabase(db, nil)
 		}
 
-		walMgr, err = NewWALManager(db, dbPath, name, true, r.checkpointInterval, saveFunc, r.storageEngine)
+		walMgr, err = NewWALManager(db, dbPath, name, true, r.checkpointInterval, r.walSyncInterval, saveFunc, r.storageEngine)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to create WAL manager: %w", err)
 		}
@@ -101,7 +104,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 		if _, statErr := os.Stat(walPath); statErr == nil {
 			// WAL file exists - perform recovery with progress logging
 			progressCallback := func(p wal.RecoveryProgress) {
-				slog.Info("Recovery progress",
+				slog.Debug("Recovery progress",
 					"database", name,
 					"phase", p.Phase,
 					"percentage", p.Percentage(),
@@ -120,7 +123,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 				len(result.CreateTableOps) > 0 || len(result.DropTableOps) > 0 || len(result.AlterTableOps) > 0
 
 			if result != nil && hasOps {
-				slog.Info("WAL: Replaying operations",
+				slog.Debug("WAL: Replaying operations",
 					"database", name,
 					"inserts", len(result.InsertOps),
 					"updates", len(result.UpdateOps),
@@ -142,7 +145,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 					return nil, nil, fmt.Errorf("failed to rebuild indexes after WAL replay: %w", indexErr)
 				}
 
-				slog.Info("WAL: Recovery complete", "database", name)
+				slog.Debug("WAL: Recovery complete", "database", name)
 			}
 		}
 

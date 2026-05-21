@@ -14,7 +14,7 @@ func NewLoggingObserver() *LoggingObserver {
 }
 
 func (lo *LoggingObserver) OnEvent(event Event) {
-	lo.logger.Info("query_lifecycle",
+	lo.logger.Debug("query_lifecycle",
 		"event", event.Type,
 		"tx_id", event.TxID,
 		"timestamp", event.Timestamp,
