@@ -22,5 +22,8 @@ func (s *TableSchema) Validate() error {
 	if len(s.Columns) == 0 {
 		return fmt.Errorf("table must have at least one column")
 	}
+	if s.GetPrimaryKeyColumn() == nil {
+		return fmt.Errorf("table must define a PRIMARY KEY column")
+	}
 	return nil
 }
