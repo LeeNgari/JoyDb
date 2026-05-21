@@ -27,11 +27,11 @@
 ## Phase 2: Database Benchmarking
 
 ### 1. Performance Testing Suite
-- **Context:** As JoyDB undergoes major architectural changes (e.g., locking, indexes, WAL group commit), we need quantitative metrics to ensure these changes improve throughput.
+
 - **Action:**
-  - Build a standalone benchmarking suite for JoyDB mimicking industry standards (like TPC-C or Sysbench).
+  - Build a standalone benchmarking suite.
   - Measure transactions per second (TPS), read/write latency, and concurrency throughput.
-  - Establish a baseline before Phase 2-4 changes and continuously measure against it.
+  - Establish a baseline before Phase 3-5 changes and continuously measure against it.
 
 
 ## Phase 3: WAL & Recovery Polish
