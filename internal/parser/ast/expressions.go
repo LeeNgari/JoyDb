@@ -25,6 +25,7 @@ const (
 	LiteralInt    LiteralKind = "INT"
 	LiteralFloat  LiteralKind = "FLOAT"
 	LiteralBool   LiteralKind = "BOOL"
+	LiteralNull   LiteralKind = "NULL"
 	LiteralDate   LiteralKind = "DATE"
 	LiteralTime   LiteralKind = "TIME"
 	LiteralEmail  LiteralKind = "EMAIL"

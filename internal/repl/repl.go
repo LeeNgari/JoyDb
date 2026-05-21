@@ -126,7 +126,11 @@ func PrintResult(w io.Writer, res *executor.Result) {
 				if !ok {
 					fmt.Fprintf(tw, "NULL")
 				} else {
-					fmt.Fprintf(tw, "%v", val)
+					if val == nil {
+						fmt.Fprintf(tw, "NULL")
+					} else {
+						fmt.Fprintf(tw, "%v", val)
+					}
 				}
 				if i < len(res.Columns)-1 {
 					fmt.Fprintf(tw, "\t")

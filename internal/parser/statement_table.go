@@ -115,13 +115,14 @@ func (p *Parser) parseColumnDef() *ast.ColumnDef {
 			case "UNIQUE":
 				col.Unique = true
 			case "NOT":
-				if p.peekTok.Type == lexer.IDENTIFIER && strings.ToUpper(p.peekTok.Literal) == "NULL" {
+				if p.peekTok.Type == lexer.NULL_KW {
 					p.nextToken() // consume NOT (curTok -> NULL)
 					col.NotNull = true
 				} else {
 					return nil
 				}
-			case "KEY", "NULL":
+			case "KEY":
+			case "NULL":
 				// Already handled as part of composite modifiers
 			default:
 				// Not a modifier, break out

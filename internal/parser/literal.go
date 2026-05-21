@@ -114,6 +114,9 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 	case lexer.FALSE:
 		p.nextToken()
 		return &ast.Literal{TokenLiteralValue: "false", Value: false, Kind: ast.LiteralBool}, nil
+	case lexer.NULL_KW:
+		p.nextToken()
+		return &ast.Literal{TokenLiteralValue: "NULL", Value: nil, Kind: ast.LiteralNull}, nil
 	default:
 		return nil, fmt.Errorf("unexpected token in expression: %s", p.curTok.Literal)
 	}

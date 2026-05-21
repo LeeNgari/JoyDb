@@ -298,9 +298,9 @@ func planCreateTable(stmt *ast.CreateTableStatement, _ *schema.Database, tx *tra
 			colType = schema.ColumnTypeInt
 		case "FLOAT":
 			colType = schema.ColumnTypeFloat
-		case "TEXT":
+		case "TEXT", "STRING":
 			colType = schema.ColumnTypeText
-		case "BOOL":
+		case "BOOL", "BOOLEAN":
 			colType = schema.ColumnTypeBool
 		case "DATE":
 			colType = schema.ColumnTypeDate
