@@ -2,7 +2,6 @@ package engine
 
 import "log/slog"
 
-// LoggingObserver is a simple observer that logs all events
 type LoggingObserver struct {
 	logger *slog.Logger
 }

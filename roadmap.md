@@ -1,66 +1,85 @@
-# JoyDB Engineering Roadmap & Future Architectural Plans
-This roadmap outlines high-priority performance optimizations, structural gaps, and architectural enhancements identified during the query engine and storage layer audit. These issues serve as future engineering tasks to transition JoyDB from a point-lookup optimized in-memory database to a highly concurrent, production-grade RDBMS.
+# JoyDB roadmap
+
+## Phase 1:
+
+### 1. Transaction ID Consolidation
+- **Context:** `Transaction.ID` (UUID string) is redundant alongside `Transaction.TxID` (uint64), which is required by the WAL.
+- **Action:**
+  - Remove `Transaction.ID` completely from `internal/domain/transaction/transaction.go`.
+  - Update all observers and engine tracing (e.g. `Event.TxID`) to use `uint64`.
+
+### 2. Strict B+Tree Key Comparison
+- **Context:** `compareKeys` in `bplustree.go` currently falls back to `fmt.Sprintf` for unknown types, causing slow performance and semantic sorting bugs.
+- **Action:**
+  - Introduce a strict `Key` interface with a `Compare(other Key) int` method.
+  - Implement the interface for all native database types (Int, Float, String).
+  - Remove string-fallback coercion.
+
+### 3. Foreign Key Constraints
+- **Context:** Foreign key validation is missing.
+- **Action:**
+  - Extend `TableSchema` to track foreign key relationships.
+  - Update the `insert` and `update` executors to validate referential integrity against parent tables.
+  - Update the `delete` executor to validate/cascade deletions.
+
 ---
-## 1. Storage & Mutation Optimizations
-### 1.1 High-Complexity Index Rebuilding on Row Mutation
-* **Status / Classification:** Performance Bottleneck | Complexity: High
-* **Current Behavior:** As implemented in [table.go](file:///C:/Users/lee.ngari/.gemini/antigravity/worktrees/JoyDb/analyze-project-implementation-plan/internal/domain/schema/table.go), deleting or updating a row causes a dense array shift (`table.Rows`) to maintain cache locality, immediately followed by `rebuildIndexesUnsafe()`. This completely clears and recreates both the B+Tree routing index and all secondary hash indexes from scratch in $O(n \log n)$ time.
-* **Impact:** Modifying a single row triggers full index re-hydration, causing linear performance degradation as the record count increases.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Tombstone Implementation:** Introduce logical tombstones inside `data.Row` (e.g., a boolean `Deleted` flag). Skip tombstoned records during query evaluation and index lookups.
-  - [ ] **Phase 2: Stable Row Identifiers:** De-couple the index pointers from physical array slots. Introduce stable, immutable Record IDs (RIDs) so that row array shifts do not require index updates for untouched rows.
-  - [ ] **Phase 3: Background Compaction Thread:** Build an asynchronous worker thread that periodically locks small blocks of the array, physically purges tombstones, and adjusts matching index offsets incrementally.
-### 1.2 Table Lock Granularity (Coarse Mutexes)
-* **Status / Classification:** Concurrency Bottleneck | Complexity: High
-* **Current Behavior:** JoyDB relies on a coarse table-level read-write lock (`Table.mu`). During checkpointing, the system acquires a database-wide read-lock (`db.RLock()`), blocking all concurrent DML writers.
-* **Impact:** Thread safety is preserved, but concurrent transaction throughput is limited. High-frequency concurrent writes face significant lock contention.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Fine-Grained Locking:** Introduce latching/crabbing protocols on internal B+Tree nodes during search and insertion paths so that nodes can be locked independently.
-  - [ ] **Phase 2: Row-Level Locks:** Transition from table-level locks to row-level exclusive locks using a centralized Lock Manager.
-  - [ ] **Phase 3: MVCC / Snapshot Isolation:** Implement Multi-Version Concurrency Control (MVCC) utilizing the `TxID` transaction state. Read operations should fetch rows corresponding to their snapshot sequence, avoiding blocking active writes.
+
+## Phase 2: Database Benchmarking
+
+### 1. Performance Testing Suite
+- **Context:** As JoyDB undergoes major architectural changes (e.g., locking, indexes, WAL group commit), we need quantitative metrics to ensure these changes improve throughput.
+- **Action:**
+  - Build a standalone benchmarking suite for JoyDB mimicking industry standards (like TPC-C or Sysbench).
+  - Measure transactions per second (TPS), read/write latency, and concurrency throughput.
+  - Establish a baseline before Phase 2-4 changes and continuously measure against it.
+
+
+## Phase 3: WAL & Recovery Polish
+
+### 1. In-Memory Transaction Buffering & Group Commit
+- **Context:** Currently, aborted transactions bloat the WAL, and every operation writes individually.
+- **Action:**
+  - Buffer DML operations in memory within the `Transaction` or `ExecutionContext`.
+  - Only write the buffered operations to the `wal.Writer` sequentially upon `Commit()`.
+  - This inherently solves the aborted transaction bloat (they simply get discarded from memory).
+
+### 2. WAL File Segmentation & Truncation 
+- **Context:** The database uses a single, indefinitely growing `.wal` file.
+- **Action:**
+  - Modify `wal.Writer` to rotate to a new segment (e.g., `000002.wal`) when the current file exceeds a size limit (e.g., 64MB).
+  - Modify `WALManager`'s checkpoint routine to safely delete or archive older WAL segments once a checkpoint is fully persisted.
+
+### 3. WAL Recovery Improvements 
+- **Context:** `RecoverFromScratch` needs to salvage data from corrupted logs instead of failing entirely.
+- **Action:**
+  - Enhance the WAL `Reader` to gracefully handle trailing garbage bytes and partial records, salvaging all valid transactions up to the corruption point.
+
 ---
-## 2. Durability & Recovery Improvements
-### 2.1 Monolithic WAL File & Lack of Log Truncation
-* **Status / Classification:** Resource Leak | Complexity: Medium
-* **Current Behavior:** The database writes DML and DDL transactions to a single, monolithic `.wal` file that grows indefinitely.
-* **Impact:** System execution will eventually deplete physical disk space. Startup recovery times also scale linearly with the size of the WAL file.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: WAL Segmentation:** Modify `WALManager` to split logs into numbered WAL segments (e.g., `000001.wal`, `000002.wal`) capped at a physical limit (e.g., 64MB).
-  - [ ] **Phase 2: Checkpoint Truncation:** Integrate checkpoint completion with log pruning. Once a checkpoint is written and verified, delete or compress all WAL segments that contain only LSNs older than the checkpointed LSN.
-### 2.3 WAL Bloat from Aborted Transactions
-* **Status / Classification:** Technical Debt | Complexity: Medium
-* **Current Behavior:** If a transaction is aborted, a `RecordAbort` entry is logged. However, all intermediate DML inserts, updates, and deletes remain in the physical WAL file.
-* **Impact:** Crash recovery correctly skips aborted transactions, but physical storage is wasted, and recovery parsing speeds are degraded by trailing garbage bytes.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: In-Memory Transaction Buffering:** Modify `ExecutionContext` to buffer uncommitted transaction operations in a volatile memory ring-buffer.
-  - [ ] **Phase 2: Atomic Group Commit:** Only serialize and write a transaction's operations to the physical WAL file during `Commit()`. Flush them in a single, contiguous sequential write operation.
-### 2.4 Asynchronous Periodic Fsync (Group Commit)
-* **Status / Classification:** Scalability | Complexity: Medium
-* **Current Behavior:** JoyDB triggers a blocking `fsync` call on the log file during every commit operation. The `wal-sync-interval` configuration flag is scaffolded but not wired into the `WALManager`.
-* **Impact:** Maximum transaction throughput is bounded by disk spindle speed or SSD write latency.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Background Syncer Thread:** Run a background syncer loop that wakes up at configured intervals (e.g., every 5ms or 10ms).
-  - [ ] **Phase 2: Group Commit implementation:** Group multiple concurrently committing transactions into a single write buffer, flushing them with a single shared `fsync` system call.
+
+## Phase 4: Query Execution & Planner Upgrades
+
+### 1. Missing Index Range Scans
+- **Context:** The planner ignores B+Trees for range queries (e.g., `id > 10`), defaulting to slow sequential scans.
+- **Action:**
+  - Introduce an `IndexScanNode` to the physical plan.
+  - Enhance the query planner to map range predicates to B+Tree leaf traversal operations.
+
 ---
-## 3. Query Engine & Compilation Refactoring
-### 3.1 Naive Nested Loop Joins
-* **Status / Classification:** Algorithmic Bottleneck | Complexity: High
-* **Current Behavior:** The physical planner and executor resolve relational joins using a simple nested loop join. Execution also builds temporary in-memory tables from intermediate child outputs, resulting in high memory allocations.
-* **Impact:** Quadratic join execution complexity ($O(N \times M)$) causes performance degradation for table relations larger than a few thousand rows.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Hash Join Implementation:** Build an in-memory hash index over the join key of the smaller (build) relation, and probe it sequentially using the larger (probe) relation to execute in $O(N + M)$ time.
-  - [ ] **Phase 2: Sort-Merge Join:** Leverage sorted keys or pre-existing B+Tree index order to perform merge-joins on pre-sorted arrays without sorting overhead.
-### 3.2 Key Comparison Coercion in B+Tree
-* **Status / Classification:** Code Quality & Safety | Complexity: Medium
-* **Current Behavior:** The B+Tree comparator `compareKeys` in [bplustree.go](file:///C:/Users/lee.ngari/.gemini/antigravity/worktrees/JoyDb/analyze-project-implementation-plan/internal/index/btree/bplustree.go) formats key values as strings via `fmt.Sprintf` as a fallback strategy when types do not match or are not recognized.
-* **Impact:** High memory overhead during formatting, along with semantic sorting bugs (string `"10"` sorting before `"2"`).
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Strict Index Keys:** Enforce index constraints that prevent indexing columns with mismatched datatypes.
-  - [ ] **Phase 2: Key Interface Definition:** Create a explicit `Key` interface containing a strict type-safe `Compare(other Key) int` contract to prevent dynamic runtime string-fallbacks.
-### 3.3 Missing Index Range Scans in SQL Planner
-* **Status / Classification:** Optimization | Complexity: High
-* **Current Behavior:** The query planner defaults to a `sequential` scan type for query filtering. The primary key B+Tree is ignored during range scans, behaving as a sparse lookup index only.
-* **Impact:** Queries such as `SELECT * FROM users WHERE id > 10` trigger full sequence scans followed by filtering in the executor.
-* **Refactoring Plan:**
-  - [ ] **Phase 1: Plan Representation:** Introduce an `IndexScanNode` to physical plan nodes.
-  - [ ] **Phase 2: Range Propagation:** Teach the query planner to analyze predicates and extract index bounds. Map range filters directly to B+Tree leaf range traversals.
+
+## Phase 5: Concurrency & Storage Overhaul
+
+### 1. Tombstones & Stable Row IDs
+- **Context:** Array shifts on row deletion trigger massive, $O(n \log n)$ full-index rebuilds.
+- **Action:**
+  - Decouple physical array indices from logical indexing. Introduce immutable Record IDs (RIDs).
+  - Use logical tombstones (`Deleted: true`) instead of array shifts.
+  - Build a background vacuum thread to periodically compact tombstones.
+
+### 2. Fine-Grained Row-Level Locking
+- **Context:** Coarse table-level locks (`Table.mu`) block concurrent writers.
+- **Action:**
+	- Replace `Table.mu` with a centralized Lock Manager handling fine-grained Row-Level Locks and Intent Locks.
+	- (Optional future step) Move towards full MVCC for non-blocking reads.
+
+---
+
