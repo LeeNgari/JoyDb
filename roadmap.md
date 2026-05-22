@@ -71,6 +71,13 @@
   - Standardize column identifier resolution to resolve both fully qualified and unqualified names cleanly.
   - Update `join_executor.go` to safely preserve already-qualified columns (e.g., `users.id`) instead of blindly prepending intermediate pointer-based prefixes.
 
+### 3. Table & Column Aliases (AS Syntax)
+- **Context:** JoyDB does not support table aliases (e.g., `FROM requests r` or `FROM requests AS r`) or column aliases (e.g., `SELECT r.id AS request_id`), which are standard in mainstream SQL databases like Postgres or SQL Server for qualifying joined columns and custom output renaming.
+- **Action:**
+  - Extend the lexer and parser to recognize the optional `AS` keyword and alias identifiers for both fields and tables.
+  - Upgrade the Query Planner's identifier resolver to register table aliases in the planning scope, mapping alias references (e.g., `r.id`) back to base columns (`requests.id`).
+  - Upgrade the projection node to rename output columns to their specified column aliases.
+
 ---
 
 ## Phase 5: Concurrency & Storage Overhaul
