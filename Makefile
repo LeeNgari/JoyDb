@@ -85,5 +85,26 @@ help:
 	@echo "  make test-integration         - Run integration tests with summary"
 	@echo "  make test-integration-verbose - Run integration tests with verbose output"
 	@echo "  make install-tools            - Install gotestsum and other tools"
+	@echo "  make bench                    - Run Go benchmarks (quick, standard output)"
+	@echo "  make bench-full               - Run full benchmark suite with rich output"
+	@echo "  make bench-baseline           - Run benchmarks and save JSON baseline"
+	@echo "  make bench-compare            - Compare against baseline"
 	@echo "  make clean                    - Remove build artifacts"
 	@echo "  make help                     - Show this help message"
+
+# Run Go benchmarks (quick, standard output)
+bench:
+	go test -bench=. -benchmem -benchtime=3s ./internal/benchmark/...
+
+# Run full benchmark suite with rich output
+bench-full:
+	go run ./cmd/bench --duration 5s
+
+# Run benchmarks and save JSON baseline
+bench-baseline:
+	@mkdir -p benchmarks
+	go run ./cmd/bench --json --output benchmarks/baseline.json --duration 5s
+
+# Compare against baseline
+bench-compare:
+	go run ./cmd/bench --baseline benchmarks/baseline.json --duration 5s

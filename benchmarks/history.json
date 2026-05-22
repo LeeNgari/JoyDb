@@ -1,0 +1,296 @@
+{
+  "runs": [
+    {
+      "timestamp": "2026-05-22T10:45:05.4621555+03:00",
+      "label": "baseline-test",
+      "os": "windows",
+      "arch": "amd64",
+      "cpu_cores": 12,
+      "go_version": "go1.26.3",
+      "results": [
+        {
+          "Name": "insert_single_row",
+          "Latencies": null,
+          "TotalTime": 1000040400,
+          "Iterations": 97331,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 10238,
+            "StdDev": 127944,
+            "TPS": 97327.06798645334
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_bulk_100",
+          "Latencies": null,
+          "TotalTime": 1035340500,
+          "Iterations": 574,
+          "Stats": {
+            "P50": 999900,
+            "P90": 4895300,
+            "P95": 6698100,
+            "P99": 14025900,
+            "Mean": 1803729,
+            "StdDev": 3337754,
+            "TPS": 554.4069801191009
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_with_fk",
+          "Latencies": null,
+          "TotalTime": 1002336900,
+          "Iterations": 56281,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 893600,
+            "Mean": 17705,
+            "StdDev": 171588,
+            "TPS": 56149.78357077346
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "update_by_pk",
+          "Latencies": null,
+          "TotalTime": 1002069900,
+          "Iterations": 56,
+          "Stats": {
+            "P50": 17959900,
+            "P90": 19822500,
+            "P95": 22352300,
+            "P99": 23352300,
+            "Mean": 17894105,
+            "StdDev": 1928290,
+            "TPS": 55.884325035608796
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "delete_by_pk",
+          "Latencies": null,
+          "TotalTime": 1001069000,
+          "Iterations": 72,
+          "Stats": {
+            "P50": 13561600,
+            "P90": 16189900,
+            "P95": 17239800,
+            "P99": 32443500,
+            "Mean": 13903736,
+            "StdDev": 3367567,
+            "TPS": 71.9231141909299
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_100",
+          "Latencies": null,
+          "TotalTime": 1000675700,
+          "Iterations": 99091,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 382200,
+            "Mean": 10056,
+            "StdDev": 117588,
+            "TPS": 99024.08942277703
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 1001023300,
+          "Iterations": 90883,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 458300,
+            "Mean": 10956,
+            "StdDev": 126979,
+            "TPS": 90790.09449630194
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 1000160300,
+          "Iterations": 125205,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 7939,
+            "StdDev": 134517,
+            "TPS": 125184.93285526331
+          },
+          "Errors": 0,
+          "Metadata": {}
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-05-22T10:45:31.9272298+03:00",
+      "label": "second-run",
+      "os": "windows",
+      "arch": "amd64",
+      "cpu_cores": 12,
+      "go_version": "go1.26.3",
+      "results": [
+        {
+          "Name": "insert_single_row",
+          "Latencies": null,
+          "TotalTime": 1000750900,
+          "Iterations": 54188,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 779900,
+            "Mean": 18382,
+            "StdDev": 177498,
+            "TPS": 54147.34076182194
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_bulk_100",
+          "Latencies": null,
+          "TotalTime": 1004073600,
+          "Iterations": 1932,
+          "Stats": {
+            "P50": 0,
+            "P90": 1690100,
+            "P95": 2804300,
+            "P99": 5793900,
+            "Mean": 519706,
+            "StdDev": 1181075,
+            "TPS": 1924.1617347572928
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_with_fk",
+          "Latencies": null,
+          "TotalTime": 1000843800,
+          "Iterations": 104194,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 9584,
+            "StdDev": 146651,
+            "TPS": 104106.15522622011
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "update_by_pk",
+          "Latencies": null,
+          "TotalTime": 1003118800,
+          "Iterations": 135,
+          "Stats": {
+            "P50": 7722000,
+            "P90": 10557200,
+            "P95": 10850400,
+            "P99": 12182900,
+            "Mean": 7430509,
+            "StdDev": 2729364,
+            "TPS": 134.58027105064724
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "delete_by_pk",
+          "Latencies": null,
+          "TotalTime": 1001266500,
+          "Iterations": 117,
+          "Stats": {
+            "P50": 8230800,
+            "P90": 12122300,
+            "P95": 15064300,
+            "P99": 20903800,
+            "Mean": 8557833,
+            "StdDev": 3491079,
+            "TPS": 116.85200693321907
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_100",
+          "Latencies": null,
+          "TotalTime": 1000470800,
+          "Iterations": 48914,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 740600,
+            "Mean": 20361,
+            "StdDev": 164002,
+            "TPS": 48890.98212561526
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 1000855900,
+          "Iterations": 58132,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 657800,
+            "Mean": 17076,
+            "StdDev": 195672,
+            "TPS": 58082.287370239814
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 1000485000,
+          "Iterations": 49590,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 747400,
+            "Mean": 19972,
+            "StdDev": 159391,
+            "TPS": 49565.960509153054
+          },
+          "Errors": 0,
+          "Metadata": {}
+        }
+      ]
+    }
+  ]
+}
