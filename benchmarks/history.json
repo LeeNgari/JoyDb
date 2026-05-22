@@ -291,6 +291,236 @@
           "Metadata": {}
         }
       ]
+    },
+    {
+      "timestamp": "2026-05-22T16:47:34.8492251+03:00",
+      "os": "windows",
+      "arch": "amd64",
+      "cpu_cores": 12,
+      "go_version": "go1.26.3",
+      "results": [
+        {
+          "Name": "select_pk_lookup",
+          "Latencies": null,
+          "TotalTime": 1000084800,
+          "Iterations": 4439,
+          "Stats": {
+            "P50": 0,
+            "P90": 525600,
+            "P95": 1650000,
+            "P99": 4531000,
+            "Mean": 225295,
+            "StdDev": 824879,
+            "TPS": 4438.62360471832
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_full_scan_1k",
+          "Latencies": null,
+          "TotalTime": 1000922800,
+          "Iterations": 54078,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 529600,
+            "Mean": 18508,
+            "StdDev": 218543,
+            "TPS": 54028.14282979667
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_full_scan_10k",
+          "Latencies": null,
+          "TotalTime": 1002125100,
+          "Iterations": 10424,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 557400,
+            "P99": 2034800,
+            "Mean": 96136,
+            "StdDev": 469058,
+            "TPS": 10401.894933077716
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_with_predicate",
+          "Latencies": null,
+          "TotalTime": 1000598100,
+          "Iterations": 1306,
+          "Stats": {
+            "P50": 0,
+            "P90": 2581200,
+            "P95": 4537900,
+            "P99": 6540300,
+            "Mean": 766154,
+            "StdDev": 1490906,
+            "TPS": 1305.2193483077772
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_with_projection",
+          "Latencies": null,
+          "TotalTime": 1000598000,
+          "Iterations": 585,
+          "Stats": {
+            "P50": 1406900,
+            "P90": 3940500,
+            "P95": 5134000,
+            "P99": 7362500,
+            "Mean": 1710423,
+            "StdDev": 1673457,
+            "TPS": 584.6503790733141
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_range_scan_100",
+          "Latencies": null,
+          "TotalTime": 1000136700,
+          "Iterations": 2311,
+          "Stats": {
+            "P50": 0,
+            "P90": 818800,
+            "P95": 1381800,
+            "P99": 4034600,
+            "Mean": 432772,
+            "StdDev": 777052,
+            "TPS": 2310.6841294795
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_range_scan_1k",
+          "Latencies": null,
+          "TotalTime": 1000225000,
+          "Iterations": 1898,
+          "Stats": {
+            "P50": 543900,
+            "P90": 1129200,
+            "P95": 1713800,
+            "P99": 3956800,
+            "Mean": 526988,
+            "StdDev": 831831,
+            "TPS": 1897.5730460646357
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_100",
+          "Latencies": null,
+          "TotalTime": 1000258600,
+          "Iterations": 348241,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 2837,
+            "StdDev": 94453,
+            "TPS": 348150.9681596339
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 1002796600,
+          "Iterations": 118340,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 8439,
+            "StdDev": 147158,
+            "TPS": 118009.97330864506
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 1001456300,
+          "Iterations": 14294,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 2047400,
+            "Mean": 70061,
+            "StdDev": 445141,
+            "TPS": 14273.213918570385
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_100",
+          "Latencies": null,
+          "TotalTime": 1000839800,
+          "Iterations": 173324,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 0,
+            "Mean": 5741,
+            "StdDev": 121360,
+            "TPS": 173178.56464141412
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 1000254700,
+          "Iterations": 41254,
+          "Stats": {
+            "P50": 0,
+            "P90": 0,
+            "P95": 0,
+            "P99": 1004900,
+            "Mean": 24246,
+            "StdDev": 243388,
+            "TPS": 41243.49528175174
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 1002949300,
+          "Iterations": 2621,
+          "Stats": {
+            "P50": 0,
+            "P90": 1554400,
+            "P95": 2640500,
+            "P99": 5741400,
+            "Mean": 382659,
+            "StdDev": 1098120,
+            "TPS": 2613.2926160873735
+          },
+          "Errors": 0,
+          "Metadata": {}
+        }
+      ]
     }
   ]
 }

@@ -2,6 +2,8 @@ package benchmark
 
 import (
 	"math"
+	"runtime"
+	"runtime/debug"
 	"sort"
 	"time"
 )
@@ -85,15 +87,25 @@ func (h *BenchmarkHarness) Run(w Workload, opts RunOptions) *WorkloadResult {
 	}
 
 	// 4. Measure
-	var latencies []time.Duration
-	errors := 0
-	
 	// Determine mode: Fixed Iterations vs Fixed Duration
 	useDuration := opts.Iterations <= 0
 	targetDuration := opts.Duration
 	if targetDuration <= 0 {
 		targetDuration = 3 * time.Second // fallback
 	}
+
+	// Pre-allocate slice capacity to eliminate hot-path allocation overhead
+	capacity := 100000
+	if !useDuration && opts.Iterations > 0 {
+		capacity = opts.Iterations
+	}
+	latencies := make([]time.Duration, 0, capacity)
+	errors := 0
+
+	// Trigger manual GC to start with a clean heap and disable GOGC during timed loop
+	runtime.GC()
+	oldGC := debug.SetGCPercent(-1)
+	defer debug.SetGCPercent(oldGC)
 
 	startTotal := time.Now()
 	i := 0

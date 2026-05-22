@@ -1,10 +1,16 @@
 package workloads
 
 import (
+	"io"
+	"log/slog"
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/benchmark"
 )
+
+func init() {
+	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, nil)))
+}
 
 // RunGoBench bridges our custom harness to Go's standard testing.B
 func runGoBench(h *benchmark.BenchmarkHarness, b *testing.B, w benchmark.Workload) {
@@ -50,6 +56,8 @@ func BenchmarkSelectFullScan1K(b *testing.B)     { runBench(b, NewSelectFullScan
 func BenchmarkSelectFullScan10K(b *testing.B)    { runBench(b, NewSelectFullScan10K()) }
 func BenchmarkSelectWithPredicate(b *testing.B)  { runBench(b, NewSelectWithPredicate()) }
 func BenchmarkSelectWithProjection(b *testing.B) { runBench(b, NewSelectWithProjection()) }
+func BenchmarkSelectRangeScan100(b *testing.B)   { runBench(b, NewSelectRangeScan100()) }
+func BenchmarkSelectRangeScan1K(b *testing.B)    { runBench(b, NewSelectRangeScan1K()) }
 
 func BenchmarkUpdateByPK(b *testing.B) { runBench(b, NewUpdateByPK()) }
 func BenchmarkUpdateBulk(b *testing.B) { runBench(b, NewUpdateBulk()) }

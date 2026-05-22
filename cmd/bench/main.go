@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ func main() {
 	iterations := flag.Int("iterations", 0, "Number of iterations per workload (default: auto using duration)")
 	duration := flag.Duration("duration", 3*time.Second, "Run each workload for this duration (default: 3s)")
 	warmup := flag.Int("warmup", 100, "Warmup iterations (default: 100)")
+	runs := flag.Int("runs", 1, "Number of runs to perform per workload, reporting the median result (default: 1)")
 	jsonOut := flag.Bool("json", false, "Output results as JSON")
 	outputFile := flag.String("output", "", "Write results to file (default: stdout)")
 	baselineFile := flag.String("baseline", "", "Compare against a baseline JSON report")
@@ -78,6 +80,8 @@ func main() {
 		workloads.NewSelectFullScan10K(),
 		workloads.NewSelectWithPredicate(),
 		workloads.NewSelectWithProjection(),
+		workloads.NewSelectRangeScan100(),
+		workloads.NewSelectRangeScan1K(),
 		
 		workloads.NewUpdateByPK(),
 		workloads.NewUpdateBulk(),
@@ -126,7 +130,11 @@ func main() {
 	var results []benchmark.WorkloadResult
 
 	if !*jsonOut {
-		fmt.Printf("Running %d workloads...\n", len(selectedWorkloads))
+		if *runs > 1 {
+			fmt.Printf("Running %d workloads (%d runs each, reporting median TPS)...\n", len(selectedWorkloads), *runs)
+		} else {
+			fmt.Printf("Running %d workloads...\n", len(selectedWorkloads))
+		}
 	}
 
 	for _, w := range selectedWorkloads {
@@ -137,8 +145,25 @@ func main() {
 			harness = benchmark.NewHarness(engOpts)
 		}
 
-		res := harness.Run(w, opts)
-		results = append(results, *res)
+		numRuns := *runs
+		if numRuns < 1 {
+			numRuns = 1
+		}
+
+		var runResults []benchmark.WorkloadResult
+		for r := 0; r < numRuns; r++ {
+			res := harness.Run(w, opts)
+			runResults = append(runResults, *res)
+		}
+
+		// Sort by TPS to find the median result
+		sort.Slice(runResults, func(i, j int) bool {
+			return runResults[i].Stats.TPS < runResults[j].Stats.TPS
+		})
+
+		// Pick median run
+		medianRes := runResults[len(runResults)/2]
+		results = append(results, medianRes)
 	}
 
 	report := benchmark.NewReport(results)

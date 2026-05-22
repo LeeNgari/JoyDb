@@ -112,3 +112,44 @@ func (w *SelectWithProjection) Teardown(eng *engine.Engine) error {
 	_, err := eng.Execute("DROP TABLE select_proj")
 	return err
 }
+
+// SelectRangeScan100 measures range query returning ~100 rows
+type SelectRangeScan100 struct {
+	rng *rand.Rand
+}
+
+func NewSelectRangeScan100() *SelectRangeScan100 { return &SelectRangeScan100{rng: rand.New(rand.NewSource(42))} }
+func (w *SelectRangeScan100) Name() string { return "select_range_scan_100" }
+func (w *SelectRangeScan100) Description() string { return "SELECT * WHERE id >= X AND id <= X+100 on a 10K-row table. Exercises range scanning." }
+func (w *SelectRangeScan100) Tags() []string { return []string{"read", "select", "range"} }
+func (w *SelectRangeScan100) Setup(eng *engine.Engine) error { return benchmark.SeedTable(eng, "select_range_100", 10000, w.rng) }
+func (w *SelectRangeScan100) Run(eng *engine.Engine, iter int) error {
+	// Query random starting ID between 1 and 9800 to ensure we fit 100 rows
+	startID := benchmark.RandomInt(w.rng, 1, 9800)
+	_, err := eng.Execute(fmt.Sprintf("SELECT * FROM select_range_100 WHERE id >= %d AND id <= %d", startID, startID+99))
+	return err
+}
+func (w *SelectRangeScan100) Teardown(eng *engine.Engine) error {
+	_, err := eng.Execute("DROP TABLE select_range_100")
+	return err
+}
+
+// SelectRangeScan1K measures range query returning ~1000 rows
+type SelectRangeScan1K struct {
+	rng *rand.Rand
+}
+
+func NewSelectRangeScan1K() *SelectRangeScan1K { return &SelectRangeScan1K{rng: rand.New(rand.NewSource(42))} }
+func (w *SelectRangeScan1K) Name() string { return "select_range_scan_1k" }
+func (w *SelectRangeScan1K) Description() string { return "SELECT * WHERE id >= X AND id <= X+1000 on a 10K-row table." }
+func (w *SelectRangeScan1K) Tags() []string { return []string{"read", "select", "range"} }
+func (w *SelectRangeScan1K) Setup(eng *engine.Engine) error { return benchmark.SeedTable(eng, "select_range_1k", 10000, w.rng) }
+func (w *SelectRangeScan1K) Run(eng *engine.Engine, iter int) error {
+	startID := benchmark.RandomInt(w.rng, 1, 8800)
+	_, err := eng.Execute(fmt.Sprintf("SELECT * FROM select_range_1k WHERE id >= %d AND id <= %d", startID, startID+999))
+	return err
+}
+func (w *SelectRangeScan1K) Teardown(eng *engine.Engine) error {
+	_, err := eng.Execute("DROP TABLE select_range_1k")
+	return err
+}
