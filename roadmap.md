@@ -5,22 +5,22 @@
 ### 1. Transaction ID Consolidation
 - **Context:** `Transaction.ID` (UUID string) is redundant alongside `Transaction.TxID` (uint64), which is required by the WAL.
 - **Action:**
-  - Remove `Transaction.ID` completely from `internal/domain/transaction/transaction.go`.
-  - Update all observers and engine tracing (e.g. `Event.TxID`) to use `uint64`.
+  - [x] Remove `Transaction.ID` completely from `internal/domain/transaction/transaction.go`.
+  - [x] Update all observers and engine tracing (e.g. `Event.TxID`) to use `uint64`.
 
 ### 2. Strict B+Tree Key Comparison
 - **Context:** `compareKeys` in `bplustree.go` currently falls back to `fmt.Sprintf` for unknown types, causing slow performance and semantic sorting bugs.
 - **Action:**
-  - Introduce a strict `Key` interface with a `Compare(other Key) int` method.
-  - Implement the interface for all native database types (Int, Float, String).
-  - Remove string-fallback coercion.
+  - [x] Introduce a strict `Key` interface with a `Compare(other Key) int` method.
+  - [x] Implement the interface for all native database types (Int, Float, String).
+  - [x] Remove string-fallback coercion.
 
 ### 3. Foreign Key Constraints
 - **Context:** Foreign key validation is missing.
 - **Action:**
-  - Extend `TableSchema` to track foreign key relationships.
-  - Update the `insert` and `update` executors to validate referential integrity against parent tables.
-  - Update the `delete` executor to validate/cascade deletions.
+  - [x] Extend `TableSchema` to track foreign key relationships.
+  - [x] Update the `insert` and `update` executors to validate referential integrity against parent tables.
+  - [x] Update the `delete` executor to validate/cascade deletions.
 
 ---
 
