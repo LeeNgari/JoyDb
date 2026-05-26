@@ -294,7 +294,7 @@ func TestWALSnap_MultipleInsertUpdateDelete(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Verify by reading WAL directly
-	walReader, err := wal.NewWALReader(filepath.Join(tempDir, dbName, dbName+".wal"))
+	walReader, err := wal.NewMultiSegmentReader(filepath.Join(tempDir, dbName), "wal")
 	assert.NilError(t, err)
 	defer walReader.Close()
 
@@ -396,7 +396,7 @@ func TestWALSnap_WALDisabled(t *testing.T) {
 	assert.Equal(t, db2.Tables["users"].Rows[0].Data["name"], "NoWAL")
 
 	// No WAL file should exist
-	walPath := filepath.Join(tempDir, dbName, dbName+".wal")
+	walPath := filepath.Join(tempDir, dbName, "wal_000001.wal")
 	_, err = os.Stat(walPath)
 	assert.Assert(t, os.IsNotExist(err), "WAL file should not exist when disabled")
 }
@@ -625,7 +625,7 @@ func TestWALSnap_CorruptedWALRecovery(t *testing.T) {
 	wm.Close()
 
 	// Append garbage
-	walPath := filepath.Join(dbPath, dbName+".wal")
+	walPath := filepath.Join(dbPath, "wal_000001.wal")
 	f, err := os.OpenFile(walPath, os.O_APPEND|os.O_WRONLY, 0644)
 	assert.NilError(t, err)
 	f.Write([]byte{0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06})
@@ -748,7 +748,7 @@ func TestWALSnap_TruncatedWALMidRecord(t *testing.T) {
 	wm.Close()
 
 	// Truncate the last 10 bytes (corrupting the last commit record)
-	walPath := filepath.Join(dbPath, dbName+".wal")
+	walPath := filepath.Join(dbPath, "wal_000001.wal")
 	truncateFile(t, walPath, 10)
 
 	// Recover — tx1 should survive, tx2 is damaged
@@ -779,13 +779,13 @@ func TestWALSnap_ZeroByteWALFile(t *testing.T) {
 	os.MkdirAll(dbPath, 0755)
 
 	// Create a zero-byte WAL file
-	walPath := filepath.Join(dbPath, dbName+".wal")
+	walPath := filepath.Join(dbPath, "wal_000001.wal")
 	os.WriteFile(walPath, []byte{}, 0644)
 
 	_ = engine.NewMemoryEngine() // Ensure engine package is imported
 
 	// Opening a zero-byte WAL should either error or handle gracefully
-	_, err := wal.NewWAL(walPath, dbName)
+	_, err := wal.NewWAL(dbPath, dbName, "wal", 16*1024*1024)
 	if err != nil {
 		t.Logf("Zero-byte WAL correctly rejected: %v", err)
 	} else {

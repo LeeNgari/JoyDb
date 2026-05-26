@@ -11,10 +11,8 @@ import (
 // =============================================================================
 
 func TestAllocateLSN_Monotonic(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
-
-	w, _ := NewWAL(tmpFile, "db")
+	tmpDir := t.TempDir()
+	w, _ := NewWAL(tmpDir, "db", "wal", 16*1024*1024)
 	defer w.Close()
 
 	lsn1 := w.allocateLSN()
@@ -30,9 +28,9 @@ func TestWAL_CreateNewFile(t *testing.T) {
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, "new.wal")
 
-	w, err := NewWAL(path, "testdb")
+	w, err := NewWAL(path, "testdb", "wal", 16*1024*1024)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("Failed to create WAL: %v", err)
 	}
 	w.Close()
 
@@ -50,7 +48,7 @@ func TestWAL_SyncFlushesBuffer(t *testing.T) {
 	tmpFile := createTempWAL(t)
 	defer removeTempWAL(t, tmpFile)
 
-	w, _ := NewWAL(tmpFile, "db")
+	w, _ := NewWAL(tmpFile, "db", "wal", 16*1024*1024)
 
 	// Write log but don't commit (so it's in buffer)
 	// We force use of internal buffer writing by calling LogInsert

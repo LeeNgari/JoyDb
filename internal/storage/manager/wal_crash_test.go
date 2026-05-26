@@ -123,7 +123,8 @@ func TestCrashMidTransaction(t *testing.T) {
 	result, err := wm2.Recover()
 	assert.NilError(t, err)
 	assert.Equal(t, len(result.InsertOps), 0)
-	assert.Assert(t, result.TransactionsSkipped >= 1)
+	// With group commit, aborted transactions are never written to WAL,
+	// so TransactionsSkipped will be 0.
 }
 
 // TestCrashAfterCheckpoint simulates crash after checkpoint:
@@ -219,16 +220,16 @@ func TestCorruptedWALTail(t *testing.T) {
 	wm.LogInsert(tx1, db.Tables["users"], createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
 	wm.Commit(tx1)
 
-	// Tx2 Incomplete
+	// Tx2 Complete to append some bytes to WAL
 	tx2 := createTestTransaction(t)
 	wm.BeginTransaction(tx2)
 	wm.LogInsert(tx2, db.Tables["users"], createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Bob"}))
-	// No commit
+	wm.Commit(tx2) // MUST commit to write to WAL with group commit
 
 	wm.Close()
 
 	// Truncate WAL
-	walPath := filepath.Join(tempDir, dbName+".wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	truncateFile(t, walPath, 10) // Cut off last few bytes
 
 	// Recover
@@ -524,7 +525,7 @@ func TestCrashDuringCheckpoint(t *testing.T) {
 	wm.Close()
 
 	// Append junk to simulate partial checkpoint
-	walPath := filepath.Join(tempDir, "testdb", "testdb.wal")
+	walPath := filepath.Join(tempDir, "testdb", "wal_000001.wal")
 	f, err := os.OpenFile(walPath, os.O_APPEND|os.O_WRONLY, 0644)
 	assert.NilError(t, err)
 	f.Write([]byte{byte(wal.RecordCheckpoint), 0, 0, 0}) // Partial header

@@ -25,10 +25,9 @@ func TestRoundTrip_InsertRecord(t *testing.T) {
 	// The encoders are methods on *WAL.
 	// I'll use a temporary file to test "write then read" which is the ultimate round-trip.
 
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, err := NewWAL(tmpFile, "testdb")
+	w, err := NewWAL(tmpDir, "testdb", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatalf("Failed to create WAL: %v", err)
 	}
@@ -41,7 +40,7 @@ func TestRoundTrip_InsertRecord(t *testing.T) {
 	w.Close()
 
 	// Read back
-	r, err := NewWALReader(tmpFile)
+	r, err := NewMultiSegmentReader(tmpDir, "wal")
 	if err != nil {
 		t.Fatalf("Failed to create WALReader: %v", err)
 	}
@@ -89,10 +88,9 @@ func TestRoundTrip_InsertRecord(t *testing.T) {
 }
 
 func TestRoundTrip_UpdateRecord(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, err := NewWAL(tmpFile, "testdb")
+	w, err := NewWAL(tmpDir, "testdb", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +108,7 @@ func TestRoundTrip_UpdateRecord(t *testing.T) {
 	}
 	w.Close()
 
-	r, err := NewWALReader(tmpFile)
+	r, err := NewMultiSegmentReader(tmpDir, "wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,10 +138,9 @@ func TestRoundTrip_UpdateRecord(t *testing.T) {
 }
 
 func TestRoundTrip_DeleteRecord(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, err := NewWAL(tmpFile, "testdb")
+	w, err := NewWAL(tmpDir, "testdb", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +155,7 @@ func TestRoundTrip_DeleteRecord(t *testing.T) {
 	}
 	w.Close()
 
-	r, err := NewWALReader(tmpFile)
+	r, err := NewMultiSegmentReader(tmpDir, "wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +178,9 @@ func TestRoundTrip_DeleteRecord(t *testing.T) {
 }
 
 func TestRoundTrip_CheckpointRecord(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, err := NewWAL(tmpFile, "testdb")
+	w, err := NewWAL(tmpDir, "testdb", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +194,7 @@ func TestRoundTrip_CheckpointRecord(t *testing.T) {
 	}
 	w.Close()
 
-	r, err := NewWALReader(tmpFile)
+	r, err := NewMultiSegmentReader(tmpDir, "wal")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -276,10 +272,9 @@ func TestCRC32_DetectsCorruption(t *testing.T) {
 
 func TestPayloadEncoding_EmptyValues(t *testing.T) {
 	// Ensure we can handle empty byte slices/strings
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, err := NewWAL(tmpFile, "db")
+	w, err := NewWAL(tmpDir, "db", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,7 +287,7 @@ func TestPayloadEncoding_EmptyValues(t *testing.T) {
 	}
 	w.Close()
 
-	r, _ := NewWALReader(tmpFile)
+	r, _ := NewMultiSegmentReader(tmpDir, "wal")
 	defer r.Close()
 	r.ReadFileHeader()
 	r.ReadNextRecord() // Begin

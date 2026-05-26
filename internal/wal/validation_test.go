@@ -107,10 +107,8 @@ func TestReadRecord_HandlesUnexpectedEOF(t *testing.T) {
 	r.ReadFileHeader()
 
 	_, err := r.ReadNextRecord()
-	if err == nil {
-		t.Error("Expected error for partial header, got nil")
-	} else if err == io.EOF {
-		t.Error("Expected incomplete header error, got clean EOF")
+	if err != io.EOF {
+		t.Errorf("Expected io.EOF for partial header, got %v", err)
 	}
 }
 

@@ -29,9 +29,9 @@
 ### 1. Performance Testing Suite
 
 - **Action:**
-  - Build a standalone benchmarking suite.
-  - Measure transactions per second (TPS), read/write latency, and concurrency throughput.
-  - Establish a baseline before Phase 3-5 changes and continuously measure against it.
+  - [x] Build a standalone benchmarking suite.
+  - [x] Measure transactions per second (TPS), read/write latency, and concurrency throughput.
+  - [x] Establish a baseline before Phase 3-5 changes and continuously measure against it.
 
 
 ## Phase 3: WAL & Recovery Polish
@@ -39,20 +39,20 @@
 ### 1. In-Memory Transaction Buffering & Group Commit
 - **Context:** Currently, aborted transactions bloat the WAL, and every operation writes individually.
 - **Action:**
-  - Buffer DML operations in memory within the `Transaction` or `ExecutionContext`.
-  - Only write the buffered operations to the `wal.Writer` sequentially upon `Commit()`.
-  - This inherently solves the aborted transaction bloat (they simply get discarded from memory).
+  - [x] Buffer DML operations in memory within the `Transaction` or `ExecutionContext`.
+  - [x] Only write the buffered operations to the `wal.Writer` sequentially upon `Commit()`.
+  - [x] This inherently solves the aborted transaction bloat (they simply get discarded from memory).
 
 ### 2. WAL File Segmentation & Truncation 
 - **Context:** The database uses a single, indefinitely growing `.wal` file.
 - **Action:**
-  - Modify `wal.Writer` to rotate to a new segment (e.g., `000002.wal`) when the current file exceeds a size limit (e.g., 64MB).
-  - Modify `WALManager`'s checkpoint routine to safely delete or archive older WAL segments once a checkpoint is fully persisted.
+  - [x] Modify `wal.Writer` to rotate to a new segment (e.g., `000002.wal`) when the current file exceeds a size limit (e.g., 64MB).
+  - [x] Modify `WALManager`'s checkpoint routine to safely delete or archive older WAL segments once a checkpoint is fully persisted.
 
 ### 3. WAL Recovery Improvements 
 - **Context:** `RecoverFromScratch` needs to salvage data from corrupted logs instead of failing entirely.
 - **Action:**
-  - Enhance the WAL `Reader` to gracefully handle trailing garbage bytes and partial records, salvaging all valid transactions up to the corruption point.
+  - [x] Enhance the WAL `Reader` to gracefully handle trailing garbage bytes and partial records, salvaging all valid transactions up to the corruption point.
 
 ---
 

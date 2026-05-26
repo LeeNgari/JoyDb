@@ -100,7 +100,7 @@ func (r *Registry) GetWithWAL(name string) (*schema.Database, *WALManager, error
 		}
 
 		// Check if WAL file exists and needs recovery
-		walPath := filepath.Join(dbPath, name+".wal")
+		walPath := filepath.Join(dbPath, "wal_000001.wal")
 		if _, statErr := os.Stat(walPath); statErr == nil {
 			// WAL file exists - perform recovery with progress logging
 			progressCallback := func(p wal.RecoveryProgress) {

@@ -139,6 +139,7 @@ type WALRecordHeader struct {
 	FileOffset uint64     // Byte offset in WAL file where this record starts - offset 18
 	PayloadLen uint32     // Length of payload (before padding) - offset 26
 	_          [2]byte    // Padding to reach 32 bytes - offset 30
+	SegmentIdx int        // In-memory only: index of segment containing this record
 }
 
 // RecordHeaderSize is the fixed size of the WAL record header in bytes

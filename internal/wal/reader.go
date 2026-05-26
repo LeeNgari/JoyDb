@@ -5,6 +5,9 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // ===========================================================================
@@ -27,9 +30,11 @@ import (
 
 // WALReader reads and decodes WAL records from a file
 type WALReader struct {
-	file       *os.File // File handle for reading
-	walPath    string   // Path to WAL file
-	currentPos uint64   // Current read position in file
+	file          *os.File // File handle for reading
+	walPath       string   // Path to WAL file
+	currentPos    uint64   // Current read position in file
+	segmentPaths  []string // Sorted list of segment paths (empty for single file)
+	currentSegIdx int      // Current index in segmentPaths
 }
 
 // NewWALReader creates a new WAL reader for the given file
@@ -40,9 +45,51 @@ func NewWALReader(walPath string) (*WALReader, error) {
 	}
 
 	return &WALReader{
-		file:       file,
-		walPath:    walPath,
-		currentPos: 0,
+		file:          file,
+		walPath:       walPath,
+		currentPos:    0,
+		segmentPaths:  nil,
+		currentSegIdx: 0,
+	}, nil
+}
+
+// NewMultiSegmentReader creates a WAL reader that seamlessly reads across multiple segments
+func NewMultiSegmentReader(segmentDir, prefix string) (*WALReader, error) {
+	entries, err := os.ReadDir(segmentDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("segment directory does not exist: %w", err)
+		}
+		return nil, fmt.Errorf("failed to read segment directory: %w", err)
+	}
+
+	var paths []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		if strings.HasPrefix(entry.Name(), prefix+"_") && strings.HasSuffix(entry.Name(), ".wal") {
+			paths = append(paths, filepath.Join(segmentDir, entry.Name()))
+		}
+	}
+
+	if len(paths) == 0 {
+		return nil, os.ErrNotExist
+	}
+
+	sort.Strings(paths)
+
+	file, err := os.Open(paths[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to open first segment: %w", err)
+	}
+
+	return &WALReader{
+		file:          file,
+		walPath:       paths[0],
+		currentPos:    0,
+		segmentPaths:  paths,
+		currentSegIdx: 0,
 	}, nil
 }
 
@@ -116,23 +163,45 @@ func (r *WALReader) ReadFileHeader() (*WALFileHeader, error) {
 // ReadNextRecord reads the next WAL record from the current position
 // Returns io.EOF when end of file is reached
 func (r *WALReader) ReadNextRecord() (WALRecord, error) {
-	header, payload, err := r.readAndValidate()
-	if err != nil {
-		return nil, err
+	for {
+		header, payload, err := r.readAndValidate()
+		if err == io.EOF {
+			// If we have more segments, open the next one
+			if len(r.segmentPaths) > 0 && r.currentSegIdx < len(r.segmentPaths)-1 {
+				r.currentSegIdx++
+				r.file.Close()
+
+				r.walPath = r.segmentPaths[r.currentSegIdx]
+				newFile, err := os.Open(r.walPath)
+				if err != nil {
+					return nil, fmt.Errorf("failed to open next segment %s: %w", r.walPath, err)
+				}
+				r.file = newFile
+				r.currentPos = 0
+
+				// We MUST read and validate the file header of the new segment!
+				_, err = r.ReadFileHeader()
+				if err != nil {
+					return nil, fmt.Errorf("failed to read header of next segment %s: %w", r.walPath, err)
+				}
+				continue
+			}
+			return nil, io.EOF
+		}
+		if err != nil {
+			return nil, err
+		}
+		return r.decodeRecord(header, payload)
 	}
-	return r.decodeRecord(header, payload)
 }
 
 // readAndValidate reads the header and payload, validates them, and returns valid data
 func (r *WALReader) readAndValidate() (WALRecordHeader, []byte, error) {
 	// Read header bytes
 	headerBuf := make([]byte, RecordHeaderSize)
-	n, err := io.ReadFull(r.file, headerBuf)
+	_, err := io.ReadFull(r.file, headerBuf)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
-		if n == 0 {
-			return WALRecordHeader{}, nil, io.EOF
-		}
-		return WALRecordHeader{}, nil, fmt.Errorf("incomplete header at offset %d: read %d bytes", r.currentPos, n)
+		return WALRecordHeader{}, nil, io.EOF
 	}
 	if err != nil {
 		return WALRecordHeader{}, nil, fmt.Errorf("failed to read header at offset %d: %w", r.currentPos, err)
@@ -155,12 +224,12 @@ func (r *WALReader) readAndValidate() (WALRecordHeader, []byte, error) {
 	// Read payload
 	payload := make([]byte, payloadSize)
 	if payloadSize > 0 {
-		n, err = io.ReadFull(r.file, payload)
+		_, err = io.ReadFull(r.file, payload)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			return WALRecordHeader{}, nil, io.EOF
+		}
 		if err != nil {
 			return WALRecordHeader{}, nil, fmt.Errorf("failed to read payload at offset %d: %w", r.currentPos, err)
-		}
-		if n != payloadSize {
-			return WALRecordHeader{}, nil, fmt.Errorf("incomplete payload: read %d of %d bytes", n, payloadSize)
 		}
 	}
 
@@ -183,6 +252,7 @@ func (r *WALReader) readAndValidate() (WALRecordHeader, []byte, error) {
 
 	// Update position
 	r.currentPos += uint64(header.Length)
+	header.SegmentIdx = r.currentSegIdx
 
 	return header, payload[:actualPayloadSize], nil
 }
@@ -203,6 +273,28 @@ func (r *WALReader) SeekToOffset(offset uint64) error {
 	}
 	r.currentPos = offset
 	return nil
+}
+
+// SeekToSegmentOffset moves the reader to the specified segment and offset
+func (r *WALReader) SeekToSegmentOffset(segmentIdx int, offset uint64) error {
+	if segmentIdx < 0 || (len(r.segmentPaths) > 0 && segmentIdx >= len(r.segmentPaths)) {
+		return fmt.Errorf("invalid segment index %d", segmentIdx)
+	}
+
+	if len(r.segmentPaths) > 0 && r.currentSegIdx != segmentIdx {
+		r.currentSegIdx = segmentIdx
+		r.file.Close()
+		r.walPath = r.segmentPaths[segmentIdx]
+		newFile, err := os.Open(r.walPath)
+		if err != nil {
+			return fmt.Errorf("failed to open segment %d: %w", segmentIdx, err)
+		}
+		r.file = newFile
+		// Note: We don't read the file header here because the caller will SeekToOffset
+		// directly to where the record starts (which could be right after the header).
+	}
+
+	return r.SeekToOffset(offset)
 }
 
 // CurrentPosition returns the current read position

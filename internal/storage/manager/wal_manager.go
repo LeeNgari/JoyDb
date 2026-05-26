@@ -3,7 +3,8 @@ package manager
 import (
 	"fmt"
 	"log/slog"
-	"path/filepath"
+	"os"
+	"sync"
 	"time"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
@@ -24,6 +25,9 @@ type WALManager struct {
 	dbName       string
 	enabled      bool
 	engine       engine.StorageEngine
+
+	buffers map[uint64]*TxBuffer
+	mu      sync.Mutex
 }
 
 // NewWALManager creates a new WAL manager for a database
@@ -44,13 +48,17 @@ func NewWALManager(
 			dbName:  dbName,
 			enabled: false,
 			engine:  storageEngine,
+			buffers: make(map[uint64]*TxBuffer),
 		}, nil
 	}
 
-	walPath := filepath.Join(dbPath, dbName+".wal")
-	w, err := wal.NewWAL(walPath, dbName)
+	segmentDir := dbPath
+	segmentPrefix := "wal"
+	maxSegmentSize := uint64(16 * 1024 * 1024) // 16MB
+
+	w, err := wal.NewWAL(segmentDir, dbName, segmentPrefix, maxSegmentSize)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create WAL: %w", err)
+		return nil, fmt.Errorf("failed to initialize WAL: %w", err)
 	}
 
 	if syncInterval > 0 {
@@ -64,6 +72,7 @@ func NewWALManager(
 		dbName:  dbName,
 		enabled: true,
 		engine:  storageEngine,
+		buffers: make(map[uint64]*TxBuffer),
 	}
 
 	// Setup async checkpointer
@@ -90,7 +99,7 @@ func NewWALManager(
 	wm.checkpointer = wal.NewAsyncCheckpointer(checkpointInterval, checkpointAction)
 	wm.checkpointer.Start()
 
-	slog.Debug("WAL initialized", "database", dbName, "path", walPath, "checkpoint_interval", checkpointInterval)
+	slog.Debug("WAL initialized", "database", dbName, "path", dbPath, "checkpoint_interval", checkpointInterval)
 
 	return wm, nil
 }
@@ -111,22 +120,22 @@ func (m *WALManager) AsyncCheckpoint() <-chan error {
 	return m.checkpointer.RequestCheckpoint()
 }
 
-// BeginTransaction logs a transaction begin to WAL
+// BeginTransaction creates an in-memory buffer for the transaction
 func (m *WALManager) BeginTransaction(tx *transaction.Transaction) error {
 	if !m.IsEnabled() {
 		return nil
 	}
 
-	lsn, err := m.wal.BeginTransaction(tx.TxID)
-	if err != nil {
-		return fmt.Errorf("WAL BeginTransaction failed: %w", err)
-	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	slog.Debug("WAL: BeginTransaction", "txID", tx.TxID, "lsn", lsn)
+	m.buffers[tx.TxID] = NewTxBuffer(tx.TxID)
+
+	slog.Debug("WAL: Buffered BeginTransaction", "txID", tx.TxID)
 	return nil
 }
 
-// LogInsert logs an insert operation to WAL
+// LogInsert buffers an insert operation
 func (m *WALManager) LogInsert(tx *transaction.Transaction, table *schema.Table, row data.Row) error {
 	if !m.IsEnabled() {
 		return nil
@@ -144,16 +153,26 @@ func (m *WALManager) LogInsert(tx *transaction.Transaction, table *schema.Table,
 		return fmt.Errorf("failed to serialize row for WAL: %w", err)
 	}
 
-	lsn, err := m.wal.LogInsert(tx.TxID, table.Name, key, value)
-	if err != nil {
-		return fmt.Errorf("WAL LogInsert failed: %w", err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogInsert", "txID", tx.TxID, "table", table.Name, "key", key, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordInsert,
+		TableName: table.Name,
+		Key:       key,
+		Value:     value,
+	})
+
+	slog.Debug("WAL: Buffered LogInsert", "txID", tx.TxID, "table", table.Name, "key", key)
 	return nil
 }
 
-// LogUpdate logs an update operation to WAL
+// LogUpdate buffers an update operation
 func (m *WALManager) LogUpdate(tx *transaction.Transaction, table *schema.Table, key string, oldRow, newRow data.Row) error {
 	if !m.IsEnabled() {
 		return nil
@@ -169,16 +188,27 @@ func (m *WALManager) LogUpdate(tx *transaction.Transaction, table *schema.Table,
 		return fmt.Errorf("failed to serialize new row for WAL: %w", err)
 	}
 
-	lsn, err := m.wal.LogUpdate(tx.TxID, table.Name, key, oldValue, newValue)
-	if err != nil {
-		return fmt.Errorf("WAL LogUpdate failed: %w", err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogUpdate", "txID", tx.TxID, "table", table.Name, "key", key, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordUpdate,
+		TableName: table.Name,
+		Key:       key,
+		OldValue:  oldValue,
+		Value:     newValue,
+	})
+
+	slog.Debug("WAL: Buffered LogUpdate", "txID", tx.TxID, "table", table.Name, "key", key)
 	return nil
 }
 
-// LogDelete logs a delete operation to WAL
+// LogDelete buffers a delete operation
 func (m *WALManager) LogDelete(tx *transaction.Transaction, table *schema.Table, key string, oldRow data.Row) error {
 	if !m.IsEnabled() {
 		return nil
@@ -189,66 +219,145 @@ func (m *WALManager) LogDelete(tx *transaction.Transaction, table *schema.Table,
 		return fmt.Errorf("failed to serialize old row for WAL: %w", err)
 	}
 
-	lsn, err := m.wal.LogDelete(tx.TxID, table.Name, key, oldValue)
-	if err != nil {
-		return fmt.Errorf("WAL LogDelete failed: %w", err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogDelete", "txID", tx.TxID, "table", table.Name, "key", key, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordDelete,
+		TableName: table.Name,
+		Key:       key,
+		OldValue:  oldValue,
+	})
+
+	slog.Debug("WAL: Buffered LogDelete", "txID", tx.TxID, "table", table.Name, "key", key)
 	return nil
 }
 
-// LogCreateTable logs a CREATE TABLE operation to WAL
+// LogCreateTable buffers a CREATE TABLE operation
 func (m *WALManager) LogCreateTable(tx *transaction.Transaction, tableName string, tableSchema *schema.TableSchema) error {
 	if !m.IsEnabled() {
 		return nil
 	}
 
 	schemaBytes := wal.EncodeTableSchema(tableSchema)
-	lsn, err := m.wal.LogCreateTable(tx.TxID, tableName, schemaBytes)
-	if err != nil {
-		return fmt.Errorf("WAL LogCreateTable failed: %w", err)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogCreateTable", "txID", tx.TxID, "table", tableName, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordCreateTable,
+		TableName: tableName,
+		Schema:    schemaBytes,
+	})
+
+	slog.Debug("WAL: Buffered LogCreateTable", "txID", tx.TxID, "table", tableName)
 	return nil
 }
 
-// LogDropTable logs a DROP TABLE operation to WAL
+// LogDropTable buffers a DROP TABLE operation
 func (m *WALManager) LogDropTable(tx *transaction.Transaction, tableName string) error {
 	if !m.IsEnabled() {
 		return nil
 	}
 
-	lsn, err := m.wal.LogDropTable(tx.TxID, tableName)
-	if err != nil {
-		return fmt.Errorf("WAL LogDropTable failed: %w", err)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogDropTable", "txID", tx.TxID, "table", tableName, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordDropTable,
+		TableName: tableName,
+	})
+
+	slog.Debug("WAL: Buffered LogDropTable", "txID", tx.TxID, "table", tableName)
 	return nil
 }
 
-// LogAlterTable logs an ALTER TABLE operation to WAL
+// LogAlterTable buffers an ALTER TABLE operation
 func (m *WALManager) LogAlterTable(tx *transaction.Transaction, tableName string, alterOp uint8, col schema.Column) error {
 	if !m.IsEnabled() {
 		return nil
 	}
 
 	colDesc := wal.EncodeColumn(col)
-	lsn, err := m.wal.LogAlterTable(tx.TxID, tableName, alterOp, colDesc)
-	if err != nil {
-		return fmt.Errorf("WAL LogAlterTable failed: %w", err)
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	buffer, ok := m.buffers[tx.TxID]
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
 	}
 
-	slog.Debug("WAL: LogAlterTable", "txID", tx.TxID, "table", tableName, "op", alterOp, "lsn", lsn)
+	buffer.Entries = append(buffer.Entries, BufferedEntry{
+		Type:      wal.RecordAlterTable,
+		TableName: tableName,
+		AlterOp:   alterOp,
+		ColDesc:   colDesc,
+	})
+
+	slog.Debug("WAL: Buffered LogAlterTable", "txID", tx.TxID, "table", tableName, "op", alterOp)
 	return nil
 }
 
-// Commit commits a transaction and fsyncs the WAL
+// Commit commits a transaction and writes the buffer to WAL
 func (m *WALManager) Commit(tx *transaction.Transaction) error {
 	if !m.IsEnabled() {
 		return nil
+	}
+
+	m.mu.Lock()
+	buffer, ok := m.buffers[tx.TxID]
+	if ok {
+		delete(m.buffers, tx.TxID)
+	}
+	m.mu.Unlock()
+
+	if !ok {
+		return fmt.Errorf("no WAL buffer found for transaction %d", tx.TxID)
+	}
+
+	// Write batch to WAL
+	_, err := m.wal.BeginTransaction(tx.TxID)
+	if err != nil {
+		return fmt.Errorf("WAL Commit (BeginTxn) failed: %w", err)
+	}
+
+	for _, entry := range buffer.Entries {
+		switch entry.Type {
+		case wal.RecordInsert:
+			_, err = m.wal.LogInsert(tx.TxID, entry.TableName, entry.Key, entry.Value)
+		case wal.RecordUpdate:
+			_, err = m.wal.LogUpdate(tx.TxID, entry.TableName, entry.Key, entry.OldValue, entry.Value)
+		case wal.RecordDelete:
+			_, err = m.wal.LogDelete(tx.TxID, entry.TableName, entry.Key, entry.OldValue)
+		case wal.RecordCreateTable:
+			_, err = m.wal.LogCreateTable(tx.TxID, entry.TableName, entry.Schema)
+		case wal.RecordDropTable:
+			_, err = m.wal.LogDropTable(tx.TxID, entry.TableName)
+		case wal.RecordAlterTable:
+			_, err = m.wal.LogAlterTable(tx.TxID, entry.TableName, entry.AlterOp, entry.ColDesc)
+		}
+
+		if err != nil {
+			// Fast fail
+			m.wal.Abort(tx.TxID)
+			return fmt.Errorf("WAL Commit (buffered write) failed: %w", err)
+		}
 	}
 
 	lsn, err := m.wal.Commit(tx.TxID)
@@ -256,22 +365,21 @@ func (m *WALManager) Commit(tx *transaction.Transaction) error {
 		return fmt.Errorf("WAL Commit failed: %w", err)
 	}
 
-	slog.Debug("WAL: Commit", "txID", tx.TxID, "lsn", lsn)
+	slog.Debug("WAL: Commit (flushed buffer)", "txID", tx.TxID, "lsn", lsn, "buffered_entries", len(buffer.Entries))
 	return nil
 }
 
-// Abort aborts a transaction
+// Abort discards the transaction buffer
 func (m *WALManager) Abort(tx *transaction.Transaction) error {
 	if !m.IsEnabled() {
 		return nil
 	}
 
-	lsn, err := m.wal.Abort(tx.TxID)
-	if err != nil {
-		return fmt.Errorf("WAL Abort failed: %w", err)
-	}
+	m.mu.Lock()
+	delete(m.buffers, tx.TxID)
+	m.mu.Unlock()
 
-	slog.Debug("WAL: Abort", "txID", tx.TxID, "lsn", lsn)
+	slog.Debug("WAL: Abort (buffer discarded)", "txID", tx.TxID)
 	return nil
 }
 
@@ -316,9 +424,13 @@ func (m *WALManager) RecoverWithProgress(callback wal.ProgressCallback) (*wal.Re
 		return nil, nil
 	}
 
-	walPath := filepath.Join(m.dbPath, m.dbName+".wal")
-	recoveryMgr, err := wal.NewRecoveryManager(walPath, m.dbPath)
+	segmentDir := m.dbPath
+	segmentPrefix := "wal"
+	recoveryMgr, err := wal.NewRecoveryManager(segmentDir, segmentPrefix, m.dbPath)
 	if err != nil {
+		if os.IsNotExist(err) || err.Error() == "no WAL segments found with prefix wal" {
+			return nil, nil
+		}
 		return nil, fmt.Errorf("failed to create recovery manager: %w", err)
 	}
 	defer recoveryMgr.Close()
@@ -543,7 +655,7 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 		if err != nil {
 			return fmt.Errorf("failed to decode column for DROP_COLUMN: %w", err)
 		}
-		
+
 		newCols := make([]schema.Column, 0, len(table.Schema.Columns))
 		for _, c := range table.Schema.Columns {
 			if c.Name != col.Name {
@@ -551,11 +663,11 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 			}
 		}
 		table.Schema.Columns = newCols
-		
+
 		for i := range table.Rows {
 			delete(table.Rows[i].Data, col.Name)
 		}
-		
+
 		table.MarkDirtyUnsafe()
 		slog.Debug("Replay: AlterTable DROP_COLUMN", "table", name, "column", col.Name)
 	} else {

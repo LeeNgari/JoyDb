@@ -1,8 +1,10 @@
 package wal
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"os"
 )
 
 // WALState represents the state recovered from scanning the WAL file
@@ -11,14 +13,18 @@ type WALState struct {
 	LastCheckpointLSN uint64
 	ActiveTxns        map[uint64]*TxnState
 	CurrentOffset     uint64
+	LastSegment       uint64
 }
 
-// ScanWALState scans the WAL file to recover critical state (MaxLSN, active transactions, etc.)
+// ScanWALState scans all WAL segments to recover critical state (MaxLSN, active transactions, etc.)
 // It returns a WALState struct that should be used to initialize the WAL
-func ScanWALState(walPath string) (*WALState, error) {
-	reader, err := NewWALReader(walPath)
+func ScanWALState(segmentDir, segmentPrefix string) (*WALState, error) {
+	reader, err := NewMultiSegmentReader(segmentDir, segmentPrefix)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create WAL reader: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to create multi-segment reader: %w", err)
 	}
 	defer reader.Close()
 
@@ -34,6 +40,7 @@ func ScanWALState(walPath string) (*WALState, error) {
 
 	// Initial guess for current offset (after header)
 	state.CurrentOffset = FileHeaderSize
+	state.LastSegment = 1 // At least segment 1
 
 	// Scan all records
 	for {
@@ -86,6 +93,9 @@ func ScanWALState(walPath string) (*WALState, error) {
 
 		// Update offset to end of this record
 		state.CurrentOffset = h.FileOffset + uint64(h.Length)
+		
+		// Map 0-indexed segmentIdx to 1-indexed segment number
+		state.LastSegment = uint64(h.SegmentIdx) + 1
 	}
 
 	// Also ensure MaxLSN is at least InitialLSN from header

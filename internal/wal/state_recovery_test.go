@@ -5,17 +5,16 @@ import (
 )
 
 func TestScanWALState_EmptyWAL(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
 	// Create new empty WAL (just header)
-	w, err := NewWAL(tmpFile, "db")
+	w, err := NewWAL(tmpDir, "db", "wal", 16*1024*1024)
 	if err != nil {
 		t.Fatal(err)
 	}
 	w.Close()
 
-	state, err := ScanWALState(tmpFile)
+	state, err := ScanWALState(tmpDir, "wal")
 	if err != nil {
 		t.Fatalf("ScanWALState failed: %v", err)
 	}
@@ -32,19 +31,21 @@ func TestScanWALState_EmptyWAL(t *testing.T) {
 }
 
 func TestScanWALState_WithRecords(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, _ := NewWAL(tmpFile, "db")
+	w, err := NewWAL(tmpDir, "db", "wal", 16*1024*1024)
+	if err != nil {
+		t.Fatalf("failed to create WAL: %v", err)
+	}
 	w.BeginTransaction(1) // LSN 1
 	w.Commit(1)           // LSN 2
 	w.BeginTransaction(2) // LSN 3
 	w.LogInsert(2, "t", "k", []byte("{}")) // LSN 4
 	w.Close()
 
-	state, err := ScanWALState(tmpFile)
+	state, err := ScanWALState(tmpDir, "wal")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("ScanWALState failed: %v", err)
 	}
 
 	if state.MaxLSN != 4 {
@@ -62,16 +63,15 @@ func TestScanWALState_WithRecords(t *testing.T) {
 }
 
 func TestScanWALState_RecoverLSN(t *testing.T) {
-	tmpFile := createTempWAL(t)
-	defer removeTempWAL(t, tmpFile)
+	tmpDir := t.TempDir()
 
-	w, _ := NewWAL(tmpFile, "db")
+	w, _ := NewWAL(tmpDir, "db", "wal", 16*1024*1024)
 	w.BeginTransaction(1) // LSN 1
 	w.Close()
 
 	// Reopen should pick up LSN
 	// But ScanWALState is tested here independently
-	state, err := ScanWALState(tmpFile)
+	state, err := ScanWALState(tmpDir, "wal")
 	if err != nil {
 		t.Fatal(err)
 	}

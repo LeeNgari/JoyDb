@@ -92,7 +92,7 @@ func TestWALManagerCreate(t *testing.T) {
 
 	assert.Assert(t, wm.IsEnabled())
 
-	walPath := filepath.Join(tempDir, dbName+".wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	_, err = os.Stat(walPath)
 	assert.NilError(t, err)
 }
@@ -119,7 +119,7 @@ func TestWALManagerDisabled(t *testing.T) {
 	err = wm.Commit(tx)
 	assert.NilError(t, err)
 
-	walPath := filepath.Join(tempDir, dbName+".wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	_, err = os.Stat(walPath)
 	assert.Assert(t, os.IsNotExist(err))
 }
@@ -156,7 +156,7 @@ func TestWALManagerInsert(t *testing.T) {
 	wm.Close()
 
 	// Verify WAL content
-	walPath := filepath.Join(tempDir, dbName+".wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := wal.NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -197,7 +197,7 @@ func TestWALManagerUpdate(t *testing.T) {
 	wm.Close()
 
 	// Verify
-	walPath := filepath.Join(tempDir, "testdb.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := wal.NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -236,7 +236,7 @@ func TestWALManagerDelete(t *testing.T) {
 	wm.Close()
 
 	// Verify
-	walPath := filepath.Join(tempDir, "testdb.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := wal.NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -461,7 +461,7 @@ func TestRegistrySaveAllCheckpoint(t *testing.T) {
 	// Verify checkpoint in WAL
 	wm.Close()
 
-	walPath := filepath.Join(tempDir, dbName, dbName+".wal")
+	walPath := filepath.Join(tempDir, dbName, "wal_000001.wal")
 	reader, err := wal.NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -551,7 +551,7 @@ func TestWriteCheckpointWithTables(t *testing.T) {
 	wm.Close()
 
 	// Verify
-	walPath := filepath.Join(dbPath, dbName+".wal")
+	walPath := filepath.Join(dbPath, "wal_000001.wal")
 	reader, err := wal.NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()

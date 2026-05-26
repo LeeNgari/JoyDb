@@ -3,7 +3,6 @@ package wal
 import (
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"gotest.tools/v3/assert"
@@ -22,9 +21,8 @@ func createTestWAL(t *testing.T) (*WAL, string) {
 	if err != nil {
 		t.Fatalf("failed to create temp directory: %v", err)
 	}
-	walPath := filepath.Join(tempDir, "test-wal.wal")
 	dbName := "test-db"
-	wal, err := NewWAL(walPath, dbName)
+	wal, err := NewWAL(tempDir, dbName, "wal", 16*1024*1024)
 	if err != nil {
 		os.RemoveAll(tempDir)
 		t.Fatalf("failed to create WAL: %v", err)
@@ -290,4 +288,3 @@ func TestLSNMonotonicity(t *testing.T) {
 // =============================================================================
 // FILE VERIFICATION HELPERS
 // =============================================================================
-

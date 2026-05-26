@@ -27,7 +27,7 @@ func TestReadFileHeader(t *testing.T) {
 	assert.NilError(t, err)
 	defer cleanupTestWAL(t, tempDir)
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -62,7 +62,7 @@ func TestReadRecords(t *testing.T) {
 	err := wal.Close()
 	assert.NilError(t, err)
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -93,7 +93,7 @@ func TestCRCValidation(t *testing.T) {
 	wal.Commit(txID)
 	wal.Close()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 
 	// Corrupt the file
 	f, err := os.OpenFile(walPath, os.O_RDWR, 0644)
@@ -137,7 +137,7 @@ func TestScanFromLSN(t *testing.T) {
 
 	wal.Close()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -162,7 +162,7 @@ func TestReadEmptyWAL(t *testing.T) {
 	wal.Close()
 	defer cleanupTestWAL(t, tempDir)
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -190,7 +190,7 @@ func TestReadTruncatedRecord(t *testing.T) {
 	wal.Commit(txID)
 	wal.Close()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	info, _ := os.Stat(walPath)
 
 	// Truncate last 10 bytes
@@ -202,8 +202,8 @@ func TestReadTruncatedRecord(t *testing.T) {
 	defer reader.Close()
 
 	_, err = reader.ScanAll()
-	// Should return EOF or incomplete header error
-	assert.Assert(t, err != nil)
+	// Should return EOF cleanly and records up to truncation
+	assert.NilError(t, err)
 }
 
 // TestReadAllRecordTypes verifies each record type is decoded correctly:
@@ -232,7 +232,7 @@ func TestReadAllRecordTypes(t *testing.T) {
 
 	wal.Close()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -294,7 +294,7 @@ func TestSeekToOffset(t *testing.T) {
 	// But we can read it first to get offset, then seek.
 	wal.Close()
 
-	walPath := filepath.Join(tempDir, "test-wal.wal")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
 	reader, err := NewWALReader(walPath)
 	assert.NilError(t, err)
 	defer reader.Close()
@@ -341,8 +341,8 @@ func TestReadAfterReopen(t *testing.T) {
 	wal.Close()
 
 	// Reopen
-	walPath := filepath.Join(tempDir, "test-wal.wal")
-	wal2, err := NewWAL(walPath, "test-db")
+	walPath := filepath.Join(tempDir, "wal_000001.wal")
+	wal2, err := NewWAL(tempDir, "test-db", "wal", 16*1024*1024)
 	assert.NilError(t, err)
 
 	txID2 := uint64(2)

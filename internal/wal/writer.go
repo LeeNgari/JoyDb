@@ -303,6 +303,13 @@ func (w *WAL) verifyActiveTxn(txID uint64) error {
 // Must be called with mutex held
 func (w *WAL) writeRecord(recordType RecordType, payload []byte) (uint64, error) {
 	lsn := w.allocateLSN()
+	
+	if w.currentOffset >= w.maxSegmentSize {
+		if err := w.rotateSegment(); err != nil {
+			return 0, err
+		}
+	}
+	
 	header := w.buildRecordHeader(recordType, payload, lsn)
 	return lsn, w.writeRecordData(header, payload)
 }

@@ -6,17 +6,24 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 // WAL represents a Write-Ahead Log for crash recovery
 type WAL struct {
-	file    *os.File      // WAL file handle
-	buf     *bufio.Writer // Buffered writer to reduce syscalls
-	mu      sync.Mutex    // Protects concurrent access
-	walPath string        // Path to WAL file
-	dbName  string        // Database name this WAL belongs to
+	file *os.File      // WAL file handle
+	buf  *bufio.Writer // Buffered writer to reduce syscalls
+	mu   sync.Mutex    // Protects concurrent access
+
+	segmentDir     string // Directory containing WAL segments
+	segmentPrefix  string // Prefix for segment files
+	currentSegment uint64 // Current segment number
+	maxSegmentSize uint64 // Max size before rotation
+
+	walPath string // Path to CURRENT WAL file
+	dbName  string // Database name this WAL belongs to
 
 	// LSN tracking
 	nextLSN        uint64 // Next LSN to assign
@@ -35,70 +42,116 @@ type WAL struct {
 	syncWg       sync.WaitGroup
 }
 
-// NewWAL creates or opens a WAL at the specified path
-func NewWAL(walPath string, dbName string) (*WAL, error) {
-	// Check if WAL file exists
-	fileExists := false
-	if _, err := os.Stat(walPath); err == nil {
-		fileExists = true
+// NewWAL creates or opens a WAL in the specified directory
+func NewWAL(segmentDir string, dbName string, segmentPrefix string, maxSegmentSize uint64) (*WAL, error) {
+	// Ensure directory exists
+	if err := os.MkdirAll(segmentDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create segment dir: %w", err)
 	}
 
-	// Open file with read-write mode, create if not exists
-	file, err := os.OpenFile(walPath, os.O_CREATE|os.O_RDWR, 0644)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open WAL file: %w", err)
+	// Scan state across all existing segments
+	state, err := ScanWALState(segmentDir, segmentPrefix)
+	if err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("failed to scan WAL state: %w", err)
+	}
+
+	highestSegment := uint64(1)
+	if state != nil && state.LastSegment > 0 {
+		highestSegment = state.LastSegment
 	}
 
 	wal := &WAL{
-		file:       file,
-		buf:        bufio.NewWriterSize(file, WriteBufferSize),
-		walPath:    walPath,
-		dbName:     dbName,
-		activeTxns: make(map[uint64]*TxnState),
-		nextLSN:    1, // LSN starts at 1
-		flushedLSN: 0, // Nothing flushed yet
+		segmentDir:     segmentDir,
+		segmentPrefix:  segmentPrefix,
+		currentSegment: highestSegment,
+		maxSegmentSize: maxSegmentSize,
+		dbName:         dbName,
+		activeTxns:     make(map[uint64]*TxnState),
+		nextLSN:        1,
+		flushedLSN:     0,
 	}
 
-	if fileExists {
-		// Scan existing WAL to recover state
-		state, err := ScanWALState(walPath)
-		if err != nil {
-			file.Close()
-			return nil, fmt.Errorf("failed to scan WAL state: %w", err)
-		}
+	if wal.maxSegmentSize == 0 {
+		wal.maxSegmentSize = 16 * 1024 * 1024 // 16MB default
+	}
 
+	if state != nil {
 		wal.nextLSN = state.MaxLSN + 1
-		wal.flushedLSN = state.MaxLSN // Everything read from disk is flushed
+		wal.flushedLSN = state.MaxLSN
 		wal.lastCheckpoint = state.LastCheckpointLSN
 		wal.activeTxns = state.ActiveTxns
-		wal.currentOffset = state.CurrentOffset
 
 		slog.Info("WAL state recovered",
 			"nextLSN", wal.nextLSN,
 			"activeTxns", len(wal.activeTxns),
 			"lastCheckpoint", wal.lastCheckpoint,
-			"offset", wal.currentOffset)
+			"segment", highestSegment,
+			"offset", state.CurrentOffset)
+	}
 
-		// Seek to the end of valid data
-		if _, err := file.Seek(int64(wal.currentOffset), io.SeekStart); err != nil {
-			file.Close()
+	// Open the current segment
+	if err := wal.openSegment(highestSegment, state != nil); err != nil {
+		return nil, err
+	}
+
+	// If recovering, we need to seek and truncate
+	if state != nil {
+		if _, err := wal.file.Seek(int64(state.CurrentOffset), io.SeekStart); err != nil {
+			wal.file.Close()
 			return nil, fmt.Errorf("failed to seek to recovered offset: %w", err)
 		}
-
-		// Truncate any trailing garbage resulting from a partial write
-		if err := file.Truncate(int64(wal.currentOffset)); err != nil {
-			file.Close()
+		if err := wal.file.Truncate(int64(state.CurrentOffset)); err != nil {
+			wal.file.Close()
 			return nil, fmt.Errorf("failed to truncate trailing junk: %w", err)
 		}
-	} else {
-		// Write file header for new WAL
-		if err := wal.writeFileHeader(); err != nil {
-			file.Close()
-			return nil, fmt.Errorf("failed to write WAL header: %w", err)
-		}
+		wal.currentOffset = state.CurrentOffset
 	}
 
 	return wal, nil
+}
+
+// openSegment opens or creates a segment file
+func (w *WAL) openSegment(segmentNum uint64, existing bool) error {
+	w.currentSegment = segmentNum
+	w.walPath = filepath.Join(w.segmentDir, fmt.Sprintf("%s_%06d.wal", w.segmentPrefix, segmentNum))
+
+	file, err := os.OpenFile(w.walPath, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open segment %d: %w", segmentNum, err)
+	}
+
+	w.file = file
+	w.buf = bufio.NewWriterSize(file, WriteBufferSize)
+
+	if !existing {
+		// New file, write header
+		if err := w.writeFileHeader(); err != nil {
+			w.file.Close()
+			return fmt.Errorf("failed to write WAL header: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// rotateSegment closes the current segment and creates a new one
+func (w *WAL) rotateSegment() error {
+	// Flush and sync current segment
+	if err := w.flushAndSync(); err != nil {
+		return fmt.Errorf("failed to sync before rotation: %w", err)
+	}
+
+	if err := w.file.Close(); err != nil {
+		return fmt.Errorf("failed to close current segment: %w", err)
+	}
+
+	// Open new segment
+	if err := w.openSegment(w.currentSegment+1, false); err != nil {
+		return fmt.Errorf("failed to open new segment: %w", err)
+	}
+
+	slog.Info("WAL rotated segment", "newSegment", w.currentSegment, "path", w.walPath)
+	return nil
 }
 
 // writeFileHeader writes the WAL file header

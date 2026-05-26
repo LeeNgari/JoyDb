@@ -38,6 +38,10 @@ type RecoveryResult struct {
 	TransactionsFound   int // Total transactions found
 	TransactionsReplay  int // Transactions replayed (committed after checkpoint)
 	TransactionsSkipped int // Transactions skipped (uncommitted or aborted)
+	
+	// Corruption handling
+	CorruptionDetected bool   // True if recovery stopped due to a corrupted record/header
+	CorruptionOffset   uint64 // The offset where corruption was detected (if any)
 
 	// DML operations to replay
 	InsertOps []*InsertRecord // Insert operations to replay
@@ -76,22 +80,24 @@ type ProgressCallback func(progress RecoveryProgress)
 
 // RecoveryManager handles WAL recovery operations
 type RecoveryManager struct {
-	walPath string     // Path to WAL file
-	reader  *WALReader // WAL reader
-	dbPath  string     // Path to database directory
+	segmentDir    string
+	segmentPrefix string
+	reader        *WALReader
+	dbPath        string
 }
 
 // NewRecoveryManager creates a new recovery manager
-func NewRecoveryManager(walPath string, dbPath string) (*RecoveryManager, error) {
-	reader, err := NewWALReader(walPath)
+func NewRecoveryManager(segmentDir, segmentPrefix, dbPath string) (*RecoveryManager, error) {
+	reader, err := NewMultiSegmentReader(segmentDir, segmentPrefix)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create WAL reader: %w", err)
+		return nil, fmt.Errorf("failed to create multi-segment reader: %w", err)
 	}
 
 	return &RecoveryManager{
-		walPath: walPath,
-		reader:  reader,
-		dbPath:  dbPath,
+		segmentDir:    segmentDir,
+		segmentPrefix: segmentPrefix,
+		reader:        reader,
+		dbPath:        dbPath,
 	}, nil
 }
 
@@ -157,7 +163,7 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord, c
 
 	// Seek past the checkpoint record
 	seekOffset := checkpoint.Header.FileOffset + uint64(checkpoint.Header.Length)
-	if err := rm.reader.SeekToOffset(seekOffset); err != nil {
+	if err := rm.reader.SeekToSegmentOffset(checkpoint.Header.SegmentIdx, seekOffset); err != nil {
 		return nil, fmt.Errorf("failed to seek past checkpoint: %w", err)
 	}
 
@@ -180,7 +186,13 @@ func (rm *RecoveryManager) RecoverFromCheckpoint(checkpoint *CheckpointRecord, c
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("error reading record during recovery: %w", err)
+			// Corruption detected, stop recovery but keep what we have so far
+			result.CorruptionDetected = true
+			result.CorruptionOffset = rm.reader.CurrentPosition()
+			
+			// We use slog if available, but for now just break
+			// slog.Warn("WAL: corruption detected, stopping recovery", "offset", result.CorruptionOffset, "error", err)
+			break
 		}
 
 		result.RecordsScanned++
@@ -255,7 +267,10 @@ func (rm *RecoveryManager) RecoverFromScratch(callback ProgressCallback) (*Recov
 			break
 		}
 		if err != nil {
-			return nil, fmt.Errorf("error reading record during recovery: %w", err)
+			// Corruption detected, stop recovery but keep what we have so far
+			result.CorruptionDetected = true
+			result.CorruptionOffset = rm.reader.CurrentPosition()
+			break
 		}
 
 		result.RecordsScanned++
