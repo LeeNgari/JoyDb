@@ -72,6 +72,8 @@ func (p *Parser) parseQualifiedIdentifier() (*ast.Identifier, error) {
 	firstPart := strings.ToLower(p.curTok.Literal)
 	p.nextToken()
 
+	var ident *ast.Identifier
+
 	// Check for qualified identifier (table.column)
 	if p.curTok.Type == lexer.DOT {
 		p.nextToken()
@@ -81,15 +83,27 @@ func (p *Parser) parseQualifiedIdentifier() (*ast.Identifier, error) {
 		}
 		colName := strings.ToLower(p.curTok.Literal)
 		p.nextToken()
-		return &ast.Identifier{
+		ident = &ast.Identifier{
 			TokenLiteralValue: firstPart + "." + colName,
 			Table:             firstPart,
 			Value:             colName,
-		}, nil
+		}
+	} else {
+		// Unqualified identifier
+		ident = &ast.Identifier{TokenLiteralValue: firstPart, Value: firstPart}
 	}
 
-	// Unqualified identifier
-	return &ast.Identifier{TokenLiteralValue: firstPart, Value: firstPart}, nil
+	// Check for AS alias
+	if p.curTok.Type == lexer.AS {
+		p.nextToken()
+		if p.curTok.Type != lexer.IDENTIFIER {
+			return nil, fmt.Errorf("expected identifier after AS, got %s", p.curTok.Literal)
+		}
+		ident.Alias = strings.ToLower(p.curTok.Literal)
+		p.nextToken()
+	}
+
+	return ident, nil
 }
 
 // parseExpressionList parses a comma-separated list of expressions

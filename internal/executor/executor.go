@@ -88,6 +88,8 @@ func executeNode(node plan.Node, ctx *ExecutionContext) (*IntermediateResult, er
 	switch n := node.(type) {
 	case *plan.ScanNode:
 		return executeScan(n, ctx)
+	case *plan.IndexScanNode:
+		return executeIndexScan(n, ctx)
 	case *plan.JoinNode:
 		return executeJoinNode(n, ctx)
 	case *plan.SelectNode:

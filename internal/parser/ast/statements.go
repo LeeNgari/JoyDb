@@ -5,10 +5,11 @@ import "bytes"
 // SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
 // Represents a SELECT SQL query with optional JOINs and WHERE clause
 type SelectStatement struct {
-	Fields    []*Identifier
-	TableName *Identifier
-	Joins     []*JoinClause // Optional JOIN clauses
-	Where     Expression    // Optional WHERE clause
+	Fields     []*Identifier
+	TableName  *Identifier
+	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
+	Joins      []*JoinClause // Optional JOIN clauses
+	Where      Expression    // Optional WHERE clause
 }
 
 func (s *SelectStatement) statementNode()       {}
@@ -41,9 +42,10 @@ func (s *SelectStatement) String() string {
 // JoinClause represents a JOIN operation in a SELECT statement
 // Example: INNER JOIN orders ON users.id = orders.user_id
 type JoinClause struct {
-	JoinType    string      // "INNER", "LEFT", "RIGHT", "FULL"
-	RightTable  *Identifier // Table to join with
-	OnCondition Expression  // JOIN condition (e.g., users.id = orders.user_id)
+	JoinType        string      // "INNER", "LEFT", "RIGHT", "FULL"
+	RightTable      *Identifier // Table to join with
+	RightTableAlias string      // Right table alias e.g. "o" in "JOIN orders AS o"
+	OnCondition     Expression  // JOIN condition (e.g., users.id = orders.user_id)
 }
 
 func (j *JoinClause) String() string {

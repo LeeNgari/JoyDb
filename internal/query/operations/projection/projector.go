@@ -64,14 +64,20 @@ func ProjectJoinedRow(row data.JoinedRow, proj *Projection) data.JoinedRow {
 		}
 
 		value, exists := row.Get(qualifiedName)
-		if !exists && colRef.Table == "" {
-			// Try to find the column in any table
-			// This is a fallback for unqualified column names
-			for key, val := range row.Data {
-				if key == colRef.Column || len(key) > len(colRef.Column) && key[len(key)-len(colRef.Column)-1:] == "."+colRef.Column {
-					value = val
-					exists = true
-					break
+		if !exists {
+			// Fallback for simple table scans where row keys are unqualified
+			if colRef.Table != "" {
+				value, exists = row.Data[colRef.Column]
+			}
+
+			// Fallback for unqualified column names or general matching
+			if !exists {
+				for key, val := range row.Data {
+					if key == colRef.Column || len(key) > len(colRef.Column) && key[len(key)-len(colRef.Column)-1:] == "."+colRef.Column {
+						value = val
+						exists = true
+						break
+					}
 				}
 			}
 		}

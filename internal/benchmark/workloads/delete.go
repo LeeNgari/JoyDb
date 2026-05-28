@@ -31,19 +31,17 @@ func (w *DeleteByPK) Setup(eng *engine.Engine) error {
 }
 
 func (w *DeleteByPK) Run(eng *engine.Engine, iter int) error {
-	// If we're running out of rows, insert one first to maintain roughly 10K rows
-	// but mostly we want to measure the delete. 
-	// To avoid table shrinking too much, we'll delete a known ID and then re-insert it
-	// or just let it shrink. Since we have a ResetBetweenRuns option in the harness (for future),
-	// we will just delete the current iteration ID to ensure we hit something.
-	
-	// Let's delete from the end to avoid shifting the whole array
+	if w.currMax <= 100 {
+		if err := w.Teardown(eng); err != nil {
+			return err
+		}
+		if err := w.Setup(eng); err != nil {
+			return err
+		}
+	}
+
 	idToDelete := w.currMax
 	w.currMax--
-	
-	if w.currMax <= 0 {
-		return fmt.Errorf("out of rows to delete")
-	}
 
 	_, err := eng.Execute(fmt.Sprintf("DELETE FROM test_delete_pk WHERE id = %d", idToDelete))
 	return err
@@ -77,13 +75,18 @@ func (w *DeleteBulk) Setup(eng *engine.Engine) error {
 }
 
 func (w *DeleteBulk) Run(eng *engine.Engine, iter int) error {
+	if w.currMax <= 100 {
+		if err := w.Teardown(eng); err != nil {
+			return err
+		}
+		if err := w.Setup(eng); err != nil {
+			return err
+		}
+	}
+
 	startID := w.currMax - 10
 	endID := w.currMax
 	w.currMax -= 10
-	
-	if w.currMax <= 0 {
-		return fmt.Errorf("out of rows to delete")
-	}
 
 	_, err := eng.Execute(fmt.Sprintf("DELETE FROM test_delete_bulk WHERE id > %d AND id <= %d", startID, endID))
 	return err

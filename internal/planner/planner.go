@@ -2,6 +2,7 @@ package planner
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
@@ -37,18 +38,105 @@ func Plan(stmt ast.Statement, db *schema.Database, tx *transaction.Transaction) 
 func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
 
 	tableName := stmt.TableName.Value
-	_, ok := db.Tables[tableName]
+
+	// Build alias registry & validate table/alias references
+	validTables := make(map[string]bool)
+	validTables[strings.ToLower(tableName)] = true
+	
+	aliasMap := make(map[string]string)
+	if stmt.TableAlias != "" {
+		aliasMap[strings.ToLower(stmt.TableAlias)] = tableName
+		validTables[strings.ToLower(stmt.TableAlias)] = true
+	}
+	for _, joinClause := range stmt.Joins {
+		validTables[strings.ToLower(joinClause.RightTable.Value)] = true
+		if joinClause.RightTableAlias != "" {
+			aliasMap[strings.ToLower(joinClause.RightTableAlias)] = joinClause.RightTable.Value
+			validTables[strings.ToLower(joinClause.RightTableAlias)] = true
+		}
+	}
+
+	// Validate AST fields
+	for _, f := range stmt.Fields {
+		if f.Table != "" {
+			if !validTables[strings.ToLower(f.Table)] {
+				return nil, fmt.Errorf("table or alias not found: %s", f.Table)
+			}
+		}
+	}
+
+	// Validate AST WHERE clause
+	if err := validateExpressionTableReferences(stmt.Where, validTables); err != nil {
+		return nil, err
+	}
+
+	// Validate AST JOIN conditions
+	for _, joinClause := range stmt.Joins {
+		if err := validateExpressionTableReferences(joinClause.OnCondition, validTables); err != nil {
+			return nil, err
+		}
+	}
+
+	// Substitute aliases in AST fields
+	for _, f := range stmt.Fields {
+		if f.Table != "" {
+			if realTable, ok := aliasMap[strings.ToLower(f.Table)]; ok {
+				f.Table = realTable
+			}
+		}
+	}
+
+	// Substitute aliases in AST WHERE clause
+	resolveExpressionAliases(stmt.Where, aliasMap)
+
+	// Substitute aliases in AST JOIN conditions
+	for _, joinClause := range stmt.Joins {
+		resolveExpressionAliases(joinClause.OnCondition, aliasMap)
+	}
+
+	table, ok := db.Tables[tableName]
 	if !ok {
 		return nil, fmt.Errorf("table not found: %s", tableName)
 	}
 
 	var pred func(data.Row) bool
+	var indexScan *plan.IndexScanNode
+
 	if stmt.Where != nil {
 		p, err := predicate.Build(stmt.Where)
 		if err != nil {
 			return nil, err
 		}
 		pred = p
+
+		// Check if we can use an index scan (only if no joins)
+		if len(stmt.Joins) == 0 {
+			info := predicate.AnalyzeForIndexScan(stmt.Where)
+			if info != nil {
+				pkCol := table.Schema.GetPrimaryKeyColumn()
+				if pkCol != nil && pkCol.Name == info.Column && table.PKIndex != nil {
+					// Attempt to convert the literal value to the exact column type
+					var boundVal interface{} = info.Value
+					if binExpr, ok := stmt.Where.(*ast.BinaryExpression); ok {
+						if lit, ok := binExpr.Right.(*ast.Literal); ok {
+							if convertedLit, err := types.ConvertLiteralToSchemaType(lit, pkCol.Type); err == nil {
+								boundVal = convertedLit.Value
+							}
+						}
+					}
+
+					indexScan = &plan.IndexScanNode{
+						TableName:   tableName,
+						ColumnName:  info.Column,
+						Operator:    info.Operator,
+						Bound:       boundVal,
+						Transaction: tx,
+					}
+					indexScan.Metadata()["scan_type"] = "index"
+					indexScan.Metadata()["table"] = tableName
+				}
+			}
+		}
 	}
 
 	var proj *projection.Projection
@@ -63,6 +151,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 			proj.Columns[i] = projection.ColumnRef{
 				Table:  f.Table,
 				Column: f.Value,
+				Alias:  f.Alias,
 			}
 		}
 	}
@@ -72,6 +161,10 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		Predicate:   pred,
 		Projection:  proj,
 		Transaction: tx,
+	}
+
+	if indexScan != nil {
+		selectNode.AddChild(indexScan)
 	}
 
 	selectNode.Metadata()["source_table"] = tableName
@@ -352,6 +445,51 @@ func findColumnInSchema(table *schema.Table, colName string) *schema.Column {
 		if table.Schema.Columns[i].Name == colName {
 			return &table.Schema.Columns[i]
 		}
+	}
+	return nil
+}
+
+func resolveExpressionAliases(expr ast.Expression, aliasMap map[string]string) {
+	if expr == nil {
+		return
+	}
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		if e.Table != "" {
+			if realTable, ok := aliasMap[strings.ToLower(e.Table)]; ok {
+				e.Table = realTable
+			}
+		}
+	case *ast.BinaryExpression:
+		resolveExpressionAliases(e.Left, aliasMap)
+		resolveExpressionAliases(e.Right, aliasMap)
+	case *ast.LogicalExpression:
+		resolveExpressionAliases(e.Left, aliasMap)
+		resolveExpressionAliases(e.Right, aliasMap)
+	}
+}
+
+func validateExpressionTableReferences(expr ast.Expression, validTables map[string]bool) error {
+	if expr == nil {
+		return nil
+	}
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		if e.Table != "" {
+			if !validTables[strings.ToLower(e.Table)] {
+				return fmt.Errorf("table or alias not found: %s", e.Table)
+			}
+		}
+	case *ast.BinaryExpression:
+		if err := validateExpressionTableReferences(e.Left, validTables); err != nil {
+			return err
+		}
+		return validateExpressionTableReferences(e.Right, validTables)
+	case *ast.LogicalExpression:
+		if err := validateExpressionTableReferences(e.Left, validTables); err != nil {
+			return err
+		}
+		return validateExpressionTableReferences(e.Right, validTables)
 	}
 	return nil
 }

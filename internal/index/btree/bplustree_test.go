@@ -786,3 +786,72 @@ func BenchmarkSearch(b *testing.B) {
 		tree.Search(int64(i % n))
 	}
 }
+
+// ---------------------------------------------------------------------
+// RangeFrom / RangeTo
+// ---------------------------------------------------------------------
+
+func TestRangeFrom(t *testing.T) {
+	tree := New(3)
+	// Insert keys 0..19
+	for i := 0; i < 20; i++ {
+		tree.Insert(int64(i), i)
+	}
+
+	// RangeFrom(12) => [12..19]
+	result := tree.RangeFrom(int64(12))
+	expected := []int{12, 13, 14, 15, 16, 17, 18, 19}
+	if len(result) != len(expected) {
+		t.Fatalf("RangeFrom(12): got %v (len %d), want %v", result, len(result), expected)
+	}
+	for i, v := range result {
+		if v != expected[i] {
+			t.Errorf("RangeFrom(12)[%d] = %d, want %d", i, v, expected[i])
+		}
+	}
+
+	// RangeFrom(25) => empty
+	resultEmpty := tree.RangeFrom(int64(25))
+	if len(resultEmpty) != 0 {
+		t.Fatalf("RangeFrom(25): expected empty, got %v", resultEmpty)
+	}
+
+	// RangeFrom(-5) => [0..19]
+	resultAll := tree.RangeFrom(int64(-5))
+	if len(resultAll) != 20 {
+		t.Fatalf("RangeFrom(-5): expected 20 results, got %d", len(resultAll))
+	}
+}
+
+func TestRangeTo(t *testing.T) {
+	tree := New(3)
+	// Insert keys 0..19
+	for i := 0; i < 20; i++ {
+		tree.Insert(int64(i), i)
+	}
+
+	// RangeTo(7) => [0..7]
+	result := tree.RangeTo(int64(7))
+	expected := []int{0, 1, 2, 3, 4, 5, 6, 7}
+	if len(result) != len(expected) {
+		t.Fatalf("RangeTo(7): got %v (len %d), want %v", result, len(result), expected)
+	}
+	for i, v := range result {
+		if v != expected[i] {
+			t.Errorf("RangeTo(7)[%d] = %d, want %d", i, v, expected[i])
+		}
+	}
+
+	// RangeTo(-5) => empty
+	resultEmpty := tree.RangeTo(int64(-5))
+	if len(resultEmpty) != 0 {
+		t.Fatalf("RangeTo(-5): expected empty, got %v", resultEmpty)
+	}
+
+	// RangeTo(25) => [0..19]
+	resultAll := tree.RangeTo(int64(25))
+	if len(resultAll) != 20 {
+		t.Fatalf("RangeTo(25): expected 20 results, got %d", len(resultAll))
+	}
+}
+

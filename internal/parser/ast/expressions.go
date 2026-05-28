@@ -6,6 +6,7 @@ type Identifier struct {
 	TokenLiteralValue string // The token literal (e.g. "users" or "users.id")
 	Value             string // The column/table name (e.g. "users" or "id")
 	Table             string // Optional table qualifier (e.g. "users" in "users.id")
+	Alias             string // Optional alias (e.g. "user_name" in "SELECT name AS user_name")
 }
 
 func (i *Identifier) expressionNode()      {}

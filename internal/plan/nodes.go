@@ -44,6 +44,32 @@ func (n *ScanNode) NodeType() string {
 	return "SCAN"
 }
 
+// IndexScanNode represents a B+Tree range or point scan (leaf node)
+type IndexScanNode struct {
+	TableName   string
+	ColumnName  string      // The indexed column
+	Operator    string      // The operator (=, <, >, <=, >=)
+	Bound       interface{} // The bound value
+	Transaction *transaction.Transaction
+
+	metadata map[string]any
+}
+
+func (n *IndexScanNode) Children() []Node {
+	return nil // Leaf node has no children
+}
+
+func (n *IndexScanNode) Metadata() map[string]any {
+	if n.metadata == nil {
+		n.metadata = make(map[string]any)
+	}
+	return n.metadata
+}
+
+func (n *IndexScanNode) NodeType() string {
+	return "INDEX_SCAN"
+}
+
 // JoinNode represents a JOIN operation (composite node with two children)
 type JoinNode struct {
 	JoinType   join.JoinType

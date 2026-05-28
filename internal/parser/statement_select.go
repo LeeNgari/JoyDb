@@ -35,6 +35,16 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 	stmt.TableName = &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal}
 	p.nextToken()
 
+	// Check for table alias
+	if p.curTok.Type == lexer.AS {
+		p.nextToken()
+		if p.curTok.Type != lexer.IDENTIFIER {
+			return nil, fmt.Errorf("expected identifier after AS, got %s", p.curTok.Literal)
+		}
+		stmt.TableAlias = p.curTok.Literal
+		p.nextToken()
+	}
+
 	// JOINs (Optional, can have multiple)
 	for isJoinKeyword(p.curTok.Type) {
 		join, err := p.parseJoin()
@@ -107,6 +117,16 @@ func (p *Parser) parseJoin() (*ast.JoinClause, error) {
 	}
 	join.RightTable = &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal}
 	p.nextToken()
+
+	// Check for right table alias
+	if p.curTok.Type == lexer.AS {
+		p.nextToken()
+		if p.curTok.Type != lexer.IDENTIFIER {
+			return nil, fmt.Errorf("expected identifier after AS, got %s", p.curTok.Literal)
+		}
+		join.RightTableAlias = p.curTok.Literal
+		p.nextToken()
+	}
 
 	// ON keyword
 	if p.curTok.Type != lexer.ON {

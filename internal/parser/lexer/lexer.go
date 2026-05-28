@@ -18,6 +18,7 @@ const (
 
 	// Keywords
 	SELECT
+	AS
 	FROM
 	WHERE
 	INSERT
@@ -66,6 +67,7 @@ const (
 
 var keywords = map[string]TokenType{
 	"SELECT":   SELECT,
+	"AS":       AS,
 	"FROM":     FROM,
 	"WHERE":    WHERE,
 	"INSERT":   INSERT,

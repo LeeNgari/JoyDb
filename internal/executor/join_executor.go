@@ -2,6 +2,7 @@ package executor
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
@@ -52,14 +53,22 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 		Columns: make([]schema.Column, 0, len(leftTable.Schema.Columns)+len(rightTable.Schema.Columns)),
 	}
 	for _, col := range leftTable.Schema.Columns {
+		name := col.Name
+		if !strings.Contains(col.Name, ".") {
+			name = fmt.Sprintf("%s.%s", leftTableName, col.Name)
+		}
 		joinedSchema.Columns = append(joinedSchema.Columns, schema.Column{
-			Name: fmt.Sprintf("%s.%s", leftTableName, col.Name),
+			Name: name,
 			Type: col.Type,
 		})
 	}
 	for _, col := range rightTable.Schema.Columns {
+		name := col.Name
+		if !strings.Contains(col.Name, ".") {
+			name = fmt.Sprintf("%s.%s", rightTableName, col.Name)
+		}
 		joinedSchema.Columns = append(joinedSchema.Columns, schema.Column{
-			Name: fmt.Sprintf("%s.%s", rightTableName, col.Name),
+			Name: name,
 			Type: col.Type,
 		})
 	}

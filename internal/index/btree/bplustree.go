@@ -612,6 +612,50 @@ func (t *BPlusTree) RangeScan(lo, hi interface{}) []int {
 	return result
 }
 
+// RangeFrom returns all positions where key >= lo, in key order.
+// Uses the leaf linked-list for O(log n + k) performance.
+func (t *BPlusTree) RangeFrom(lo interface{}) []int {
+	// Navigate to the leaf containing lo.
+	n := t.root
+	for !n.leaf {
+		i := searchNode(n.keys, lo)
+		n = n.children[i]
+	}
+
+	var result []int
+	// Walk the linked list starting from this leaf.
+	for n != nil {
+		for i, k := range n.keys {
+			cmp := compareKeys(k, lo)
+			if cmp < 0 {
+				continue // skip keys before lo
+			}
+			result = append(result, n.values[i])
+		}
+		n = n.next
+	}
+	return result
+}
+
+// RangeTo returns all positions where key <= hi, in key order.
+// Uses the leaf linked-list for O(k) performance.
+func (t *BPlusTree) RangeTo(hi interface{}) []int {
+	var result []int
+	// Walk the linked list starting from the first leaf.
+	n := t.first
+	for n != nil {
+		for i, k := range n.keys {
+			if compareKeys(k, hi) > 0 {
+				return result // past hi, done
+			}
+			result = append(result, n.values[i])
+		}
+		n = n.next
+	}
+	return result
+}
+
+
 // All returns all positions in key order by walking the leaf linked-list.
 // This is O(n) — no tree traversal needed.
 func (t *BPlusTree) All() []int {

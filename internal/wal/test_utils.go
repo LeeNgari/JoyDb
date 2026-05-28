@@ -21,5 +21,5 @@ func createTempWAL(t *testing.T) string {
 
 func removeTempWAL(t *testing.T, path string) {
 	t.Helper()
-	os.Remove(path)
+	os.RemoveAll(path)
 }

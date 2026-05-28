@@ -2,6 +2,7 @@ package executor
 
 import (
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
 
@@ -10,6 +11,26 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 	table, ok := ctx.Database.Tables[node.TableName]
 	if !ok {
 		return nil, newTableNotFoundError(node.TableName)
+	}
+
+	// Pre-populate auto-increment PK value if missing (required for WAL logging)
+	var autoIncCol *schema.Column
+	if table.Schema != nil {
+		for i := range table.Schema.Columns {
+			col := &table.Schema.Columns[i]
+			if col.AutoIncrement && col.PrimaryKey {
+				autoIncCol = col
+				break
+			}
+		}
+	}
+	if autoIncCol != nil {
+		if _, exists := node.Row.Data[autoIncCol.Name]; !exists {
+			table.Lock()
+			nextID := table.LastInsertID + 1
+			table.Unlock()
+			node.Row.Data[autoIncCol.Name] = nextID
+		}
 	}
 
 	// Validate foreign keys before successful insert
@@ -39,3 +60,4 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		},
 	}, nil
 }
+
