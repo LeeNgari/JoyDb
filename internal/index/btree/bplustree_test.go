@@ -16,7 +16,7 @@ func TestInsertAndSearch_Int64(t *testing.T) {
 	keys := []int64{10, 20, 5, 15, 25, 30, 1, 7}
 
 	for i, k := range keys {
-		if err := tree.Insert(k, i); err != nil {
+		if err := tree.Insert(k, int64(i)); err != nil {
 			t.Fatalf("Insert(%d): %v", k, err)
 		}
 	}
@@ -30,7 +30,7 @@ func TestInsertAndSearch_Int64(t *testing.T) {
 		if !found {
 			t.Errorf("Search(%d): not found", k)
 		}
-		if pos != i {
+		if pos != int64(i) {
 			t.Errorf("Search(%d): pos = %d, want %d", k, pos, i)
 		}
 	}
@@ -47,7 +47,7 @@ func TestInsertAndSearch_String(t *testing.T) {
 	keys := []string{"banana", "apple", "cherry", "date", "elderberry"}
 
 	for i, k := range keys {
-		if err := tree.Insert(k, i); err != nil {
+		if err := tree.Insert(k, int64(i)); err != nil {
 			t.Fatalf("Insert(%s): %v", k, err)
 		}
 	}
@@ -57,7 +57,7 @@ func TestInsertAndSearch_String(t *testing.T) {
 		if !found {
 			t.Errorf("Search(%s): not found", k)
 		}
-		if pos != i {
+		if pos != int64(i) {
 			t.Errorf("Search(%s): pos = %d, want %d", k, pos, i)
 		}
 	}
@@ -68,7 +68,7 @@ func TestInsertAndSearch_Float64(t *testing.T) {
 	keys := []float64{3.14, 2.71, 1.41, 9.81, 6.02}
 
 	for i, k := range keys {
-		if err := tree.Insert(k, i); err != nil {
+		if err := tree.Insert(k, int64(i)); err != nil {
 			t.Fatalf("Insert(%f): %v", k, err)
 		}
 	}
@@ -78,7 +78,7 @@ func TestInsertAndSearch_Float64(t *testing.T) {
 		if !found {
 			t.Errorf("Search(%f): not found", k)
 		}
-		if pos != i {
+		if pos != int64(i) {
 			t.Errorf("Search(%f): pos = %d, want %d", k, pos, i)
 		}
 	}
@@ -92,7 +92,7 @@ func TestCrossTypeNumericSearch(t *testing.T) {
 	tree := New(3)
 
 	// Insert as int64 (how auto-increment PKs are stored).
-	if err := tree.Insert(int64(42), 0); err != nil {
+	if err := tree.Insert(int64(42), int64(0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -101,7 +101,7 @@ func TestCrossTypeNumericSearch(t *testing.T) {
 	if !found {
 		t.Fatal("Search(int(42)): not found when inserted as int64")
 	}
-	if pos != 0 {
+	if pos != int64(0) {
 		t.Fatalf("pos = %d, want 0", pos)
 	}
 
@@ -110,7 +110,7 @@ func TestCrossTypeNumericSearch(t *testing.T) {
 	if !found {
 		t.Fatal("Search(float64(42)): not found when inserted as int64")
 	}
-	if pos != 0 {
+	if pos != int64(0) {
 		t.Fatalf("pos = %d, want 0", pos)
 	}
 }
@@ -121,10 +121,10 @@ func TestCrossTypeNumericSearch(t *testing.T) {
 
 func TestDuplicateKeyRejected(t *testing.T) {
 	tree := New(3)
-	if err := tree.Insert(int64(1), 0); err != nil {
+	if err := tree.Insert(int64(1), int64(0)); err != nil {
 		t.Fatal(err)
 	}
-	err := tree.Insert(int64(1), 1)
+	err := tree.Insert(int64(1), int64(1))
 	if err != ErrDuplicateKey {
 		t.Fatalf("expected ErrDuplicateKey, got %v", err)
 	}
@@ -141,7 +141,7 @@ func TestDelete_Basic(t *testing.T) {
 	tree := New(3)
 	keys := []int64{10, 20, 5, 15, 25, 30, 1, 7}
 	for i, k := range keys {
-		tree.Insert(k, i)
+		tree.Insert(k, int64(i))
 	}
 
 	// Delete a leaf key.
@@ -164,7 +164,7 @@ func TestDelete_Basic(t *testing.T) {
 		if !found {
 			t.Errorf("Search(%d): not found after deleting 7", k)
 		}
-		if pos != i {
+		if pos != int64(i) {
 			t.Errorf("Search(%d): pos = %d, want %d", k, pos, i)
 		}
 	}
@@ -172,7 +172,7 @@ func TestDelete_Basic(t *testing.T) {
 
 func TestDelete_NotFound(t *testing.T) {
 	tree := New(3)
-	tree.Insert(int64(1), 0)
+	tree.Insert(int64(1), int64(0))
 	err := tree.Delete(int64(999))
 	if err != ErrKeyNotFound {
 		t.Fatalf("expected ErrKeyNotFound, got %v", err)
@@ -185,7 +185,7 @@ func TestDelete_AllKeys(t *testing.T) {
 	keys := make([]int64, n)
 	for i := 0; i < n; i++ {
 		keys[i] = int64(i)
-		tree.Insert(keys[i], i)
+		tree.Insert(keys[i], int64(i))
 	}
 
 	// Delete all keys in random order.
@@ -212,7 +212,7 @@ func TestDelete_WithMergesAndBorrows(t *testing.T) {
 	tree := New(2)
 	n := 30
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// Delete keys in a pattern that triggers both borrow-left and borrow-right.
@@ -246,12 +246,12 @@ func TestRangeScan(t *testing.T) {
 	tree := New(3)
 	// Insert keys 0..19
 	for i := 0; i < 20; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// Range [5, 14]
 	result := tree.RangeScan(int64(5), int64(14))
-	expected := []int{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
+	expected := []int64{5, 6, 7, 8, 9, 10, 11, 12, 13, 14}
 	if len(result) != len(expected) {
 		t.Fatalf("RangeScan(5,14): got %d results, want %d", len(result), len(expected))
 	}
@@ -265,7 +265,7 @@ func TestRangeScan(t *testing.T) {
 func TestRangeScan_EmptyResult(t *testing.T) {
 	tree := New(3)
 	for i := 0; i < 10; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 	result := tree.RangeScan(int64(100), int64(200))
 	if len(result) != 0 {
@@ -276,7 +276,7 @@ func TestRangeScan_EmptyResult(t *testing.T) {
 func TestRangeScan_SingleKey(t *testing.T) {
 	tree := New(3)
 	for i := 0; i < 10; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 	result := tree.RangeScan(int64(5), int64(5))
 	if len(result) != 1 || result[0] != 5 {
@@ -288,13 +288,13 @@ func TestRangeScan_Strings(t *testing.T) {
 	tree := New(3)
 	words := []string{"apple", "banana", "cherry", "date", "elderberry", "fig", "grape"}
 	for i, w := range words {
-		tree.Insert(w, i)
+		tree.Insert(w, int64(i))
 	}
 
 	// Range ["cherry", "fig"] — sorted: apple, banana, cherry, date, elderberry, fig, grape
 	result := tree.RangeScan("cherry", "fig")
 	// Expected positions for cherry(2), date(3), elderberry(4), fig(5)
-	expected := []int{2, 3, 4, 5}
+	expected := []int64{2, 3, 4, 5}
 	if len(result) != len(expected) {
 		t.Fatalf("RangeScan(cherry, fig): got %d results, want %d: %v", len(result), len(expected), result)
 	}
@@ -314,7 +314,7 @@ func TestAll_Ordered(t *testing.T) {
 	// Insert in random order.
 	keys := []int64{50, 10, 40, 20, 30}
 	for i, k := range keys {
-		tree.Insert(k, i)
+		tree.Insert(k, int64(i))
 	}
 
 	all := tree.All()
@@ -323,7 +323,7 @@ func TestAll_Ordered(t *testing.T) {
 	}
 
 	// Values should be in key order: 10→1, 20→3, 30→4, 40→2, 50→0
-	expected := []int{1, 3, 4, 2, 0}
+	expected := []int64{1, 3, 4, 2, 0}
 	for i, v := range all {
 		if v != expected[i] {
 			t.Errorf("All()[%d] = %d, want %d", i, v, expected[i])
@@ -338,7 +338,7 @@ func TestAll_Ordered(t *testing.T) {
 func TestClear(t *testing.T) {
 	tree := New(3)
 	for i := 0; i < 20; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 	tree.Clear()
 	if tree.Size() != 0 {
@@ -348,7 +348,7 @@ func TestClear(t *testing.T) {
 		t.Error("Search(0) found after Clear")
 	}
 	// Should be able to insert again.
-	if err := tree.Insert(int64(42), 0); err != nil {
+	if err := tree.Insert(int64(42), int64(0)); err != nil {
 		t.Fatalf("Insert after Clear: %v", err)
 	}
 }
@@ -359,18 +359,18 @@ func TestClear(t *testing.T) {
 
 func TestUpdatePos(t *testing.T) {
 	tree := New(3)
-	tree.Insert(int64(10), 0)
-	tree.Insert(int64(20), 1)
+	tree.Insert(int64(10), int64(0))
+	tree.Insert(int64(20), int64(1))
 
-	if err := tree.UpdatePos(int64(10), 99); err != nil {
+	if err := tree.UpdatePos(int64(10), int64(99)); err != nil {
 		t.Fatal(err)
 	}
 	pos, _ := tree.Search(int64(10))
-	if pos != 99 {
+	if pos != int64(99) {
 		t.Fatalf("after UpdatePos: pos = %d, want 99", pos)
 	}
 
-	err := tree.UpdatePos(int64(999), 0)
+	err := tree.UpdatePos(int64(999), int64(0))
 	if err != ErrKeyNotFound {
 		t.Fatalf("UpdatePos(999): expected ErrKeyNotFound, got %v", err)
 	}
@@ -404,10 +404,10 @@ func TestEmptyTree(t *testing.T) {
 
 func TestSingleElement(t *testing.T) {
 	tree := New(3)
-	tree.Insert(int64(42), 7)
+	tree.Insert(int64(42), int64(7))
 
 	pos, found := tree.Search(int64(42))
-	if !found || pos != 7 {
+	if !found || pos != int64(7) {
 		t.Fatalf("Search(42) = (%d, %v), want (7, true)", pos, found)
 	}
 
@@ -435,7 +435,7 @@ func TestLargeScale_10k(t *testing.T) {
 	keys := rng.Perm(n)
 
 	for _, k := range keys {
-		if err := tree.Insert(int64(k), k); err != nil {
+		if err := tree.Insert(int64(k), int64(k)); err != nil {
 			t.Fatalf("Insert(%d): %v", k, err)
 		}
 	}
@@ -450,7 +450,7 @@ func TestLargeScale_10k(t *testing.T) {
 		if !found {
 			t.Fatalf("Search(%d): not found", k)
 		}
-		if pos != k {
+		if pos != int64(k) {
 			t.Fatalf("Search(%d): pos = %d, want %d", k, pos, k)
 		}
 	}
@@ -461,7 +461,7 @@ func TestLargeScale_10k(t *testing.T) {
 		t.Fatalf("All() length = %d, want %d", len(all), n)
 	}
 	for i := 0; i < n; i++ {
-		if all[i] != i {
+		if all[i] != int64(i) {
 			t.Fatalf("All()[%d] = %d, want %d (key-order traversal broken)", i, all[i], i)
 		}
 	}
@@ -480,7 +480,7 @@ func TestLargeScale_InsertDeleteMix(t *testing.T) {
 
 	// Insert all keys.
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// Delete half (even numbers).
@@ -500,7 +500,7 @@ func TestLargeScale_InsertDeleteMix(t *testing.T) {
 		if !found {
 			t.Fatalf("Search(%d): not found", i)
 		}
-		if pos != i {
+		if pos != int64(i) {
 			t.Fatalf("Search(%d): pos = %d, want %d", i, pos, i)
 		}
 	}
@@ -519,7 +519,7 @@ func TestLargeScale_InsertDeleteMix(t *testing.T) {
 	}
 	for idx, v := range all {
 		expected := idx*2 + 1
-		if v != expected {
+		if v != int64(expected) {
 			t.Fatalf("All()[%d] = %d, want %d", idx, v, expected)
 		}
 	}
@@ -533,18 +533,18 @@ func TestRangeScan_LargeScale(t *testing.T) {
 	tree := New(DefaultDegree)
 	n := 1000
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	lo, hi := int64(200), int64(400)
 	result := tree.RangeScan(lo, hi)
-	expected := int(hi - lo + 1)
-	if len(result) != expected {
+	expected := int64(hi - lo + 1)
+	if int64(len(result)) != expected {
 		t.Fatalf("RangeScan(%d,%d): got %d results, want %d", lo, hi, len(result), expected)
 	}
 	for i, v := range result {
-		if v != int(lo)+i {
-			t.Errorf("RangeScan[%d] = %d, want %d", i, v, int(lo)+i)
+		if v != int64(lo)+int64(i) {
+			t.Errorf("RangeScan[%d] = %d, want %d", i, v, int64(lo)+int64(i))
 		}
 	}
 }
@@ -557,7 +557,7 @@ func TestLeafLinkedList_Integrity(t *testing.T) {
 	tree := New(3)
 	n := 50
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// Walk forward from first.
@@ -606,7 +606,7 @@ func TestLeafLinkedList_AfterDeletes(t *testing.T) {
 	tree := New(3)
 	n := 50
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// Delete every other key.
@@ -681,7 +681,7 @@ func TestStress_RandomOps(t *testing.T) {
 				continue
 			}
 			pos := rng.Intn(10000)
-			if err := tree.Insert(key, pos); err != nil {
+			if err := tree.Insert(key, int64(pos)); err != nil {
 				t.Fatalf("iteration %d: Insert(%d): %v", i, key, err)
 			}
 			present[key] = pos
@@ -701,7 +701,7 @@ func TestStress_RandomOps(t *testing.T) {
 			if found != shouldExist {
 				t.Fatalf("iteration %d: Search(%d): found=%v, shouldExist=%v", i, key, found, shouldExist)
 			}
-			if found && pos != present[key] {
+			if found && pos != int64(present[key]) {
 				t.Fatalf("iteration %d: Search(%d): pos=%d, want %d", i, key, pos, present[key])
 			}
 		}
@@ -726,7 +726,7 @@ func TestStress_RandomOps(t *testing.T) {
 	sort.Slice(sortedKeys, func(i, j int) bool { return sortedKeys[i] < sortedKeys[j] })
 
 	for i, k := range sortedKeys {
-		if all[i] != present[k] {
+		if all[i] != int64(present[k]) {
 			t.Fatalf("All()[%d] = %d, want %d (key=%d)", i, all[i], present[k], k)
 		}
 	}
@@ -738,9 +738,9 @@ func TestStress_RandomOps(t *testing.T) {
 
 func TestDegree_MinClampedTo2(t *testing.T) {
 	tree := New(0) // should be clamped to 2
-	tree.Insert(int64(1), 0)
-	tree.Insert(int64(2), 1)
-	tree.Insert(int64(3), 2)
+	tree.Insert(int64(1), int64(0))
+	tree.Insert(int64(2), int64(1))
+	tree.Insert(int64(3), int64(2))
 	if tree.Size() != 3 {
 		t.Fatalf("Size = %d, want 3", tree.Size())
 	}
@@ -769,7 +769,7 @@ func BenchmarkInsert(b *testing.B) {
 		b.Run(fmt.Sprintf("degree=%d", degree), func(b *testing.B) {
 			tree := New(degree)
 			for i := 0; i < b.N; i++ {
-				tree.Insert(int64(i), i)
+				tree.Insert(int64(i), int64(i))
 			}
 		})
 	}
@@ -779,7 +779,7 @@ func BenchmarkSearch(b *testing.B) {
 	tree := New(DefaultDegree)
 	n := 100000
 	for i := 0; i < n; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
@@ -795,12 +795,12 @@ func TestRangeFrom(t *testing.T) {
 	tree := New(3)
 	// Insert keys 0..19
 	for i := 0; i < 20; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// RangeFrom(12) => [12..19]
 	result := tree.RangeFrom(int64(12))
-	expected := []int{12, 13, 14, 15, 16, 17, 18, 19}
+	expected := []int64{12, 13, 14, 15, 16, 17, 18, 19}
 	if len(result) != len(expected) {
 		t.Fatalf("RangeFrom(12): got %v (len %d), want %v", result, len(result), expected)
 	}
@@ -827,12 +827,12 @@ func TestRangeTo(t *testing.T) {
 	tree := New(3)
 	// Insert keys 0..19
 	for i := 0; i < 20; i++ {
-		tree.Insert(int64(i), i)
+		tree.Insert(int64(i), int64(i))
 	}
 
 	// RangeTo(7) => [0..7]
 	result := tree.RangeTo(int64(7))
-	expected := []int{0, 1, 2, 3, 4, 5, 6, 7}
+	expected := []int64{0, 1, 2, 3, 4, 5, 6, 7}
 	if len(result) != len(expected) {
 		t.Fatalf("RangeTo(7): got %v (len %d), want %v", result, len(result), expected)
 	}
