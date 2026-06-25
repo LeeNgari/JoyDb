@@ -154,9 +154,9 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 1. Handle auto-increment primary key FIRST (before validation)
 	var autoIncCol *Column
-	for _, col := range t.Schema.Columns {
-		if col.AutoIncrement && col.PrimaryKey {
-			autoIncCol = &col
+	for i := range t.Schema.Columns {
+		if t.Schema.Columns[i].AutoIncrement && t.Schema.Columns[i].PrimaryKey {
+			autoIncCol = &t.Schema.Columns[i]
 			break
 		}
 	}
@@ -383,6 +383,7 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 		row := t.RowsByRID[rid]
 		newRow := row.Copy() // Deep copy before mutation
 
+		// Phase 2a: Validation (check types and uniqueness before any mutations)
 		for colName, newValue := range updates.Data {
 			oldValue := newRow.Data[colName]
 			if oldValue == newValue { continue }
@@ -406,20 +407,49 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 				return 0, err
 			}
 
+			// Check PK uniqueness
+			if pkCol != nil && pkCol.Name == colName {
+				if t.PKIndex != nil {
+					if foundRID, found := t.PKIndex.Search(newValue); found && foundRID != rid {
+						return 0, &errors.ConstraintError{
+							Table:      t.Name,
+							Column:     colName,
+							Value:      newValue,
+							Constraint: "primary_key",
+							Reason:     "duplicate primary key",
+						}
+					}
+				}
+			}
+
+			// Check hash index uniqueness
+			if idx, exists := t.Indexes[colName]; exists && idx.Unique {
+				if rids, found := idx.Data[newValue]; found {
+					for _, r := range rids {
+						if r != rid {
+							return 0, &errors.ConstraintError{
+								Table:      t.Name,
+								Column:     colName,
+								Value:      newValue,
+								Constraint: "unique",
+								Reason:     "duplicate value in unique index",
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Phase 2b: Mutation (safe to perform because all validations passed)
+		for colName, newValue := range updates.Data {
+			oldValue := newRow.Data[colName]
+			if oldValue == newValue { continue }
+
 			// Update PK index if PK column changed
 			if pkCol != nil && pkCol.Name == colName {
 				if t.PKIndex != nil {
 					t.PKIndex.Delete(oldValue)
-					if err := t.PKIndex.Insert(newValue, rid); err != nil {
-						_ = t.PKIndex.Insert(oldValue, rid) // Rollback
-						return 0, &errors.ConstraintError{
-							Table: t.Name,
-							Column: colName,
-							Value: newValue,
-							Constraint: "primary_key",
-							Reason: "duplicate primary key",
-						}
-					}
+					_ = t.PKIndex.Insert(newValue, rid)
 				}
 			}
 

@@ -13,7 +13,7 @@ type ConstraintError struct {
 	Constraint string      // "unique", "primary_key", "not_null", "type_mismatch", etc.
 	Reason     string      // human-readable explanation (optional)
 	RowIndex   int         // row number (0-based) where violation occurred (-1 if unknown)
-	Rows       []int       // for unique violations: all conflicting row positions
+	Rows       []int64     // for unique violations: all conflicting row positions/RIDs
 }
 
 func (e *ConstraintError) Error() string {
@@ -40,7 +40,7 @@ func (e *ConstraintError) Error() string {
 	return strings.Join(parts, " - ")
 }
 
-func NewUniqueViolation(table, column string, value interface{}, rows []int) *ConstraintError {
+func NewUniqueViolation(table, column string, value interface{}, rows []int64) *ConstraintError {
 	return &ConstraintError{
 		Table:      table,
 		Column:     column,
