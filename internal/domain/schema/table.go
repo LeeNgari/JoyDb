@@ -3,6 +3,7 @@ package schema
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 	"sync"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
@@ -13,15 +14,17 @@ import (
 
 // Table represents a database table with its schema, data, and indexes
 type Table struct {
-	mu           sync.RWMutex
-	Name         string
-	Path         string // database directory path (used for WAL/snapshot context)
-	Schema       *TableSchema
-	Rows         []data.Row
-	PKIndex      *btree.BPlusTree   // primary key B+Tree index (nil if no PK)
-	Indexes      map[string]*data.Index
-	LastInsertID int64
-	Dirty        bool // tracks if table has unsaved changes
+	mu             sync.RWMutex
+	Name           string
+	Path           string // database directory path (used for WAL/snapshot context)
+	Schema         *TableSchema
+	RowsByRID      map[int64]data.Row
+	NextRID        int64
+	TombstoneCount int
+	PKIndex        *btree.BPlusTree   // primary key B+Tree index (nil if no PK)
+	Indexes        map[string]*data.Index
+	LastInsertID   int64
+	Dirty          bool // tracks if table has unsaved changes
 }
 
 // MarkDirty marks the table as having unsaved changes
@@ -57,6 +60,84 @@ func (t *Table) RLock() {
 // RUnlock releases the read lock
 func (t *Table) RUnlock() {
 	t.mu.RUnlock()
+}
+
+// LiveRows returns a safe copy of all active rows (excluding tombstones),
+// sorted by RID for deterministic ordering.
+func (t *Table) LiveRows() []data.Row {
+	t.RLock()
+	defer t.RUnlock()
+	return t.LiveRowsUnsafe()
+}
+
+// LiveRowsUnsafe iterates RowsByRID, skips tombstones, and sorts by RID.
+// It returns copies of the rows to prevent caller mutation from violating isolation.
+// IMPORTANT: Must be called while holding at least a read lock!
+func (t *Table) LiveRowsUnsafe() []data.Row {
+	if t == nil || t.RowsByRID == nil {
+		return nil
+	}
+	var result []data.Row
+	for _, row := range t.RowsByRID {
+		if !row.Deleted {
+			result = append(result, row.Copy())
+		}
+	}
+	// Sort by RID for deterministic ordering
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].RID < result[j].RID
+	})
+	return result
+}
+
+// LiveRowCount returns the number of active rows.
+func (t *Table) LiveRowCount() int {
+	t.RLock()
+	defer t.RUnlock()
+	count := 0
+	if t.RowsByRID != nil {
+		for _, row := range t.RowsByRID {
+			if !row.Deleted {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// RowByRID returns a specific row by its RID if it exists and is not deleted.
+func (t *Table) RowByRID(rid int64) (data.Row, bool) {
+	t.RLock()
+	defer t.RUnlock()
+	if t.RowsByRID == nil {
+		return data.Row{}, false
+	}
+	row, found := t.RowsByRID[rid]
+	if !found || row.Deleted {
+		return data.Row{}, false
+	}
+	return row.Copy(), true
+}
+
+// VacuumUnsafe deletes tombstones from the map.
+// IMPORTANT: Must be called while holding write lock!
+func (t *Table) VacuumUnsafe() {
+	if t.RowsByRID == nil || t.TombstoneCount == 0 {
+		return
+	}
+	for rid, row := range t.RowsByRID {
+		if row.Deleted {
+			delete(t.RowsByRID, rid)
+		}
+	}
+	t.TombstoneCount = 0
+}
+
+// Vacuum reclaims space by removing tombstoned rows from the map.
+func (t *Table) Vacuum() {
+	t.Lock()
+	defer t.Unlock()
+	t.VacuumUnsafe()
 }
 
 // Insert adds a new row to the table with full validation and auto-increment support
@@ -152,20 +233,22 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		}
 	}
 
-	// 4. Get new position (BEFORE append)
-	newRowPos := len(t.Rows)
+	// 4. Assign new RID
+	if t.RowsByRID == nil {
+		t.RowsByRID = make(map[int64]data.Row)
+	}
+	if t.NextRID == 0 { t.NextRID = 1 }
+	rid := t.NextRID
+	t.NextRID++
+	row.RID = rid
+	row.Deleted = false
 
-	// 5. Everything passed → safe to append
-	t.Rows = append(t.Rows, row)
-
-	// 6. Update PKIndex if present
+	// 5. Update PKIndex
 	if t.PKIndex != nil {
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
 			if pkVal, exists := row.Data[pkCol.Name]; exists {
-				if err := t.PKIndex.Insert(pkVal, newRowPos); err != nil {
-					// Rollback the append
-					t.Rows = t.Rows[:newRowPos]
+				if err := t.PKIndex.Insert(pkVal, rid); err != nil {
 					return &errors.ConstraintError{
 						Table:      t.Name,
 						Column:     pkCol.Name,
@@ -178,16 +261,18 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		}
 	}
 
-	// 7. Update all hash indexes
+	// 6. Update hash indexes
 	for colName, idx := range t.Indexes {
 		if val, exists := row.Data[colName]; exists {
-			idx.Data[val] = append(idx.Data[val], newRowPos)
+			idx.Data[val] = append(idx.Data[val], rid)
 		}
 	}
 
-	// 7. Mark table as dirty (has unsaved changes)
-	t.MarkDirtyUnsafe()
+	// 7. Store in map
+	t.RowsByRID[rid] = row
 
+	// 8. Mark dirty
+	t.MarkDirtyUnsafe()
 	return nil
 }
 
@@ -200,9 +285,7 @@ func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 		slog.Debug("SelectAll operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
-	rows := make([]data.Row, len(t.Rows))
-	copy(rows, t.Rows)
-	return rows
+	return t.LiveRowsUnsafe()
 }
 
 // Select returns rows that match the given predicate
@@ -215,7 +298,7 @@ func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transactio
 	}
 
 	var result []data.Row
-	for _, row := range t.Rows {
+	for _, row := range t.LiveRowsUnsafe() {
 		if predicate(row) {
 			result = append(result, row)
 		}
@@ -229,6 +312,8 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 	t.RLock()
 	defer t.RUnlock()
 
+	if t.RowsByRID == nil { return data.Row{}, false }
+
 	if tx != nil {
 		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.TxID)
 	}
@@ -237,11 +322,15 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 	if t.PKIndex != nil {
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil && pkCol.Name == colName {
-			pos, found := t.PKIndex.Search(value)
+			rid, found := t.PKIndex.Search(value)
 			if !found {
 				return data.Row{}, false
 			}
-			return t.Rows[pos], true
+			row, ok := t.RowsByRID[rid]
+			if !ok || row.Deleted {
+				return data.Row{}, false
+			}
+			return row.Copy(), true
 		}
 	}
 
@@ -256,12 +345,16 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 		value = int64(intVal)
 	}
 
-	positions, found := idx.Data[value]
-	if !found || len(positions) == 0 {
+	rids, found := idx.Data[value]
+	if !found || len(rids) == 0 {
 		return data.Row{}, false
 	}
 
-	return t.Rows[positions[0]], true
+	row, ok := t.RowsByRID[rids[0]]
+	if !ok || row.Deleted {
+		return data.Row{}, false
+	}
+	return row.Copy(), true
 }
 
 // Update modifies rows that match the given predicate
@@ -274,39 +367,86 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 		slog.Debug("Update operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
-	count := 0
-	for i, row := range t.Rows {
-		if predicate(row) {
-			// Validate each update value against schema
-			for colName, newValue := range updates.Data {
-				// Find column in schema
-				var col *Column
-				for i := range t.Schema.Columns {
-					if t.Schema.Columns[i].Name == colName {
-						col = &t.Schema.Columns[i]
-						break
-					}
-				}
-				if col == nil {
-					return 0, &errors.ColumnNotFoundError{
-						TableName:  t.Name,
-						ColumnName: colName,
-					}
-				}
-
-				// Type validation would go here if needed
-				t.Rows[i].Data[colName] = newValue
-			}
-			count++
+	// 1. Collect matching RIDs first
+	var matchedRIDs []int64
+	for rid, row := range t.RowsByRID {
+		if !row.Deleted && predicate(row) {
+			matchedRIDs = append(matchedRIDs, rid)
 		}
 	}
 
-	if count > 0 {
-		// Rebuild indexes after update
-		t.rebuildIndexesUnsafe()
-		t.MarkDirtyUnsafe()
+	// 2. Apply updates
+	count := 0
+	pkCol := t.Schema.GetPrimaryKeyColumn()
+
+	for _, rid := range matchedRIDs {
+		row := t.RowsByRID[rid]
+		newRow := row.Copy() // Deep copy before mutation
+
+		for colName, newValue := range updates.Data {
+			oldValue := newRow.Data[colName]
+			if oldValue == newValue { continue }
+
+			// Find column in schema
+			var col *Column
+			for i := range t.Schema.Columns {
+				if t.Schema.Columns[i].Name == colName {
+					col = &t.Schema.Columns[i]
+					break
+				}
+			}
+			if col == nil {
+				return 0, &errors.ColumnNotFoundError{
+					TableName:  t.Name,
+					ColumnName: colName,
+				}
+			}
+
+			if err := t.validateType(col.Name, newValue, col.Type); err != nil {
+				return 0, err
+			}
+
+			// Update PK index if PK column changed
+			if pkCol != nil && pkCol.Name == colName {
+				if t.PKIndex != nil {
+					t.PKIndex.Delete(oldValue)
+					if err := t.PKIndex.Insert(newValue, rid); err != nil {
+						_ = t.PKIndex.Insert(oldValue, rid) // Rollback
+						return 0, &errors.ConstraintError{
+							Table: t.Name,
+							Column: colName,
+							Value: newValue,
+							Constraint: "primary_key",
+							Reason: "duplicate primary key",
+						}
+					}
+				}
+			}
+
+			// Update hash indexes
+			if idx, exists := t.Indexes[colName]; exists {
+				if oldList, found := idx.Data[oldValue]; found {
+					var newList []int64
+					for _, r := range oldList {
+						if r != rid { newList = append(newList, r) }
+					}
+					if len(newList) == 0 {
+						delete(idx.Data, oldValue)
+					} else {
+						idx.Data[oldValue] = newList
+					}
+				}
+				idx.Data[newValue] = append(idx.Data[newValue], rid)
+			}
+
+			newRow.Data[colName] = newValue
+		}
+
+		t.RowsByRID[rid] = newRow
+		count++
 	}
 
+	if count > 0 { t.MarkDirtyUnsafe() }
 	return count, nil
 }
 
@@ -320,21 +460,58 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 		slog.Debug("Delete operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
-	var newRows []data.Row
-	deleted := 0
+	// 1. Collect matching RIDs
+	var matchedRIDs []int64
+	for rid, row := range t.RowsByRID {
+		if !row.Deleted && predicate(row) {
+			matchedRIDs = append(matchedRIDs, rid)
+		}
+	}
 
-	for _, row := range t.Rows {
-		if predicate(row) {
-			deleted++
-		} else {
-			newRows = append(newRows, row)
+	// 2. Tombstone each matched row
+	deleted := 0
+	pkCol := t.Schema.GetPrimaryKeyColumn()
+
+	for _, rid := range matchedRIDs {
+		row := t.RowsByRID[rid]
+
+		// Mark as deleted (tombstone)
+		row.Deleted = true
+		t.RowsByRID[rid] = row
+		deleted++
+		t.TombstoneCount++
+
+		// Remove from PK index
+		if pkCol != nil && t.PKIndex != nil {
+			if pkVal, exists := row.Data[pkCol.Name]; exists {
+				_ = t.PKIndex.Delete(pkVal)
+			}
+		}
+
+		// Remove from hash indexes
+		for colName, idx := range t.Indexes {
+			if val, exists := row.Data[colName]; exists {
+				if rids, found := idx.Data[val]; found {
+					var newList []int64
+					for _, r := range rids {
+						if r != rid { newList = append(newList, r) }
+					}
+					if len(newList) == 0 {
+						delete(idx.Data, val)
+					} else {
+						idx.Data[val] = newList
+					}
+				}
+			}
 		}
 	}
 
 	if deleted > 0 {
-		t.Rows = newRows
-		t.rebuildIndexesUnsafe()
 		t.MarkDirtyUnsafe()
+		// Auto-vacuum if tombstones exceed threshold
+		if t.TombstoneCount > 10000 {
+			t.VacuumUnsafe()
+		}
 	}
 
 	return deleted, nil
@@ -402,7 +579,7 @@ func (t *Table) validateType(colName string, value interface{}, expectedType Col
 func (t *Table) rebuildIndexesUnsafe() {
 	// Clear existing hash indexes
 	for _, idx := range t.Indexes {
-		idx.Data = make(map[interface{}][]int)
+		idx.Data = make(map[interface{}][]int64)
 	}
 
 	// Rebuild PKIndex B+Tree if present
@@ -410,19 +587,23 @@ func (t *Table) rebuildIndexesUnsafe() {
 		t.PKIndex.Clear()
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			for pos, row := range t.Rows {
-				if val, exists := row.Data[pkCol.Name]; exists {
-					t.PKIndex.Insert(val, pos)
+			for rid, row := range t.RowsByRID {
+				if !row.Deleted {
+					if val, exists := row.Data[pkCol.Name]; exists {
+						t.PKIndex.Insert(val, rid)
+					}
 				}
 			}
 		}
 	}
 
 	// Rebuild hash indexes from current rows
-	for rowPos, row := range t.Rows {
-		for colName, idx := range t.Indexes {
-			if val, exists := row.Data[colName]; exists {
-				idx.Data[val] = append(idx.Data[val], rowPos)
+	for rid, row := range t.RowsByRID {
+		if !row.Deleted {
+			for colName, idx := range t.Indexes {
+				if val, exists := row.Data[colName]; exists {
+					idx.Data[val] = append(idx.Data[val], rid)
+				}
 			}
 		}
 	}
@@ -433,22 +614,44 @@ func (t *Table) rebuildIndexesUnsafe() {
 // InsertReplay appends a row during WAL recovery (no validation, no locking).
 // This is safe because recovery runs single-threaded before the table is live.
 func (t *Table) InsertReplay(row data.Row) {
-	pos := len(t.Rows)
-	t.Rows = append(t.Rows, row)
+	if t.RowsByRID == nil {
+		t.RowsByRID = make(map[int64]data.Row)
+	}
+
+	// Ensure RID is set correctly and NextRID is advanced
+	if row.RID == 0 {
+		if t.NextRID == 0 { t.NextRID = 1 }
+		row.RID = t.NextRID
+		t.NextRID++
+	} else {
+		if row.RID >= t.NextRID {
+			t.NextRID = row.RID + 1
+		}
+	}
+
+	rid := row.RID
+
+	t.RowsByRID[rid] = row
+
 	if t.PKIndex != nil {
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
 			if val, exists := row.Data[pkCol.Name]; exists {
-				t.PKIndex.Insert(val, pos)
+				t.PKIndex.Insert(val, rid)
 			}
 		}
 	}
 	// Update hash indexes too
 	for colName, idx := range t.Indexes {
 		if val, exists := row.Data[colName]; exists {
-			idx.Data[val] = append(idx.Data[val], pos)
+			idx.Data[val] = append(idx.Data[val], rid)
 		}
 	}
+}
+
+// InsertReplayRID adds a row during WAL recovery with an explicit RID
+func (t *Table) InsertReplayRID(row data.Row) {
+	t.InsertReplay(row)
 }
 
 func normalizeToInt64(val interface{}) (int64, bool) {
