@@ -23,13 +23,17 @@ type Row struct {
 	// mu is a placeholder for future row-level locking implementation
 	// Currently unused but reserved for fine-grained concurrency control
 	mu *sync.Mutex
+	RID     int64  // Immutable Record ID assigned on insert
+	Deleted bool   // Tombstone flag — true means logically deleted
 }
 
 // NewRow creates a new Row with the given data
 func NewRow(data map[string]interface{}) Row {
 	return Row{
-		Data: data,
-		mu:   &sync.Mutex{},
+		Data:    data,
+		mu:      &sync.Mutex{},
+		RID:     0,
+		Deleted: false,
 	}
 }
 
@@ -40,8 +44,10 @@ func (r Row) Copy() Row {
 		copy[k] = v
 	}
 	return Row{
-		Data: copy,
-		mu:   &sync.Mutex{},
+		Data:    copy,
+		mu:      &sync.Mutex{},
+		RID:     r.RID,
+		Deleted: r.Deleted,
 	}
 }
 
@@ -65,7 +71,7 @@ func (r Row) MarshalJSON() ([]byte, error) {
 // Serialize serializes the row to []byte using a custom binary format.
 func (r Row) Serialize() ([]byte, error) {
 	// Pre-calculate size
-	size := 2 // FieldCount
+	size := 9 + 2 // 8 bytes RID + 1 byte Deleted + 2 bytes FieldCount
 	for k, v := range r.Data {
 		size += 2 + len(k) // KeyLen + Key
 		size += 1          // TypeTag
@@ -86,6 +92,18 @@ func (r Row) Serialize() ([]byte, error) {
 
 	buf := make([]byte, size)
 	offset := 0
+
+	// RID (8 bytes)
+	binary.LittleEndian.PutUint64(buf[offset:], uint64(r.RID))
+	offset += 8
+
+	// Deleted (1 byte)
+	if r.Deleted {
+		buf[offset] = 1
+	} else {
+		buf[offset] = 0
+	}
+	offset++
 
 	// FieldCount (2 bytes)
 	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(r.Data)))
@@ -152,11 +170,20 @@ func (r Row) Serialize() ([]byte, error) {
 
 // Deserialize creates a Row from []byte using the custom binary format.
 func Deserialize(data []byte) (Row, error) {
-	if len(data) < 2 {
+	if len(data) < 11 {
 		return Row{}, fmt.Errorf("data too short for row deserialization")
 	}
 
 	offset := 0
+
+	// RID (8 bytes)
+	rid := int64(binary.LittleEndian.Uint64(data[offset:]))
+	offset += 8
+
+	// Deleted (1 byte)
+	deleted := data[offset] == 1
+	offset++
+
 	fieldCount := int(binary.LittleEndian.Uint16(data[offset:]))
 	offset += 2
 
@@ -216,5 +243,8 @@ func Deserialize(data []byte) (Row, error) {
 		offset += valLen
 	}
 
-	return NewRow(m), nil
+	row := NewRow(m)
+	row.RID = rid
+	row.Deleted = deleted
+	return row, nil
 }
