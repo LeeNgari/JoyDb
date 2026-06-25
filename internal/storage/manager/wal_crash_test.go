@@ -342,7 +342,7 @@ func TestRecoveryRestoresData(t *testing.T) {
 	wm.Commit(tx)
 
 	// Also update memory state as Executor would do
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
 
 	// Close registry WITHOUT saving (simulating crash before SaveAll)
 	// We call CloseAll which closes WAL but does NOT save DB JSON.
@@ -356,8 +356,8 @@ func TestRecoveryRestoresData(t *testing.T) {
 	db2, _, err := reg2.GetWithWAL("testdb")
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db2.Tables["users"].Rows), 1)
-	assert.Equal(t, db2.Tables["users"].Rows[0].Data["name"], "Alice")
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "Alice")
 }
 
 // TestRecoveryUpdateDeleteRestore tests UPDATE and DELETE recovery:
@@ -384,9 +384,8 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	wm.Commit(tx)
 
 	// Update memory
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows,
-		createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}),
-		createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Bob"}))
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Bob"}))
 
 	// Save baseline
 	reg.SaveAll(tx) // Writes JSON + Checkpoint
@@ -396,15 +395,13 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	wm.BeginTransaction(tx2)
 
 	// Update 1
-	oldRow1 := db.Tables["users"].Rows[0]
+	oldRow1 := db.Tables["users"].LiveRows()[0]
 	newRow1 := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "AliceUpdated"})
 	wm.LogUpdate(tx2, db.Tables["users"], "1", oldRow1, newRow1)
-	db.Tables["users"].Rows[0] = newRow1
 
 	// Delete 2
-	oldRow2 := db.Tables["users"].Rows[1]
+	oldRow2 := db.Tables["users"].LiveRows()[1]
 	wm.LogDelete(tx2, db.Tables["users"], "2", oldRow2)
-	db.Tables["users"].Rows = db.Tables["users"].Rows[:1] // Remove 2nd row
 
 	wm.Commit(tx2)
 
@@ -417,8 +414,8 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	db2, _, err := reg2.GetWithWAL("testdb")
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db2.Tables["users"].Rows), 1)
-	assert.Equal(t, db2.Tables["users"].Rows[0].Data["name"], "AliceUpdated")
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "AliceUpdated")
 }
 
 // TestRecoveryIndexRebuild verifies indexes are rebuilt after recovery:
@@ -437,7 +434,7 @@ func TestRecoveryIndexRebuild(t *testing.T) {
 	db, wm, _ := reg.GetWithWAL("testdb")
 
 	// Ensure index exists
-	db.Tables["users"].Indexes["id"] = &data.Index{Column: "id", Unique: true, Data: make(map[interface{}][]int)}
+	db.Tables["users"].Indexes["id"] = &data.Index{Column: "id", Unique: true, Data: make(map[interface{}][]int64)}
 
 	tx := createTestTransaction(t)
 	wm.BeginTransaction(tx)

@@ -36,14 +36,14 @@ func createTestDatabase(t *testing.T, name string) *schema.Database {
 				{Name: "name", Type: schema.ColumnTypeText},
 			},
 		},
-		Rows:    make([]data.Row, 0),
-		Indexes: make(map[string]*data.Index),
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
 	// Initialize indexes
 	usersTable.Indexes["id"] = &data.Index{
 		Column: "id",
 		Unique: true,
-		Data:   make(map[interface{}][]int),
+		Data:   make(map[interface{}][]int64),
 	}
 
 	db.Tables["users"] = usersTable
@@ -301,8 +301,8 @@ func TestReplayInsertToDatabase(t *testing.T) {
 	err := target.ReplayInsert("users", "1", rowBytes)
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db.Tables["users"].Rows), 1)
-	assert.Equal(t, db.Tables["users"].Rows[0].Data["name"], "Alice")
+	assert.Equal(t, db.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db.Tables["users"].LiveRows()[0].Data["name"], "Alice")
 }
 
 // TestReplayUpdateToDatabase verifies ReplayUpdate:
@@ -313,7 +313,7 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 	db := createTestDatabase(t, "testdb")
 	// Pre-populate
 	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row)
+	db.Tables["users"].InsertReplay(row)
 
 	target := NewDatabaseReplayTarget(db)
 
@@ -323,8 +323,8 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 	err := target.ReplayUpdate("users", "1", newRowBytes)
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db.Tables["users"].Rows), 1)
-	assert.Equal(t, db.Tables["users"].Rows[0].Data["name"], "Bob")
+	assert.Equal(t, db.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db.Tables["users"].LiveRows()[0].Data["name"], "Bob")
 }
 
 // TestReplayDeleteFromDatabase verifies ReplayDelete:
@@ -335,14 +335,14 @@ func TestReplayDeleteFromDatabase(t *testing.T) {
 	db := createTestDatabase(t, "testdb")
 	// Pre-populate
 	row := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row)
+	db.Tables["users"].InsertReplay(row)
 
 	target := NewDatabaseReplayTarget(db)
 
 	err := target.ReplayDelete("users", "1")
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db.Tables["users"].Rows), 0)
+	assert.Equal(t, db.Tables["users"].LiveRowCount(), 0)
 }
 
 // TestReplayMissingTable verifies graceful handling of missing tables:
@@ -426,9 +426,8 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 	// Verify row exists
 	// Note: createMinimalDatabaseFiles creates empty tables.
 	// So only recovered row should be there.
-	rows := loadedDB.Tables["users"].Rows
-	assert.Equal(t, len(rows), 1)
-	assert.Equal(t, rows[0].Data["name"], "Recovered")
+	assert.Equal(t, loadedDB.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, loadedDB.Tables["users"].LiveRows()[0].Data["name"], "Recovered")
 }
 
 // TestRegistrySaveAllCheckpoint verifies checkpoint on save:
@@ -451,7 +450,7 @@ func TestRegistrySaveAllCheckpoint(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Add a row (in memory)
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
 	db.Tables["users"].MarkDirty()
 
 	// SaveAll
@@ -585,8 +584,8 @@ func createMinimalDatabaseFiles(t *testing.T, basePath, dbName, tableName string
 						{Name: "name", Type: schema.ColumnTypeText},
 					},
 				},
-				Rows:    []data.Row{},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 		},
 	}

@@ -40,7 +40,7 @@ func TestSnapshotRoundtrip(t *testing.T) {
 		Name:         "users",
 		Path:         filepath.Join(dbPath, "users"),
 		Schema:       tableSchema,
-		Rows:         make([]data.Row, 0),
+		RowsByRID:    make(map[int64]data.Row),
 		PKIndex:      btree.New(32),
 		Indexes:      make(map[string]*data.Index),
 		LastInsertID: 42,
@@ -107,11 +107,11 @@ func TestSnapshotRoundtrip(t *testing.T) {
 		t.Errorf("Expected LastInsertID 42, got %d", loadedTable.LastInsertID)
 	}
 
-	if len(loadedTable.Rows) != 2 {
-		t.Fatalf("Expected 2 rows, got %d", len(loadedTable.Rows))
+	if loadedTable.LiveRowCount() != 2 {
+		t.Fatalf("Expected 2 rows, got %d", loadedTable.LiveRowCount())
 	}
 
-	r1 := loadedTable.Rows[0]
+	r1 := loadedTable.LiveRows()[0]
 	if r1.Data["id"] != int64(1) || r1.Data["name"] != "Alice" || r1.Data["age"] != 30.5 || r1.Data["active"] != true {
 		t.Errorf("Row 1 data mismatch: %v", r1.Data)
 	}

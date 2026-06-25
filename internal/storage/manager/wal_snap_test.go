@@ -57,15 +57,14 @@ func TestSnap_CreateAndLoad(t *testing.T) {
 						{Name: "price", Type: schema.ColumnTypeFloat},
 					},
 				},
-				Rows: []data.Row{
-					{Data: map[string]interface{}{"id": int64(1), "name": "Widget", "price": float64(9.99)}},
-					{Data: map[string]interface{}{"id": int64(2), "name": "Gadget", "price": float64(19.99)}},
-					{Data: map[string]interface{}{"id": int64(3), "name": "Doohickey", "price": float64(4.50)}},
-				},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 		},
 	}
+	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Widget", "price": float64(9.99)}})
+	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Gadget", "price": float64(19.99)}})
+	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(3), "name": "Doohickey", "price": float64(4.50)}})
 
 	eng := engine.NewMemoryEngine()
 
@@ -83,9 +82,9 @@ func TestSnap_CreateAndLoad(t *testing.T) {
 	assert.Equal(t, len(loadedDB.Tables), 1)
 	products := loadedDB.Tables["products"]
 	assert.Assert(t, products != nil)
-	assert.Equal(t, len(products.Rows), 3)
-	assert.Equal(t, products.Rows[0].Data["name"], "Widget")
-	assert.Equal(t, products.Rows[2].Data["price"], float64(4.50))
+	assert.Equal(t, products.LiveRowCount(), 3)
+	assert.Equal(t, products.LiveRows()[0].Data["name"], "Widget")
+	assert.Equal(t, products.LiveRows()[2].Data["price"], float64(4.50))
 }
 
 // TestSnap_KeepsTwo verifies that only 2 snapshots are retained:
@@ -153,13 +152,12 @@ func TestWALSnap_CheckpointCreatesSnapshot(t *testing.T) {
 						{Name: "name", Type: schema.ColumnTypeText},
 					},
 				},
-				Rows: []data.Row{
-					{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}},
-				},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 		},
 	}
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}})
 
 	eng := engine.NewMemoryEngine()
 	wm, err := NewWALManager(db, dbPath, dbName, true, 0, 0, nil, eng)
@@ -209,7 +207,7 @@ func TestWALSnap_RecoveryAfterCheckpoint(t *testing.T) {
 	row1 := data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}}
 	wm.LogInsert(tx1, db.Tables["users"], row1)
 	wm.Commit(tx1)
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row1)
+	db.Tables["users"].InsertReplay(row1)
 
 	// --- Checkpoint (snapshot captures row 1) ---
 	err = wm.WriteCheckpoint(db)
@@ -221,7 +219,7 @@ func TestWALSnap_RecoveryAfterCheckpoint(t *testing.T) {
 	row2 := data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Bob"}}
 	wm.LogInsert(tx2, db.Tables["users"], row2)
 	wm.Commit(tx2)
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows, row2)
+	db.Tables["users"].InsertReplay(row2)
 
 	// --- "Crash" without saving ---
 	reg.CloseAll()
@@ -234,7 +232,7 @@ func TestWALSnap_RecoveryAfterCheckpoint(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Row 1 comes from snapshot, row 2 comes from WAL replay
-	assert.Equal(t, len(db2.Tables["users"].Rows), 2,
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 2,
 		"should have 2 rows: 1 from snapshot + 1 from WAL replay")
 }
 
@@ -264,7 +262,7 @@ func TestWALSnap_MultipleInsertUpdateDelete(t *testing.T) {
 	for i := int64(1); i <= 3; i++ {
 		row := data.Row{Data: map[string]interface{}{"id": i, "name": "User"}}
 		wm.LogInsert(tx1, db.Tables["users"], row)
-		db.Tables["users"].Rows = append(db.Tables["users"].Rows, row)
+		db.Tables["users"].InsertReplay(row)
 	}
 	wm.Commit(tx1)
 
@@ -338,9 +336,7 @@ func TestWALSnap_SaveAllThenLoad(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Insert into memory
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows,
-		data.Row{Data: map[string]interface{}{"id": int64(1), "name": "SavedUser"}},
-	)
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "SavedUser"}})
 
 	// SaveAll triggers checkpoint → snapshot
 	tx := transaction.NewTransaction()
@@ -354,8 +350,8 @@ func TestWALSnap_SaveAllThenLoad(t *testing.T) {
 	db2, _, err := reg2.GetWithWAL(dbName)
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db2.Tables["users"].Rows), 1)
-	assert.Equal(t, db2.Tables["users"].Rows[0].Data["name"], "SavedUser")
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "SavedUser")
 }
 
 // TestWALSnap_WALDisabled verifies that snapshots work without WAL:
@@ -378,9 +374,7 @@ func TestWALSnap_WALDisabled(t *testing.T) {
 	assert.Assert(t, wm == nil, "WAL manager should be nil when disabled")
 
 	// Insert into memory and snapshot
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows,
-		data.Row{Data: map[string]interface{}{"id": int64(1), "name": "NoWAL"}},
-	)
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "NoWAL"}})
 	_, _, err = eng.CreateSnapshot(db, filepath.Join(tempDir, dbName))
 	assert.NilError(t, err)
 
@@ -392,8 +386,8 @@ func TestWALSnap_WALDisabled(t *testing.T) {
 
 	db2, _, err := reg2.GetWithWAL(dbName)
 	assert.NilError(t, err)
-	assert.Equal(t, len(db2.Tables["users"].Rows), 1)
-	assert.Equal(t, db2.Tables["users"].Rows[0].Data["name"], "NoWAL")
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "NoWAL")
 
 	// No WAL file should exist
 	walPath := filepath.Join(tempDir, dbName, "wal_000001.wal")
@@ -416,7 +410,7 @@ func TestWALSnap_EmptyDatabaseSnapshotRoundtrip(t *testing.T) {
 	db, err := eng.LoadDatabase(filepath.Join(tempDir, dbName))
 	assert.NilError(t, err)
 
-	assert.Equal(t, len(db.Tables["users"].Rows), 0)
+	assert.Equal(t, db.Tables["users"].LiveRowCount(), 0)
 	assert.Assert(t, db.Tables["users"].Schema != nil)
 	assert.Equal(t, len(db.Tables["users"].Schema.Columns), 2)
 }
@@ -498,11 +492,12 @@ func TestSnap_TruncatedFile(t *testing.T) {
 						{Name: "id", Type: schema.ColumnTypeInt, PrimaryKey: true},
 					},
 				},
-				Rows:    []data.Row{{Data: map[string]interface{}{"id": int64(1)}}},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 		},
 	}
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1)}})
 
 	eng := engine.NewMemoryEngine()
 	_, _, err := eng.CreateSnapshot(db, dbPath)
@@ -596,7 +591,7 @@ func TestWALSnap_CrashBeforeCommitNoRecovery(t *testing.T) {
 
 	db2, _, err := reg2.GetWithWAL(dbName)
 	assert.NilError(t, err)
-	assert.Equal(t, len(db2.Tables["users"].Rows), 0,
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 0,
 		"uncommitted row should not appear after recovery")
 }
 
@@ -710,7 +705,7 @@ func TestWALSnap_EmptyWALFileRecovery(t *testing.T) {
 	assert.NilError(t, err)
 	assert.Assert(t, db != nil)
 	assert.Assert(t, wm != nil)
-	assert.Equal(t, len(db.Tables["users"].Rows), 0)
+	assert.Equal(t, db.Tables["users"].LiveRowCount(), 0)
 }
 
 // TestWALSnap_TruncatedWALMidRecord verifies recovery from a WAL that
@@ -814,15 +809,11 @@ func TestWALSnap_SnapshotAfterMultipleCheckpoints(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Insert + checkpoint 1
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows,
-		data.Row{Data: map[string]interface{}{"id": int64(1), "name": "First"}},
-	)
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "First"}})
 	wm.WriteCheckpoint(db)
 
 	// Insert more + checkpoint 2
-	db.Tables["users"].Rows = append(db.Tables["users"].Rows,
-		data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Second"}},
-	)
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Second"}})
 	wm.WriteCheckpoint(db)
 
 	reg.CloseAll()
@@ -833,7 +824,7 @@ func TestWALSnap_SnapshotAfterMultipleCheckpoints(t *testing.T) {
 
 	db2, _, err := reg2.GetWithWAL(dbName)
 	assert.NilError(t, err)
-	assert.Equal(t, len(db2.Tables["users"].Rows), 2)
+	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 2)
 }
 
 // TestWALSnap_AbortedTransactionNotInRecovery verifies that explicitly
@@ -915,10 +906,8 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 						{Name: "name", Type: schema.ColumnTypeText},
 					},
 				},
-				Rows: []data.Row{
-					{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}},
-				},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 			"orders": {
 				Name: "orders",
@@ -930,11 +919,8 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 						{Name: "product", Type: schema.ColumnTypeText},
 					},
 				},
-				Rows: []data.Row{
-					{Data: map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Widget"}},
-					{Data: map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Gadget"}},
-				},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 			"config": {
 				Name: "config",
@@ -945,13 +931,16 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 						{Name: "value", Type: schema.ColumnTypeText},
 					},
 				},
-				Rows: []data.Row{
-					{Data: map[string]interface{}{"key": "version", "value": "1.0"}},
-				},
-				Indexes: make(map[string]*data.Index),
+				RowsByRID: make(map[int64]data.Row),
+				Indexes:   make(map[string]*data.Index),
 			},
 		},
 	}
+
+	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}})
+	db.Tables["orders"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Widget"}})
+	db.Tables["orders"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Gadget"}})
+	db.Tables["config"].InsertReplay(data.Row{Data: map[string]interface{}{"key": "version", "value": "1.0"}})
 
 	eng := engine.NewMemoryEngine()
 	_, _, err := eng.CreateSnapshot(db, dbPath)
@@ -962,9 +951,9 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 	assert.NilError(t, err)
 
 	assert.Equal(t, len(loaded.Tables), 3)
-	assert.Equal(t, len(loaded.Tables["users"].Rows), 1)
-	assert.Equal(t, len(loaded.Tables["orders"].Rows), 2)
-	assert.Equal(t, len(loaded.Tables["config"].Rows), 1)
-	assert.Equal(t, loaded.Tables["orders"].Rows[1].Data["product"], "Gadget")
-	assert.Equal(t, loaded.Tables["config"].Rows[0].Data["value"], "1.0")
+	assert.Equal(t, loaded.Tables["users"].LiveRowCount(), 1)
+	assert.Equal(t, loaded.Tables["orders"].LiveRowCount(), 2)
+	assert.Equal(t, loaded.Tables["config"].LiveRowCount(), 1)
+	assert.Equal(t, loaded.Tables["orders"].LiveRows()[1].Data["product"], "Gadget")
+	assert.Equal(t, loaded.Tables["config"].LiveRows()[0].Data["value"], "1.0")
 }

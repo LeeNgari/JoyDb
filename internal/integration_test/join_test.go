@@ -5,6 +5,7 @@ import (
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/index/btree"
 	"github.com/leengari/mini-rdbms/internal/query/operations/join"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
@@ -146,10 +147,18 @@ func TestJoinOperations(t *testing.T) {
 		tx := transaction.NewTransaction()
 		defer tx.Close()
 		emptyUsers := testutil.CreateUsersTable()
-		emptyUsers.Rows = []data.Row{}
+		emptyUsers.RowsByRID = make(map[int64]data.Row)
+		emptyUsers.Indexes = make(map[string]*data.Index)
+		if emptyUsers.PKIndex != nil {
+			emptyUsers.PKIndex = btree.New(btree.DefaultDegree)
+		}
 		
 		emptyOrders := testutil.CreateOrdersTable()
-		emptyOrders.Rows = []data.Row{}
+		emptyOrders.RowsByRID = make(map[int64]data.Row)
+		emptyOrders.Indexes = make(map[string]*data.Index)
+		if emptyOrders.PKIndex != nil {
+			emptyOrders.PKIndex = btree.New(btree.DefaultDegree)
+		}
 		
 		results, err := join.ExecuteJoin(
 			emptyUsers, emptyOrders,
@@ -169,7 +178,11 @@ func TestJoinOperations(t *testing.T) {
 		testUsers := testutil.CreateUsersTable()
 		
 		emptyOrders := testutil.CreateOrdersTable()
-		emptyOrders.Rows = []data.Row{}
+		emptyOrders.RowsByRID = make(map[int64]data.Row)
+		emptyOrders.Indexes = make(map[string]*data.Index)
+		if emptyOrders.PKIndex != nil {
+			emptyOrders.PKIndex = btree.New(btree.DefaultDegree)
+		}
 		
 		results, err := join.ExecuteJoin(
 			testUsers, emptyOrders,

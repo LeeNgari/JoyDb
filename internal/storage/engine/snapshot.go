@@ -135,7 +135,7 @@ func LoadSnapshot(db *schema.Database, snapshotPath string) error {
 		return err
 	}
 
-	if len(dataBytes) < 8+1+8+8+4+4+8 { // Added 8 bytes for NextRID minimum length
+	if len(dataBytes) < 8+1+8+8+4+4 { // magic (8) + version (1) + LSN (8) + TS (8) + TableCount (4) + CRC (4) = 33
 		return fmt.Errorf("snapshot file too small")
 	}
 
