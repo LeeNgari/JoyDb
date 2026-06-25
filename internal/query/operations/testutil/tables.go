@@ -19,8 +19,8 @@ func CreateTestTable(name string) *schema.Table {
 				{Name: "age", Type: schema.ColumnTypeInt},
 			},
 		},
-		Rows:    []data.Row{},
-		Indexes: make(map[string]*data.Index),
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
 	return table
 }
@@ -37,13 +37,13 @@ func CreateUsersTable() *schema.Table {
 				{Name: "email", Type: schema.ColumnTypeText},
 			},
 		},
-		Rows: []data.Row{
-			data.NewRow(map[string]interface{}{"id": int64(1), "username": "alice", "email": "alice@example.com"}),
-			data.NewRow(map[string]interface{}{"id": int64(2), "username": "bob", "email": "bob@example.com"}),
-			data.NewRow(map[string]interface{}{"id": int64(3), "username": "charlie", "email": "charlie@example.com"}),
-		},
-		Indexes: make(map[string]*data.Index),
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(1), "username": "alice", "email": "alice@example.com"}))
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(2), "username": "bob", "email": "bob@example.com"}))
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(3), "username": "charlie", "email": "charlie@example.com"}))
+
 	indexing.BuildIndexes(table)
 	return table
 }
@@ -61,14 +61,14 @@ func CreateOrdersTable() *schema.Table {
 				{Name: "amount", Type: schema.ColumnTypeFloat},
 			},
 		},
-		Rows: []data.Row{
-			data.NewRow(map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Laptop", "amount": 999.99}),
-			data.NewRow(map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Mouse", "amount": 25.50}),
-			data.NewRow(map[string]interface{}{"id": int64(3), "user_id": int64(2), "product": "Keyboard", "amount": 75.00}),
-			// Note: user_id 3 (charlie) has no orders
-		},
-		Indexes: make(map[string]*data.Index),
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Laptop", "amount": 999.99}))
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Mouse", "amount": 25.50}))
+	table.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(3), "user_id": int64(2), "product": "Keyboard", "amount": 75.00}))
+	// Note: user_id 3 (charlie) has no orders
+
 	indexing.BuildIndexes(table)
 	return table
 }

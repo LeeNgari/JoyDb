@@ -26,15 +26,18 @@ func BuildIndexes(table *schema.Table) error {
 
 		idx := &data.Index{
 			Column: col.Name,
-			Data:   make(map[interface{}][]int),
+			Data:   make(map[interface{}][]int64),
 			Unique: col.PrimaryKey || col.Unique,
 		}
 
-		for rowPos, row := range table.Rows {
+		for rid, row := range table.RowsByRID {
+			if row.Deleted {
+				continue
+			}
 			val, ok := row.Data[col.Name]
 			if !ok {
 				if col.NotNull {
-					return errors.NewNotNullViolation(table.Name, col.Name, rowPos)
+					return errors.NewNotNullViolation(table.Name, col.Name, int(rid))
 				}
 				continue
 			}
@@ -48,7 +51,7 @@ func BuildIndexes(table *schema.Table) error {
 					// already good
 				default:
 					return fmt.Errorf("invalid auto-increment value in %s row %d: %v (want integer)",
-						col.Name, rowPos, val)
+						col.Name, rid, val)
 				}
 			}
 
@@ -60,13 +63,13 @@ func BuildIndexes(table *schema.Table) error {
 							slog.String("column", col.Name),
 							slog.Any("previous_type", fmt.Sprintf("%T", existing)),
 							slog.Any("new_type", fmt.Sprintf("%T", val)),
-							slog.Int("row", rowPos))
+							slog.Int64("rid", rid))
 					}
 					break // only check once
 				}
 			}
 
-			idx.Data[val] = append(idx.Data[val], rowPos)
+			idx.Data[val] = append(idx.Data[val], rid)
 
 			if idx.Unique && len(idx.Data[val]) > 1 {
 				return errors.NewUniqueViolation(

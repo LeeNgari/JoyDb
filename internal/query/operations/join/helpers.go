@@ -86,20 +86,20 @@ func validateJoinCondition(
 
 // buildJoinIndex creates a hash index for the join column
 // Returns the index and a boolean indicating if an existing index was reused
-func buildJoinIndex(table *schema.Table, columnName string) (map[interface{}][]int, bool) {
+func buildJoinIndex(table *schema.Table, columnName string) (map[interface{}][]int64, bool) {
 	// Try to reuse existing index
 	if idx, exists := table.Indexes[columnName]; exists {
 		return idx.Data, true
 	}
 
 	// Build temporary index
-	hashIndex := make(map[interface{}][]int)
-	for i, row := range table.Rows {
+	hashIndex := make(map[interface{}][]int64)
+	for _, row := range table.LiveRowsUnsafe() {
 		value, exists := row.Data[columnName]
 		if !exists {
 			continue // Skip NULL values
 		}
-		hashIndex[value] = append(hashIndex[value], i)
+		hashIndex[value] = append(hashIndex[value], row.RID)
 	}
 
 	return hashIndex, false

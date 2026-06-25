@@ -37,11 +37,11 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 	}
 
 	table := &schema.Table{
-		Name:    n.TableName,
-		Path:    ctx.Database.Path,
-		Schema:  tableSchema,
-		Rows:    []data.Row{},
-		Indexes: make(map[string]*data.Index),
+		Name:      n.TableName,
+		Path:      ctx.Database.Path,
+		Schema:    tableSchema,
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
 
 	// Build index structures for PRIMARY KEY and UNIQUE columns
@@ -49,7 +49,7 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 	if pkColumn != nil {
 		table.Indexes[pkColumn.Name] = &data.Index{
 			Column: pkColumn.Name,
-			Data:   make(map[interface{}][]int),
+			Data:   make(map[interface{}][]int64),
 			Unique: true,
 		}
 		table.PKIndex = btree.New(btree.DefaultDegree)
@@ -59,7 +59,7 @@ func executeCreateTable(n *plan.CreateTableNode, ctx *ExecutionContext) (*Interm
 		if col.Unique && !col.PrimaryKey {
 			table.Indexes[col.Name] = &data.Index{
 				Column: col.Name,
-				Data:   make(map[interface{}][]int),
+				Data:   make(map[interface{}][]int64),
 				Unique: true,
 			}
 		}

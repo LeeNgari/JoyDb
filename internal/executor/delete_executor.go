@@ -15,7 +15,7 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 	// Validate foreign keys for all affected rows BEFORE any mutations or logging
 	table.RLock()
 	var rowsToDelete []data.Row
-	for _, row := range table.Rows {
+	for _, row := range table.LiveRowsUnsafe() {
 		if node.Predicate(row) {
 			rowsToDelete = append(rowsToDelete, row.Copy())
 		}
@@ -32,7 +32,7 @@ func executeDeleteNode(node *plan.DeleteNode, ctx *ExecutionContext) (*Intermedi
 	var oldRows []data.Row
 	if ctx.WALManager != nil {
 		table.RLock()
-		for _, row := range table.Rows {
+		for _, row := range table.LiveRowsUnsafe() {
 			if node.Predicate(row) {
 				oldRows = append(oldRows, row.Copy())
 			}

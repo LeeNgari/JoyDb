@@ -120,9 +120,16 @@ func createTempTable(tableName string, rows []data.Row, tableSchema *schema.Tabl
 		}
 	}
 
-	return &schema.Table{
-		Name:   tableName,
-		Rows:   rows,
-		Schema: tableSchema,
+	t := &schema.Table{
+		Name:      tableName,
+		Schema:    tableSchema,
+		RowsByRID: make(map[int64]data.Row),
 	}
+	var rid int64 = 1
+	for _, row := range rows {
+		row.RID = rid
+		t.RowsByRID[rid] = row
+		rid++
+	}
+	return t
 }

@@ -40,7 +40,7 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 			found = true
 		} else {
 			// Slow path fallback: search all rows
-			for _, pRow := range parentTable.Rows {
+			for _, pRow := range parentTable.LiveRowsUnsafe() {
 				pVal := pRow.Data[fk.RefColumnName]
 				if pVal == val {
 					found = true
@@ -96,7 +96,7 @@ func validateDeleteFKs(tableName string, oldRow data.Row, ctx *ExecutionContext)
 			childTable.RLock()
 			conflict := false
 			// Check if any child row references this value
-			for _, cRow := range childTable.Rows {
+			for _, cRow := range childTable.LiveRowsUnsafe() {
 				childVal, cExists := cRow.Data[fk.ColumnName]
 				if !cExists || childVal == nil {
 					continue

@@ -98,19 +98,23 @@ func executeInnerJoin(
 	skippedByPredicate := 0
 
 	// Probe left table and combine matches
-	for _, leftRow := range leftTable.Rows {
+	leftRows := leftTable.LiveRowsUnsafe()
+	for _, leftRow := range leftRows {
 		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue // Skip rows with NULL join column
 		}
 
-		rightPositions, found := hashIndex[leftValue]
+		rightRIDs, found := hashIndex[leftValue]
 		if !found {
 			continue // No matches (INNER JOIN excludes)
 		}
 
-		for _, rightPos := range rightPositions {
-			rightRow := rightTable.Rows[rightPos]
+		for _, rightRID := range rightRIDs {
+			rightRow, ok := rightTable.RowsByRID[rightRID]
+			if !ok || rightRow.Deleted {
+				continue
+			}
 			joined := combineRows(leftRow, rightRow, leftTable.Name, rightTable.Name)
 
 			if pred != nil && !pred(joined) {
@@ -152,20 +156,25 @@ func executeLeftJoin(
 
 	hashIndex, _ := buildJoinIndex(rightTable, rightColumn)
 	results := make([]data.JoinedRow, 0)
-	matchedLeftRows := make(map[int]bool)
+	matchedLeftRows := make(map[int64]bool)
+
+	leftRows := leftTable.LiveRowsUnsafe()
 
 	// Phase 1: INNER JOIN
-	for leftPos, leftRow := range leftTable.Rows {
+	for _, leftRow := range leftRows {
 		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
 
-		rightPositions, found := hashIndex[leftValue]
+		rightRIDs, found := hashIndex[leftValue]
 		if found {
-			matchedLeftRows[leftPos] = true
-			for _, rightPos := range rightPositions {
-				rightRow := rightTable.Rows[rightPos]
+			matchedLeftRows[leftRow.RID] = true
+			for _, rightRID := range rightRIDs {
+				rightRow, ok := rightTable.RowsByRID[rightRID]
+				if !ok || rightRow.Deleted {
+					continue
+				}
 				joined := combineRows(leftRow, rightRow, leftTable.Name, rightTable.Name)
 
 				if pred == nil || pred(joined) {
@@ -176,8 +185,8 @@ func executeLeftJoin(
 	}
 
 	// Phase 2: Add unmatched left rows
-	for leftPos, leftRow := range leftTable.Rows {
-		if !matchedLeftRows[leftPos] {
+	for _, leftRow := range leftRows {
+		if !matchedLeftRows[leftRow.RID] {
 			joined := combineRowsWithNull(leftRow, data.Row{}, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
@@ -187,7 +196,7 @@ func executeLeftJoin(
 
 	slog.Debug("LEFT JOIN completed",
 		slog.Int("result_rows", len(results)),
-		slog.Int("unmatched_left", len(leftTable.Rows)-len(matchedLeftRows)),
+		slog.Int("unmatched_left", len(leftRows)-len(matchedLeftRows)),
 	)
 
 	return results, nil
@@ -213,20 +222,25 @@ func executeRightJoin(
 
 	hashIndex, _ := buildJoinIndex(rightTable, rightColumn)
 	results := make([]data.JoinedRow, 0)
-	matchedRightRows := make(map[int]bool)
+	matchedRightRows := make(map[int64]bool)
+
+	leftRows := leftTable.LiveRowsUnsafe()
 
 	// Phase 1: INNER JOIN
-	for _, leftRow := range leftTable.Rows {
+	for _, leftRow := range leftRows {
 		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
 
-		rightPositions, found := hashIndex[leftValue]
+		rightRIDs, found := hashIndex[leftValue]
 		if found {
-			for _, rightPos := range rightPositions {
-				matchedRightRows[rightPos] = true
-				rightRow := rightTable.Rows[rightPos]
+			for _, rightRID := range rightRIDs {
+				rightRow, ok := rightTable.RowsByRID[rightRID]
+				if !ok || rightRow.Deleted {
+					continue
+				}
+				matchedRightRows[rightRID] = true
 				joined := combineRows(leftRow, rightRow, leftTable.Name, rightTable.Name)
 
 				if pred == nil || pred(joined) {
@@ -237,8 +251,9 @@ func executeRightJoin(
 	}
 
 	// Phase 2: Add unmatched right rows
-	for rightPos, rightRow := range rightTable.Rows {
-		if !matchedRightRows[rightPos] {
+	rightRows := rightTable.LiveRowsUnsafe()
+	for _, rightRow := range rightRows {
+		if !matchedRightRows[rightRow.RID] {
 			joined := combineRowsWithNull(data.Row{}, rightRow, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
@@ -248,7 +263,7 @@ func executeRightJoin(
 
 	slog.Debug("RIGHT JOIN completed",
 		slog.Int("result_rows", len(results)),
-		slog.Int("unmatched_right", len(rightTable.Rows)-len(matchedRightRows)),
+		slog.Int("unmatched_right", len(rightRows)-len(matchedRightRows)),
 	)
 
 	return results, nil
@@ -274,22 +289,27 @@ func executeFullJoin(
 
 	hashIndex, _ := buildJoinIndex(rightTable, rightColumn)
 	results := make([]data.JoinedRow, 0)
-	matchedLeftRows := make(map[int]bool)
-	matchedRightRows := make(map[int]bool)
+	matchedLeftRows := make(map[int64]bool)
+	matchedRightRows := make(map[int64]bool)
+
+	leftRows := leftTable.LiveRowsUnsafe()
 
 	// Phase 1: INNER JOIN
-	for leftPos, leftRow := range leftTable.Rows {
+	for _, leftRow := range leftRows {
 		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
 			continue
 		}
 
-		rightPositions, found := hashIndex[leftValue]
+		rightRIDs, found := hashIndex[leftValue]
 		if found {
-			matchedLeftRows[leftPos] = true
-			for _, rightPos := range rightPositions {
-				matchedRightRows[rightPos] = true
-				rightRow := rightTable.Rows[rightPos]
+			matchedLeftRows[leftRow.RID] = true
+			for _, rightRID := range rightRIDs {
+				rightRow, ok := rightTable.RowsByRID[rightRID]
+				if !ok || rightRow.Deleted {
+					continue
+				}
+				matchedRightRows[rightRID] = true
 				joined := combineRows(leftRow, rightRow, leftTable.Name, rightTable.Name)
 
 				if pred == nil || pred(joined) {
@@ -300,8 +320,8 @@ func executeFullJoin(
 	}
 
 	// Phase 2: Add unmatched left rows
-	for leftPos, leftRow := range leftTable.Rows {
-		if !matchedLeftRows[leftPos] {
+	for _, leftRow := range leftRows {
+		if !matchedLeftRows[leftRow.RID] {
 			joined := combineRowsWithNull(leftRow, data.Row{}, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
@@ -310,8 +330,9 @@ func executeFullJoin(
 	}
 
 	// Phase 3: Add unmatched right rows
-	for rightPos, rightRow := range rightTable.Rows {
-		if !matchedRightRows[rightPos] {
+	rightRows := rightTable.LiveRowsUnsafe()
+	for _, rightRow := range rightRows {
+		if !matchedRightRows[rightRow.RID] {
 			joined := combineRowsWithNull(data.Row{}, rightRow, leftTable, rightTable)
 			if pred == nil || pred(joined) {
 				results = append(results, joined)
@@ -321,8 +342,8 @@ func executeFullJoin(
 
 	slog.Debug("FULL OUTER JOIN completed",
 		slog.Int("result_rows", len(results)),
-		slog.Int("unmatched_left", len(leftTable.Rows)-len(matchedLeftRows)),
-		slog.Int("unmatched_right", len(rightTable.Rows)-len(matchedRightRows)),
+		slog.Int("unmatched_left", len(leftRows)-len(matchedLeftRows)),
+		slog.Int("unmatched_right", len(rightRows)-len(matchedRightRows)),
 	)
 
 	return results, nil

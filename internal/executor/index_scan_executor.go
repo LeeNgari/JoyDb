@@ -22,46 +22,44 @@ func executeIndexScan(node *plan.IndexScanNode, ctx *ExecutionContext) (*Interme
 		return nil, fmt.Errorf("no B+Tree index found on column %s of table %s", node.ColumnName, node.TableName)
 	}
 
-	var positions []int
+	var rids []int64
 
 	switch node.Operator {
 	case "=":
-		pos, found := table.PKIndex.Search(node.Bound)
+		rid, found := table.PKIndex.Search(node.Bound)
 		if found {
-			positions = append(positions, pos)
+			rids = append(rids, rid)
 		}
 	case ">":
-		allPos := table.PKIndex.RangeFrom(node.Bound)
-		for _, pos := range allPos {
-			if pos >= 0 && pos < len(table.Rows) {
-				row := table.Rows[pos]
+		allRIDs := table.PKIndex.RangeFrom(node.Bound)
+		for _, rid := range allRIDs {
+			if row, found := table.RowsByRID[rid]; found && !row.Deleted {
 				if btree.ToKey(row.Data[pkCol.Name]).Compare(btree.ToKey(node.Bound)) > 0 {
-					positions = append(positions, pos)
+					rids = append(rids, rid)
 				}
 			}
 		}
 	case ">=":
-		positions = table.PKIndex.RangeFrom(node.Bound)
+		rids = table.PKIndex.RangeFrom(node.Bound)
 	case "<":
-		allPos := table.PKIndex.RangeTo(node.Bound)
-		for _, pos := range allPos {
-			if pos >= 0 && pos < len(table.Rows) {
-				row := table.Rows[pos]
+		allRIDs := table.PKIndex.RangeTo(node.Bound)
+		for _, rid := range allRIDs {
+			if row, found := table.RowsByRID[rid]; found && !row.Deleted {
 				if btree.ToKey(row.Data[pkCol.Name]).Compare(btree.ToKey(node.Bound)) < 0 {
-					positions = append(positions, pos)
+					rids = append(rids, rid)
 				}
 			}
 		}
 	case "<=":
-		positions = table.PKIndex.RangeTo(node.Bound)
+		rids = table.PKIndex.RangeTo(node.Bound)
 	default:
 		return nil, fmt.Errorf("unsupported operator for index scan: %s", node.Operator)
 	}
 
 	var rows []data.Row
-	for _, pos := range positions {
-		if pos >= 0 && pos < len(table.Rows) {
-			rows = append(rows, table.Rows[pos])
+	for _, rid := range rids {
+		if row, found := table.RowsByRID[rid]; found && !row.Deleted {
+			rows = append(rows, row.Copy())
 		}
 	}
 
