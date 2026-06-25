@@ -101,12 +101,20 @@ func writeTable(buf *bytes.Buffer, name string, table *schema.Table) error {
 	buf.Write(slenBuf)
 	buf.Write(schemaBytes)
 
-	// Rows
+	// NextRID (8 bytes)
+	nridBuf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(nridBuf, uint64(table.NextRID))
+	buf.Write(nridBuf)
+
+	// Get live rows
+	liveRows := table.LiveRowsUnsafe()
+
+	// Rows Count
 	rcBuf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(rcBuf, uint64(len(table.Rows)))
+	binary.LittleEndian.PutUint64(rcBuf, uint64(len(liveRows)))
 	buf.Write(rcBuf)
 
-	for _, row := range table.Rows {
+	for _, row := range liveRows {
 		rowBytes, err := row.Serialize()
 		if err != nil {
 			return err
@@ -127,7 +135,7 @@ func LoadSnapshot(db *schema.Database, snapshotPath string) error {
 		return err
 	}
 
-	if len(dataBytes) < 8+1+8+8+4+4 {
+	if len(dataBytes) < 8+1+8+8+4+4+8 { // Added 8 bytes for NextRID minimum length
 		return fmt.Errorf("snapshot file too small")
 	}
 
@@ -210,14 +218,21 @@ func readTable(dbPath string, dataBytes []byte, offset int) (*schema.Table, int,
 	rowCount := int(binary.LittleEndian.Uint64(dataBytes[offset:]))
 	offset += 8
 
+	if offset+8 > len(dataBytes) {
+		return nil, 0, fmt.Errorf("corrupt snapshot: missing next rid")
+	}
+	nextRID := int64(binary.LittleEndian.Uint64(dataBytes[offset:]))
+	offset += 8
+
 	tablePath := filepath.Join(dbPath, name)
 	table := &schema.Table{
 		Name:         name,
 		Path:         tablePath,
 		Schema:       tableSchema,
-		Rows:         make([]data.Row, 0, rowCount),
+		RowsByRID:    make(map[int64]data.Row),
 		Indexes:      make(map[string]*data.Index),
 		LastInsertID: lastInsertID,
+		NextRID:      nextRID,
 	}
 
 	// Initialize PKIndex if table has a primary key
@@ -231,7 +246,7 @@ func readTable(dbPath string, dataBytes []byte, offset int) (*schema.Table, int,
 		if col.Unique && !col.PrimaryKey {
 			table.Indexes[col.Name] = &data.Index{
 				Column: col.Name,
-				Data:   make(map[interface{}][]int),
+				Data:   make(map[interface{}][]int64),
 				Unique: true,
 			}
 		}
@@ -252,18 +267,18 @@ func readTable(dbPath string, dataBytes []byte, offset int) (*schema.Table, int,
 			return nil, 0, err
 		}
 		
-		pos := len(table.Rows)
-		table.Rows = append(table.Rows, row)
+		rid := row.RID
+		table.RowsByRID[rid] = row
 
 		if table.PKIndex != nil && pkCol != nil {
 			if val, exists := row.Data[pkCol.Name]; exists {
-				table.PKIndex.Insert(val, pos)
+				table.PKIndex.Insert(val, rid)
 			}
 		}
 
 		for colName, idx := range table.Indexes {
 			if val, exists := row.Data[colName]; exists {
-				idx.Data[val] = append(idx.Data[val], pos)
+				idx.Data[val] = append(idx.Data[val], rid)
 			}
 		}
 		

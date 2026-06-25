@@ -532,16 +532,36 @@ func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue []by
 		return fmt.Errorf("table %s has no primary key", tableName)
 	}
 
-	for i, row := range table.Rows {
-		if pkVal, exists := row.Data[pkCol.Name]; exists {
-			pkStr := fmt.Sprintf("%v", pkVal)
-			if pkStr == key {
-				table.Rows[i] = newRow
-				table.MarkDirtyUnsafe()
-				slog.Debug("Replay: Update", "table", tableName, "key", key)
-				return nil
+	var rid int64
+	var found bool
+
+	// Try fast path B+Tree lookup
+	if table.PKIndex != nil {
+		pkVal := parsePKValue(key, pkCol)
+		rid, found = table.PKIndex.Search(pkVal)
+	}
+
+	// Fallback linear scan if not found via index (or no index)
+	if !found {
+		for r, row := range table.RowsByRID {
+			if !row.Deleted {
+				if pkVal, exists := row.Data[pkCol.Name]; exists {
+					if fmt.Sprintf("%v", pkVal) == key {
+						rid = r
+						found = true
+						break
+					}
+				}
 			}
 		}
+	}
+
+	if found {
+		newRow.RID = rid // Preserve the existing RID
+		table.RowsByRID[rid] = newRow
+		table.MarkDirtyUnsafe()
+		slog.Debug("Replay: Update", "table", tableName, "key", key)
+		return nil
 	}
 
 	slog.Warn("Replay: row not found for update", "table", tableName, "key", key)
@@ -564,17 +584,65 @@ func (t *DatabaseReplayTarget) ReplayDelete(tableName, key string) error {
 		return fmt.Errorf("table %s has no primary key", tableName)
 	}
 
-	// Find and remove the row
-	for i, row := range table.Rows {
-		if pkVal, exists := row.Data[pkCol.Name]; exists {
-			pkStr := fmt.Sprintf("%v", pkVal)
-			if pkStr == key {
-				table.Rows = append(table.Rows[:i], table.Rows[i+1:]...)
-				table.MarkDirtyUnsafe()
-				slog.Debug("Replay: Delete", "table", tableName, "key", key)
-				return nil
+	var rid int64
+	var found bool
+	var pkVal interface{}
+
+	// Try fast path B+Tree lookup
+	if table.PKIndex != nil {
+		pkVal = parsePKValue(key, pkCol)
+		rid, found = table.PKIndex.Search(pkVal)
+	}
+
+	// Fallback linear scan
+	if !found {
+		for r, row := range table.RowsByRID {
+			if !row.Deleted {
+				if val, exists := row.Data[pkCol.Name]; exists {
+					if fmt.Sprintf("%v", val) == key {
+						rid = r
+						found = true
+						pkVal = val
+						break
+					}
+				}
 			}
 		}
+	}
+
+	if found {
+		row := table.RowsByRID[rid]
+		row.Deleted = true // Tombstone
+		table.RowsByRID[rid] = row
+		table.TombstoneCount++
+		table.MarkDirtyUnsafe()
+
+		// Remove from PK index
+		if table.PKIndex != nil && pkVal != nil {
+			table.PKIndex.Delete(pkVal)
+		}
+
+		// Remove from hash indexes
+		for colName, idx := range table.Indexes {
+			if val, exists := row.Data[colName]; exists {
+				if rids, ok := idx.Data[val]; ok {
+					var newList []int64
+					for _, r := range rids {
+						if r != rid {
+							newList = append(newList, r)
+						}
+					}
+					if len(newList) == 0 {
+						delete(idx.Data, val)
+					} else {
+						idx.Data[val] = newList
+					}
+				}
+			}
+		}
+
+		slog.Debug("Replay: Delete", "table", tableName, "key", key)
+		return nil
 	}
 
 	slog.Warn("Replay: row not found for delete", "table", tableName, "key", key)
@@ -590,11 +658,11 @@ func (t *DatabaseReplayTarget) ReplayCreateTable(name string, schemaBytes []byte
 
 	// Create new table instance
 	table := &schema.Table{
-		Name:    name,
-		Path:    t.db.Path,
-		Schema:  s,
-		Rows:    []data.Row{},
-		Indexes: make(map[string]*data.Index),
+		Name:      name,
+		Path:      t.db.Path,
+		Schema:    s,
+		RowsByRID: make(map[int64]data.Row),
+		Indexes:   make(map[string]*data.Index),
 	}
 
 	// Initialize PKIndex if table has a primary key
@@ -664,8 +732,13 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 		}
 		table.Schema.Columns = newCols
 
-		for i := range table.Rows {
-			delete(table.Rows[i].Data, col.Name)
+		for rid, row := range table.RowsByRID {
+			if row.Deleted {
+				continue
+			}
+			newRow := row.Copy() // Deep copy for isolation
+			delete(newRow.Data, col.Name)
+			table.RowsByRID[rid] = newRow
 		}
 
 		table.MarkDirtyUnsafe()
@@ -675,4 +748,29 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 	}
 
 	return nil
+}
+
+// parsePKValue converts a string key from WAL back to its native type
+// based on the primary key column definition.
+func parsePKValue(key string, col *schema.Column) interface{} {
+	switch col.Type {
+	case schema.ColumnTypeInt:
+		var i int64
+		_, err := fmt.Sscanf(key, "%d", &i)
+		if err == nil {
+			return i
+		}
+		return key
+	case schema.ColumnTypeFloat:
+		var f float64
+		_, err := fmt.Sscanf(key, "%f", &f)
+		if err == nil {
+			return f
+		}
+		return key
+	case schema.ColumnTypeBool:
+		return key == "true"
+	default:
+		return key
+	}
 }
