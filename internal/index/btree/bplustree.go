@@ -19,7 +19,7 @@ var ErrKeyNotFound = fmt.Errorf("btree: key not found")
 // nodes use children.
 type node struct {
 	keys     []interface{} // routing keys (internal) or data keys (leaf)
-	values   []int         // row positions — only used in leaf nodes
+	values   []int64         // row positions — only used in leaf nodes
 	children []*node       // child pointers — only used in internal nodes
 	next     *node         // next leaf — only used in leaf nodes
 	prev     *node         // prev leaf — only used in leaf nodes
@@ -45,7 +45,7 @@ func New(degree int) *BPlusTree {
 	}
 	leaf := &node{
 		keys:   make([]interface{}, 0, 2*degree-1),
-		values: make([]int, 0, 2*degree-1),
+		values: make([]int64, 0, 2*degree-1),
 		leaf:   true,
 	}
 	return &BPlusTree{
@@ -65,7 +65,7 @@ func (t *BPlusTree) Size() int {
 func (t *BPlusTree) Clear() {
 	leaf := &node{
 		keys:   make([]interface{}, 0, 2*t.degree-1),
-		values: make([]int, 0, 2*t.degree-1),
+		values: make([]int64, 0, 2*t.degree-1),
 		leaf:   true,
 	}
 	t.root = leaf
@@ -176,7 +176,7 @@ func compareKeys(a, b interface{}) int {
 // ---------------------------------------------------------------------
 
 // Search returns the position for a key, or (0, false) if not found.
-func (t *BPlusTree) Search(key interface{}) (pos int, found bool) {
+func (t *BPlusTree) Search(key interface{}) (pos int64, found bool) {
 	n := t.root
 	for !n.leaf {
 		// Find the child to descend into.
@@ -231,7 +231,7 @@ func leafSearch(keys []interface{}, key interface{}) (int, bool) {
 // ---------------------------------------------------------------------
 
 // Insert adds a key → pos mapping. Returns ErrDuplicateKey if key already exists.
-func (t *BPlusTree) Insert(key interface{}, pos int) error {
+func (t *BPlusTree) Insert(key interface{}, pos int64) error {
 	// If root is full, split it first (proactive splitting at root).
 	maxKeys := 2*t.degree - 1
 	if len(t.root.keys) == maxKeys {
@@ -250,7 +250,7 @@ func (t *BPlusTree) Insert(key interface{}, pos int) error {
 }
 
 // insertNonFull inserts into a node that is guaranteed to have room.
-func (t *BPlusTree) insertNonFull(n *node, key interface{}, pos int) error {
+func (t *BPlusTree) insertNonFull(n *node, key interface{}, pos int64) error {
 	maxKeys := 2*t.degree - 1
 
 	if n.leaf {
@@ -302,7 +302,7 @@ func (t *BPlusTree) splitChild(parent *node, i int) {
 	if full.leaf {
 		// Leaf split: copy keys[mid:] to right. Promote a copy of keys[mid].
 		right.keys = append(right.keys, full.keys[mid:]...)
-		right.values = make([]int, 0, 2*t.degree-1)
+		right.values = make([]int64, 0, 2*t.degree-1)
 		right.values = append(right.values, full.values[mid:]...)
 
 		// Truncate left.
@@ -496,7 +496,7 @@ func (t *BPlusTree) borrowFromLeft(parent *node, i int) {
 		lastVal := leftSib.values[len(leftSib.values)-1]
 
 		child.keys = append([]interface{}{lastKey}, child.keys...)
-		child.values = append([]int{lastVal}, child.values...)
+		child.values = append([]int64{lastVal}, child.values...)
 
 		leftSib.keys = leftSib.keys[:len(leftSib.keys)-1]
 		leftSib.values = leftSib.values[:len(leftSib.values)-1]
@@ -586,7 +586,7 @@ func (t *BPlusTree) mergeChildren(parent *node, i int) {
 
 // RangeScan returns all positions where lo <= key <= hi, in key order.
 // Uses the leaf linked-list for O(log n + k) performance.
-func (t *BPlusTree) RangeScan(lo, hi interface{}) []int {
+func (t *BPlusTree) RangeScan(lo, hi interface{}) []int64 {
 	// Navigate to the leaf containing lo.
 	n := t.root
 	for !n.leaf {
@@ -594,7 +594,7 @@ func (t *BPlusTree) RangeScan(lo, hi interface{}) []int {
 		n = n.children[i]
 	}
 
-	var result []int
+	var result []int64
 	// Walk the linked list starting from this leaf.
 	for n != nil {
 		for i, k := range n.keys {
@@ -614,7 +614,7 @@ func (t *BPlusTree) RangeScan(lo, hi interface{}) []int {
 
 // RangeFrom returns all positions where key >= lo, in key order.
 // Uses the leaf linked-list for O(log n + k) performance.
-func (t *BPlusTree) RangeFrom(lo interface{}) []int {
+func (t *BPlusTree) RangeFrom(lo interface{}) []int64 {
 	// Navigate to the leaf containing lo.
 	n := t.root
 	for !n.leaf {
@@ -622,7 +622,7 @@ func (t *BPlusTree) RangeFrom(lo interface{}) []int {
 		n = n.children[i]
 	}
 
-	var result []int
+	var result []int64
 	// Walk the linked list starting from this leaf.
 	for n != nil {
 		for i, k := range n.keys {
@@ -639,8 +639,8 @@ func (t *BPlusTree) RangeFrom(lo interface{}) []int {
 
 // RangeTo returns all positions where key <= hi, in key order.
 // Uses the leaf linked-list for O(k) performance.
-func (t *BPlusTree) RangeTo(hi interface{}) []int {
-	var result []int
+func (t *BPlusTree) RangeTo(hi interface{}) []int64 {
+	var result []int64
 	// Walk the linked list starting from the first leaf.
 	n := t.first
 	for n != nil {
@@ -658,8 +658,8 @@ func (t *BPlusTree) RangeTo(hi interface{}) []int {
 
 // All returns all positions in key order by walking the leaf linked-list.
 // This is O(n) — no tree traversal needed.
-func (t *BPlusTree) All() []int {
-	result := make([]int, 0, t.size)
+func (t *BPlusTree) All() []int64 {
+	result := make([]int64, 0, t.size)
 	n := t.first
 	for n != nil {
 		result = append(result, n.values...)
@@ -675,7 +675,7 @@ func (t *BPlusTree) All() []int {
 // ---------------------------------------------------------------------
 
 // UpdatePos updates the position associated with an existing key.
-func (t *BPlusTree) UpdatePos(key interface{}, newPos int) error {
+func (t *BPlusTree) UpdatePos(key interface{}, newPos int64) error {
 	n := t.root
 	for !n.leaf {
 		i := searchNode(n.keys, key)
