@@ -33,13 +33,13 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 		}
 
 		// Look up the value in the parent table
-		parentTable.RLock()
 		found := false
-		// Try using SelectByIndex first (fast path)
+		// Try using SelectByIndex first (fast path) - it manages its own locks
 		if _, ok := parentTable.SelectByIndex(fk.RefColumnName, val, ctx.Transaction); ok {
 			found = true
 		} else {
 			// Slow path fallback: search all rows
+			parentTable.RLock()
 			for _, pRow := range parentTable.LiveRowsUnsafe() {
 				pVal := pRow.Data[fk.RefColumnName]
 				if pVal == val {
@@ -56,8 +56,8 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 					}
 				}
 			}
+			parentTable.RUnlock()
 		}
-		parentTable.RUnlock()
 
 		if !found {
 			return &errors.ConstraintError{

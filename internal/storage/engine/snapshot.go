@@ -213,15 +213,15 @@ func readTable(dbPath string, dataBytes []byte, offset int) (*schema.Table, int,
 	offset += schemaLen
 
 	if offset+8 > len(dataBytes) {
-		return nil, 0, fmt.Errorf("corrupt snapshot: missing row count")
-	}
-	rowCount := int(binary.LittleEndian.Uint64(dataBytes[offset:]))
-	offset += 8
-
-	if offset+8 > len(dataBytes) {
 		return nil, 0, fmt.Errorf("corrupt snapshot: missing next rid")
 	}
 	nextRID := int64(binary.LittleEndian.Uint64(dataBytes[offset:]))
+	offset += 8
+
+	if offset+8 > len(dataBytes) {
+		return nil, 0, fmt.Errorf("corrupt snapshot: missing row count")
+	}
+	rowCount := int(binary.LittleEndian.Uint64(dataBytes[offset:]))
 	offset += 8
 
 	tablePath := filepath.Join(dbPath, name)

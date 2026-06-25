@@ -557,6 +557,48 @@ func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue []by
 	}
 
 	if found {
+		oldRow := table.RowsByRID[rid]
+
+		// Update PK index if PK column changed
+		if table.PKIndex != nil && pkCol != nil {
+			oldPK, oldExists := oldRow.Data[pkCol.Name]
+			newPK, newExists := newRow.Data[pkCol.Name]
+			if oldExists && newExists && oldPK != newPK {
+				table.PKIndex.Delete(oldPK)
+				_ = table.PKIndex.Insert(newPK, rid)
+			}
+		}
+
+		// Update hash indexes
+		for colName, idx := range table.Indexes {
+			oldVal, oldExists := oldRow.Data[colName]
+			newVal, newExists := newRow.Data[colName]
+
+			if oldExists && newExists && oldVal == newVal {
+				continue
+			}
+
+			if oldExists {
+				if rids, ok := idx.Data[oldVal]; ok {
+					var newList []int64
+					for _, r := range rids {
+						if r != rid {
+							newList = append(newList, r)
+						}
+					}
+					if len(newList) == 0 {
+						delete(idx.Data, oldVal)
+					} else {
+						idx.Data[oldVal] = newList
+					}
+				}
+			}
+
+			if newExists {
+				idx.Data[newVal] = append(idx.Data[newVal], rid)
+			}
+		}
+
 		newRow.RID = rid // Preserve the existing RID
 		table.RowsByRID[rid] = newRow
 		table.MarkDirtyUnsafe()
