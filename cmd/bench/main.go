@@ -31,7 +31,7 @@ func main() {
 	historyPath := flag.String("history", defaultHistoryPath, "Path to the history JSON file")
 	noHistory := flag.Bool("no-history", false, "Don't save this run to the history file")
 	showHistory := flag.Bool("show-history", false, "Show the benchmark history trend table and exit")
-	
+
 	flag.Parse()
 
 	// Handle --show-history: just print and exit
@@ -74,7 +74,7 @@ func main() {
 		workloads.NewInsertSingleRow(),
 		workloads.NewInsertBulk100(),
 		workloads.NewInsertWithFK(),
-		
+
 		workloads.NewSelectPKLookup(),
 		workloads.NewSelectFullScan1K(),
 		workloads.NewSelectFullScan10K(),
@@ -82,32 +82,33 @@ func main() {
 		workloads.NewSelectWithProjection(),
 		workloads.NewSelectRangeScan100(),
 		workloads.NewSelectRangeScan1K(),
-		
+
 		workloads.NewUpdateByPK(),
 		workloads.NewUpdateBulk(),
-		
+
 		workloads.NewDeleteByPK(),
 		workloads.NewDeleteBulk(),
-		
+
 		workloads.NewJoinNestedLoop100x100(),
 		workloads.NewJoinNestedLoop1Kx1K(),
-		
+
 		workloads.NewMixedReadWrite80_20(),
 		workloads.NewMixedReadWrite50_50(),
-		
+
 		workloads.NewCreateDropTable(),
-		
+
 		workloads.NewInsertWithWAL(),
 		workloads.NewInsertNoWAL(),
+		workloads.NewInsertWithPeriodicWAL(),
 
 		workloads.NewInsertScaling(100),
 		workloads.NewInsertScaling(1000),
 		workloads.NewInsertScaling(10000),
-		
+
 		workloads.NewSelectScanScaling(100),
 		workloads.NewSelectScanScaling(1000),
 		workloads.NewSelectScanScaling(10000),
-		
+
 		workloads.NewSelectPKScaling(100),
 		workloads.NewSelectPKScaling(1000),
 		workloads.NewSelectPKScaling(10000),
@@ -196,7 +197,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Failed to load baseline: %v\n", err)
 			os.Exit(1)
 		}
-		
+
 		if err := benchmark.CompareReports(baseline, report, outWriter); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to write comparison: %v\n", err)
 			os.Exit(1)

@@ -14,17 +14,19 @@ import (
 
 // EngineOptions configures the creation of a benchmark database engine
 type EngineOptions struct {
-	WALEnabled bool
-	BasePath   string // If empty, a temporary directory is created
-	DBName     string
+	WALEnabled      bool
+	WALSyncInterval time.Duration
+	BasePath        string // If empty, a temporary directory is created
+	DBName          string
 }
 
 // DefaultEngineOptions returns standard options for in-memory pure engine benchmarks
 func DefaultEngineOptions() EngineOptions {
 	return EngineOptions{
-		WALEnabled: false,
-		BasePath:   "", // Will use a temp dir
-		DBName:     "benchdb",
+		WALEnabled:      false,
+		WALSyncInterval: 0,
+		BasePath:        "", // Will use a temp dir
+		DBName:          "benchdb",
 	}
 }
 
@@ -58,7 +60,7 @@ func NewBenchEngine(opts EngineOptions) (*engine.Engine, string, error) {
 		storageEng,
 		opts.WALEnabled,
 		5*time.Second,
-		0, // sync on commit
+		opts.WALSyncInterval,
 	)
 
 	// In memory engine, we just create the engine and set up the WAL manager manually
@@ -129,7 +131,7 @@ func SeedTable(eng *engine.Engine, tableName string, rowCount int, rng *rand.Ran
 
 		insertSQL := fmt.Sprintf("INSERT INTO %s (name, amount, active) VALUES ('%s', %f, %t)",
 			tableName, name, amount, active)
-		
+
 		if _, err := eng.Execute(insertSQL); err != nil {
 			return fmt.Errorf("failed to insert row %d: %w", i, err)
 		}

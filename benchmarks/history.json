@@ -5259,6 +5259,568 @@
           "Metadata": {}
         }
       ]
+    },
+    {
+      "timestamp": "2026-06-26T12:25:05.546674304Z",
+      "os": "linux",
+      "arch": "amd64",
+      "cpu_cores": 12,
+      "go_version": "go1.25.4",
+      "results": [
+        {
+          "Name": "insert_single_row",
+          "Latencies": null,
+          "TotalTime": 5000013125,
+          "Iterations": 302881,
+          "Stats": {
+            "P50": 11565,
+            "P90": 29813,
+            "P95": 38401,
+            "P99": 87703,
+            "Mean": 16372,
+            "StdDev": 38447,
+            "TPS": 60576.04098789241
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_bulk_100",
+          "Latencies": null,
+          "TotalTime": 5000918257,
+          "Iterations": 6531,
+          "Stats": {
+            "P50": 552362,
+            "P90": 1200403,
+            "P95": 1565731,
+            "P99": 2457802,
+            "Mean": 765502,
+            "StdDev": 508137,
+            "TPS": 1305.960158588531
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_with_fk",
+          "Latencies": null,
+          "TotalTime": 5000024166,
+          "Iterations": 599532,
+          "Stats": {
+            "P50": 6631,
+            "P90": 10126,
+            "P95": 13701,
+            "P99": 33480,
+            "Mean": 8246,
+            "StdDev": 11607,
+            "TPS": 119905.82047118849
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_lookup",
+          "Latencies": null,
+          "TotalTime": 5000011134,
+          "Iterations": 685759,
+          "Stats": {
+            "P50": 5590,
+            "P90": 9631,
+            "P95": 12378,
+            "P99": 31392,
+            "Mean": 7188,
+            "StdDev": 10630,
+            "TPS": 137151.49459105183
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_full_scan_1k",
+          "Latencies": null,
+          "TotalTime": 5000183639,
+          "Iterations": 11234,
+          "Stats": {
+            "P50": 293052,
+            "P90": 723359,
+            "P95": 949439,
+            "P99": 1669370,
+            "Mean": 444917,
+            "StdDev": 303130,
+            "TPS": 2246.7174830096274
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_full_scan_10k",
+          "Latencies": null,
+          "TotalTime": 5011793497,
+          "Iterations": 1178,
+          "Stats": {
+            "P50": 3719810,
+            "P90": 6035161,
+            "P95": 7561482,
+            "P99": 9313400,
+            "Mean": 4254048,
+            "StdDev": 1443204,
+            "TPS": 235.04559808881527
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_with_predicate",
+          "Latencies": null,
+          "TotalTime": 5002116880,
+          "Iterations": 1544,
+          "Stats": {
+            "P50": 3042910,
+            "P90": 4075351,
+            "P95": 4501198,
+            "P99": 5525682,
+            "Mean": 3239209,
+            "StdDev": 673984,
+            "TPS": 308.6693168193223
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_with_projection",
+          "Latencies": null,
+          "TotalTime": 5006700712,
+          "Iterations": 675,
+          "Stats": {
+            "P50": 5987814,
+            "P90": 12368152,
+            "P95": 13271925,
+            "P99": 14473121,
+            "Mean": 7416841,
+            "StdDev": 2900324,
+            "TPS": 134.81932290903032
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_range_scan_100",
+          "Latencies": null,
+          "TotalTime": 5000573052,
+          "Iterations": 4688,
+          "Stats": {
+            "P50": 964086,
+            "P90": 1421404,
+            "P95": 1780251,
+            "P99": 2480275,
+            "Mean": 1066405,
+            "StdDev": 354691,
+            "TPS": 937.4925536034344
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_range_scan_1k",
+          "Latencies": null,
+          "TotalTime": 5000702505,
+          "Iterations": 3278,
+          "Stats": {
+            "P50": 1334534,
+            "P90": 2095009,
+            "P95": 2525000,
+            "P99": 3816019,
+            "Mean": 1525185,
+            "StdDev": 522680,
+            "TPS": 655.5079004844741
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "update_by_pk",
+          "Latencies": null,
+          "TotalTime": 5000389606,
+          "Iterations": 2200,
+          "Stats": {
+            "P50": 2050466,
+            "P90": 3314810,
+            "P95": 3864840,
+            "P99": 5502070,
+            "Mean": 2272461,
+            "StdDev": 879520,
+            "TPS": 439.9657173433458
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "update_bulk",
+          "Latencies": null,
+          "TotalTime": 5001562230,
+          "Iterations": 2274,
+          "Stats": {
+            "P50": 1889098,
+            "P90": 3218640,
+            "P95": 3758707,
+            "P99": 5313909,
+            "Mean": 2199166,
+            "StdDev": 806995,
+            "TPS": 454.65794394404645
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "delete_by_pk",
+          "Latencies": null,
+          "TotalTime": 5001411356,
+          "Iterations": 3792,
+          "Stats": {
+            "P50": 1194966,
+            "P90": 1912875,
+            "P95": 2465172,
+            "P99": 3771482,
+            "Mean": 1318676,
+            "StdDev": 579480,
+            "TPS": 758.1859859319278
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "delete_bulk",
+          "Latencies": null,
+          "TotalTime": 5001393306,
+          "Iterations": 4898,
+          "Stats": {
+            "P50": 780848,
+            "P90": 1759791,
+            "P95": 2317359,
+            "P99": 4172998,
+            "Mean": 1020878,
+            "StdDev": 2288364,
+            "TPS": 979.327099535251
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "join_nested_loop_100_x_100",
+          "Latencies": null,
+          "TotalTime": 5000126379,
+          "Iterations": 37356,
+          "Stats": {
+            "P50": 121524,
+            "P90": 194201,
+            "P95": 233738,
+            "P99": 428992,
+            "Mean": 133717,
+            "StdDev": 104892,
+            "TPS": 7471.0111642160155
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "join_nested_loop_1k_x_1k",
+          "Latencies": null,
+          "TotalTime": 5001283073,
+          "Iterations": 3560,
+          "Stats": {
+            "P50": 1114480,
+            "P90": 2327989,
+            "P95": 2668701,
+            "P99": 3749434,
+            "Mean": 1404536,
+            "StdDev": 647064,
+            "TPS": 711.8173372787212
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "mixed_read_write_80_20",
+          "Latencies": null,
+          "TotalTime": 5000005132,
+          "Iterations": 563056,
+          "Stats": {
+            "P50": 7174,
+            "P90": 10832,
+            "P95": 14163,
+            "P99": 32848,
+            "Mean": 8780,
+            "StdDev": 25884,
+            "TPS": 112611.08441598296
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "mixed_read_write_50_50",
+          "Latencies": null,
+          "TotalTime": 5000005422,
+          "Iterations": 608935,
+          "Stats": {
+            "P50": 6973,
+            "P90": 9374,
+            "P95": 10891,
+            "P99": 29426,
+            "Mean": 8117,
+            "StdDev": 10507,
+            "TPS": 121786.86793432041
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "create_drop_table",
+          "Latencies": null,
+          "TotalTime": 5000016427,
+          "Iterations": 717483,
+          "Stats": {
+            "P50": 5131,
+            "P90": 8745,
+            "P95": 14665,
+            "P99": 32814,
+            "Mean": 6874,
+            "StdDev": 10051,
+            "TPS": 143496.12855781923
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_with_wal",
+          "Latencies": null,
+          "TotalTime": 5004391382,
+          "Iterations": 718,
+          "Stats": {
+            "P50": 6775109,
+            "P90": 8401491,
+            "P95": 8891765,
+            "P99": 10550227,
+            "Mean": 6968755,
+            "StdDev": 1240620,
+            "TPS": 143.4739901804107
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_no_wal",
+          "Latencies": null,
+          "TotalTime": 5000010612,
+          "Iterations": 635423,
+          "Stats": {
+            "P50": 6259,
+            "P90": 8284,
+            "P95": 10998,
+            "P99": 30900,
+            "Mean": 7776,
+            "StdDev": 13671,
+            "TPS": 127084.33027621743
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_100",
+          "Latencies": null,
+          "TotalTime": 5000034399,
+          "Iterations": 649198,
+          "Stats": {
+            "P50": 6375,
+            "P90": 7999,
+            "P95": 9918,
+            "P99": 29830,
+            "Mean": 7613,
+            "StdDev": 12373,
+            "TPS": 129838.70673566542
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 5000001886,
+          "Iterations": 620372,
+          "Stats": {
+            "P50": 6488,
+            "P90": 8696,
+            "P95": 10914,
+            "P99": 31572,
+            "Mean": 7967,
+            "StdDev": 14463,
+            "TPS": 124074.35319915398
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 5000005891,
+          "Iterations": 613115,
+          "Stats": {
+            "P50": 6546,
+            "P90": 8454,
+            "P95": 10780,
+            "P99": 32058,
+            "Mean": 8060,
+            "StdDev": 15481,
+            "TPS": 122622.85552575163
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_100",
+          "Latencies": null,
+          "TotalTime": 5000015706,
+          "Iterations": 117583,
+          "Stats": {
+            "P50": 26320,
+            "P90": 77170,
+            "P95": 91153,
+            "P99": 152164,
+            "Mean": 42413,
+            "StdDev": 46041,
+            "TPS": 23516.52612988812
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 5000220845,
+          "Iterations": 13989,
+          "Stats": {
+            "P50": 285844,
+            "P90": 620853,
+            "P95": 689161,
+            "P99": 993332,
+            "Mean": 357295,
+            "StdDev": 188051,
+            "TPS": 2797.676429429788
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_scan_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 5003129038,
+          "Iterations": 1077,
+          "Stats": {
+            "P50": 4387406,
+            "P90": 5593051,
+            "P95": 6387033,
+            "P99": 9117921,
+            "Mean": 4644933,
+            "StdDev": 964562,
+            "TPS": 215.2652853484128
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_100",
+          "Latencies": null,
+          "TotalTime": 5000011625,
+          "Iterations": 1024762,
+          "Stats": {
+            "P50": 4010,
+            "P90": 5001,
+            "P95": 5975,
+            "P99": 24747,
+            "Mean": 4787,
+            "StdDev": 10400,
+            "TPS": 204951.9234867779
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_1000",
+          "Latencies": null,
+          "TotalTime": 5000001285,
+          "Iterations": 900581,
+          "Stats": {
+            "P50": 4589,
+            "P90": 5699,
+            "P95": 6890,
+            "P99": 26081,
+            "Mean": 5461,
+            "StdDev": 12986,
+            "TPS": 180116.1537101485
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "select_pk_scaling_10000",
+          "Latencies": null,
+          "TotalTime": 5000003107,
+          "Iterations": 751101,
+          "Stats": {
+            "P50": 5746,
+            "P90": 7257,
+            "P95": 8790,
+            "P99": 27960,
+            "Mean": 6567,
+            "StdDev": 9702,
+            "TPS": 150220.10665322572
+          },
+          "Errors": 0,
+          "Metadata": {}
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-06-26T12:38:23.43334074Z",
+      "os": "linux",
+      "arch": "amd64",
+      "cpu_cores": 12,
+      "go_version": "go1.25.4",
+      "results": [
+        {
+          "Name": "insert_with_wal",
+          "Latencies": null,
+          "TotalTime": 3002492498,
+          "Iterations": 367,
+          "Stats": {
+            "P50": 7898434,
+            "P90": 9780257,
+            "P95": 10633716,
+            "P99": 13048932,
+            "Mean": 8179915,
+            "StdDev": 1467407,
+            "TPS": 122.23177917828723
+          },
+          "Errors": 0,
+          "Metadata": {}
+        },
+        {
+          "Name": "insert_wal_async_100ms",
+          "Latencies": null,
+          "TotalTime": 3005865496,
+          "Iterations": 84821,
+          "Stats": {
+            "P50": 22895,
+            "P90": 54420,
+            "P95": 74620,
+            "P99": 175217,
+            "Mean": 35256,
+            "StdDev": 192897,
+            "TPS": 28218.49484378924
+          },
+          "Errors": 0,
+          "Metadata": {}
+        }
+      ]
     }
   ]
 }
