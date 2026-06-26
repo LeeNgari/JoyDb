@@ -106,23 +106,33 @@ func writeTable(buf *bytes.Buffer, name string, table *schema.Table) error {
 	binary.LittleEndian.PutUint64(nridBuf, uint64(table.NextRID))
 	buf.Write(nridBuf)
 
-	// Get live rows
-	liveRows := table.LiveRowsUnsafe()
+	// Count live rows (zero-copy)
+	var count uint64
+	table.ForEachLiveRowUnsafe(func(row data.Row) bool {
+		count++
+		return true
+	})
 
 	// Rows Count
 	rcBuf := make([]byte, 8)
-	binary.LittleEndian.PutUint64(rcBuf, uint64(len(liveRows)))
+	binary.LittleEndian.PutUint64(rcBuf, count)
 	buf.Write(rcBuf)
 
-	for _, row := range liveRows {
+	var serializeErr error
+	table.ForEachLiveRowUnsafe(func(row data.Row) bool {
 		rowBytes, err := row.Serialize()
 		if err != nil {
-			return err
+			serializeErr = err
+			return false
 		}
 		rlBuf := make([]byte, 4)
 		binary.LittleEndian.PutUint32(rlBuf, uint32(len(rowBytes)))
 		buf.Write(rlBuf)
 		buf.Write(rowBytes)
+		return true
+	})
+	if serializeErr != nil {
+		return serializeErr
 	}
 
 	return nil

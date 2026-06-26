@@ -62,42 +62,16 @@ func (t *Table) RUnlock() {
 }
 
 // LiveRows returns a safe copy of all active rows (excluding tombstones),
-// sorted by RID for deterministic ordering.
+// sorted by PK for deterministic ordering.
 func (t *Table) LiveRows() []data.Row {
 	t.RLock()
 	defer t.RUnlock()
-	return t.LiveRowsUnsafe()
-}
-
-// LiveRowsUnsafe iterates RowsByRID, skips tombstones, and sorts by RID.
-// It returns copies of the rows to prevent caller mutation from violating isolation.
-// IMPORTANT: Must be called while holding at least a read lock!
-func (t *Table) LiveRowsUnsafe() []data.Row {
-	if t == nil || t.RowsByRID == nil {
-		return nil
-	}
-
-	// Fast path: use B+Tree leaf traversal for ordered iteration
-	// Avoids O(N log N) sort — leaves are already in PK order
-	if t.PKIndex != nil && t.PKIndex.Size() > 0 {
-		rids := t.PKIndex.All() // O(N) leaf walk, pre-sorted
-		result := make([]data.Row, 0, len(rids))
-		for _, rid := range rids {
-			row, ok := t.RowsByRID[rid]
-			if ok && !row.Deleted {
-				result = append(result, row.Copy())
-			}
-		}
-		return result
-	}
-
-	// Fallback: tables without PKIndex (temp join tables, etc.)
+	
 	result := make([]data.Row, 0, len(t.RowsByRID))
-	for _, row := range t.RowsByRID {
-		if !row.Deleted {
-			result = append(result, row.Copy())
-		}
-	}
+	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
+		result = append(result, row.Copy())
+		return true
+	})
 	return result
 }
 
@@ -327,7 +301,12 @@ func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 		slog.Debug("SelectAll operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
-	return t.LiveRowsUnsafe()
+	result := make([]data.Row, 0, len(t.RowsByRID))
+	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
+		result = append(result, row.Copy())
+		return true
+	})
+	return result
 }
 
 // Select returns rows that match the given predicate
