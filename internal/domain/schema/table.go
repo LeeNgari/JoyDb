@@ -3,7 +3,6 @@ package schema
 import (
 	"fmt"
 	"log/slog"
-	"sort"
 	"sync"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
@@ -77,16 +76,28 @@ func (t *Table) LiveRowsUnsafe() []data.Row {
 	if t == nil || t.RowsByRID == nil {
 		return nil
 	}
-	var result []data.Row
+
+	// Fast path: use B+Tree leaf traversal for ordered iteration
+	// Avoids O(N log N) sort — leaves are already in PK order
+	if t.PKIndex != nil && t.PKIndex.Size() > 0 {
+		rids := t.PKIndex.All() // O(N) leaf walk, pre-sorted
+		result := make([]data.Row, 0, len(rids))
+		for _, rid := range rids {
+			row, ok := t.RowsByRID[rid]
+			if ok && !row.Deleted {
+				result = append(result, row.Copy())
+			}
+		}
+		return result
+	}
+
+	// Fallback: tables without PKIndex (temp join tables, etc.)
+	result := make([]data.Row, 0, len(t.RowsByRID))
 	for _, row := range t.RowsByRID {
 		if !row.Deleted {
 			result = append(result, row.Copy())
 		}
 	}
-	// Sort by RID for deterministic ordering
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].RID < result[j].RID
-	})
 	return result
 }
 
