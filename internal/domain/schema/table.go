@@ -339,12 +339,14 @@ func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transactio
 		slog.Debug("Select operation", "table", t.Name, "tx_id", tx.TxID)
 	}
 
-	var result []data.Row
-	for _, row := range t.LiveRowsUnsafe() {
+	// Pre-allocate slice to capacity of RowsByRID to prevent reallocation overhead
+	result := make([]data.Row, 0, len(t.RowsByRID))
+	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
 		if predicate(row) {
-			result = append(result, row)
+			result = append(result, row.Copy())
 		}
-	}
+		return true
+	})
 	return result
 }
 
