@@ -15,7 +15,7 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 	// Validate foreign keys for all affected rows BEFORE any mutations or logging
 	table.RLock()
 	var rowsToValidate []struct{ oldRow, newRow data.Row }
-	for _, row := range table.LiveRowsUnsafe() {
+	table.ForEachLiveRowUnsafe(func(row data.Row) bool {
 		if node.Predicate(row) {
 			// Compute newRow
 			newRow := row.Copy()
@@ -24,7 +24,8 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 			}
 			rowsToValidate = append(rowsToValidate, struct{ oldRow, newRow data.Row }{row.Copy(), newRow})
 		}
-	}
+		return true
+	})
 	table.RUnlock()
 
 	for _, item := range rowsToValidate {
@@ -69,7 +70,7 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 
 	if ctx.WALManager != nil {
 		table.RLock()
-		for _, row := range table.LiveRowsUnsafe() {
+		table.ForEachLiveRowUnsafe(func(row data.Row) bool {
 			if node.Predicate(row) {
 				key, keyErr := table.GetPrimaryKeyValue(row)
 				if keyErr == nil {
@@ -79,7 +80,8 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 					})
 				}
 			}
-		}
+			return true
+		})
 		table.RUnlock()
 	}
 

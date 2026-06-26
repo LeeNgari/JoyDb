@@ -101,6 +101,37 @@ func (t *Table) LiveRowsUnsafe() []data.Row {
 	return result
 }
 
+// ForEachLiveRowUnsafe calls fn for each non-deleted row in PK order.
+// The row passed to fn is a direct reference — DO NOT mutate row.Data.
+// If fn returns false, iteration stops early.
+// MUST be called while holding at least a read lock.
+func (t *Table) ForEachLiveRowUnsafe(fn func(row data.Row) bool) {
+	if t == nil || t.RowsByRID == nil {
+		return
+	}
+
+	if t.PKIndex != nil && t.PKIndex.Size() > 0 {
+		rids := t.PKIndex.All()
+		for _, rid := range rids {
+			row, ok := t.RowsByRID[rid]
+			if ok && !row.Deleted {
+				if !fn(row) {
+					return
+				}
+			}
+		}
+		return
+	}
+
+	for _, row := range t.RowsByRID {
+		if !row.Deleted {
+			if !fn(row) {
+				return
+			}
+		}
+	}
+}
+
 // LiveRowCount returns the number of active rows.
 func (t *Table) LiveRowCount() int {
 	t.RLock()

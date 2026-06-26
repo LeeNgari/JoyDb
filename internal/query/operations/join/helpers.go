@@ -94,13 +94,12 @@ func buildJoinIndex(table *schema.Table, columnName string) (map[interface{}][]i
 
 	// Build temporary index
 	hashIndex := make(map[interface{}][]int64)
-	for _, row := range table.LiveRowsUnsafe() {
-		value, exists := row.Data[columnName]
-		if !exists {
-			continue // Skip NULL values
+	table.ForEachLiveRowUnsafe(func(row data.Row) bool {
+		if value, exists := row.Data[columnName]; exists {
+			hashIndex[value] = append(hashIndex[value], row.RID)
 		}
-		hashIndex[value] = append(hashIndex[value], row.RID)
-	}
+		return true
+	})
 
 	return hashIndex, false
 }

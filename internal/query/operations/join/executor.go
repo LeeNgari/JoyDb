@@ -98,16 +98,15 @@ func executeInnerJoin(
 	skippedByPredicate := 0
 
 	// Probe left table and combine matches
-	leftRows := leftTable.LiveRowsUnsafe()
-	for _, leftRow := range leftRows {
+	leftTable.ForEachLiveRowUnsafe(func(leftRow data.Row) bool {
 		leftValue, exists := leftRow.Data[leftColumn]
 		if !exists {
-			continue // Skip rows with NULL join column
+			return true // Skip rows with NULL join column
 		}
 
 		rightRIDs, found := hashIndex[leftValue]
 		if !found {
-			continue // No matches (INNER JOIN excludes)
+			return true // No matches (INNER JOIN excludes)
 		}
 
 		for _, rightRID := range rightRIDs {
@@ -124,7 +123,8 @@ func executeInnerJoin(
 
 			results = append(results, joined)
 		}
-	}
+		return true
+	})
 
 	slog.Debug("INNER JOIN completed",
 		slog.String("left_table", leftTable.Name),

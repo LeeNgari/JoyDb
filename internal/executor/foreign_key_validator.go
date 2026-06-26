@@ -40,22 +40,23 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 		} else {
 			// Slow path fallback: search all rows
 			parentTable.RLock()
-			for _, pRow := range parentTable.LiveRowsUnsafe() {
+			parentTable.ForEachLiveRowUnsafe(func(pRow data.Row) bool {
 				pVal := pRow.Data[fk.RefColumnName]
 				if pVal == val {
 					found = true
-					break
+					return false
 				}
 				// Cross-numeric type checking (e.g. int vs int64)
 				if i1, ok1 := normalizeNumeric(pVal); ok1 {
 					if i2, ok2 := normalizeNumeric(val); ok2 {
 						if i1 == i2 {
 							found = true
-							break
+							return false
 						}
 					}
 				}
-			}
+				return true
+			})
 			parentTable.RUnlock()
 		}
 
@@ -96,15 +97,15 @@ func validateDeleteFKs(tableName string, oldRow data.Row, ctx *ExecutionContext)
 			childTable.RLock()
 			conflict := false
 			// Check if any child row references this value
-			for _, cRow := range childTable.LiveRowsUnsafe() {
+			childTable.ForEachLiveRowUnsafe(func(cRow data.Row) bool {
 				childVal, cExists := cRow.Data[fk.ColumnName]
 				if !cExists || childVal == nil {
-					continue
+					return true
 				}
 
 				if childVal == parentVal {
 					conflict = true
-					break
+					return false
 				}
 
 				// Cross-numeric checking
@@ -112,11 +113,12 @@ func validateDeleteFKs(tableName string, oldRow data.Row, ctx *ExecutionContext)
 					if i2, ok2 := normalizeNumeric(parentVal); ok2 {
 						if i1 == i2 {
 							conflict = true
-							break
+							return false
 						}
 					}
 				}
-			}
+				return true
+			})
 			childTable.RUnlock()
 
 			if conflict {
