@@ -2,6 +2,22 @@
 
 *This document is a living journal of architectural decisions, tradeoffs, and lessons learned while building JoyDb. It serves as raw material for future blog posts and will be appended to throughout the project.*
 
+## Pre-Phase 1: Early Architectural Milestones
+
+Before the formal phases began, several critical architectural decisions were made that transformed JoyDb from a simple REPL toy into a robust engine.
+
+### 1. Decoupling the Engine (The Planner/Executor Shift)
+**What we did**: Initially, the REPL executed AST (Abstract Syntax Tree) nodes directly. We refactored the system into a three-tier architecture: Parser -> Planner -> Executor. We also introduced a TCP Server mode.
+**The Tradeoff**: The codebase became significantly more complex and required intermediate representations (Plan Nodes). However, this decoupling was mandatory to support optimizations. A database cannot optimize queries if it executes them while parsing them.
+
+### 2. De-JSONing the Storage Engine
+**What we did**: Removed `json.RawMessage` fields from WAL payload records and transitioned to raw `[]byte` binary serialization. `ToJSON()` became `Serialize()`.
+**The Lesson**: JSON is fantastic for debugging and terrible for database storage. It bloats file sizes and burns CPU cycles on reflection. Moving to binary serialization was the first major step toward a high-performance storage layer.
+
+### 3. WAL Concurrency and Write Ordering
+**What we did**: Discovered a critical durability bug and fixed the execution order: we now log to the WAL *before* mutating the in-memory table. We also added read locks during WAL checksum calculations, and truncated garbage bytes to handle mid-write crashes.
+**The Lesson**: Write-Ahead Logging means *Ahead*. If you mutate memory first and the WAL write fails, your database is instantly in an inconsistent state. Concurrency also breaks checksums—you cannot calculate a CRC on a file while another thread is simultaneously appending to it.
+
 ## Phase 1: Foundational Integrity
 
 ### 1. Transaction ID Consolidation
