@@ -48,15 +48,15 @@ func TestForeignKey_ValidationFlow(t *testing.T) {
 	// 3. Insert user record (id=1, name='Alice')
 	usersTable := db.Tables["users"]
 	err = usersTable.Insert(data.Row{
-		Data: map[string]interface{}{"id": int64(1), "name": "Alice"},
+		Values: []interface{}{int64(1), "Alice"},
 	}, nil)
 	assert.NoError(t, err)
 
 	// 4. Try to insert order referencing non-existent user (user_id=2) -> should fail
 	insertInvalidOrder := &plan.InsertNode{
 		TableName: "orders",
-		Row: data.Row{
-			Data: map[string]interface{}{"id": int64(10), "user_id": int64(2)},
+		RawData: map[string]interface{}{
+			"id": int64(10), "user_id": int64(2),
 		},
 	}
 	_, err = executeInsertNode(insertInvalidOrder, ctx)
@@ -68,8 +68,8 @@ func TestForeignKey_ValidationFlow(t *testing.T) {
 	// 5. Insert order referencing valid user (user_id=1) -> should succeed
 	insertValidOrder := &plan.InsertNode{
 		TableName: "orders",
-		Row: data.Row{
-			Data: map[string]interface{}{"id": int64(11), "user_id": int64(1)},
+		RawData: map[string]interface{}{
+			"id": int64(11), "user_id": int64(1),
 		},
 	}
 	_, err = executeInsertNode(insertValidOrder, ctx)
@@ -79,11 +79,12 @@ func TestForeignKey_ValidationFlow(t *testing.T) {
 	updateInvalidOrder := &plan.UpdateNode{
 		TableName: "orders",
 		Predicate: func(r data.Row) bool {
-			id, _ := normalizeNumeric(r.Data["id"])
+			if len(r.Values) == 0 { return false }
+			id, _ := normalizeNumeric(r.Values[0])
 			return id == 11
 		},
-		Updates: data.Row{
-			Data: map[string]interface{}{"user_id": int64(3)},
+		Updates: map[string]interface{}{
+			"user_id": int64(3),
 		},
 	}
 	_, err = executeUpdateNode(updateInvalidOrder, ctx)
@@ -93,7 +94,8 @@ func TestForeignKey_ValidationFlow(t *testing.T) {
 	deleteParentNode := &plan.DeleteNode{
 		TableName: "users",
 		Predicate: func(r data.Row) bool {
-			id, _ := normalizeNumeric(r.Data["id"])
+			if len(r.Values) == 0 { return false }
+			id, _ := normalizeNumeric(r.Values[0])
 			return id == 1
 		},
 	}
@@ -104,7 +106,8 @@ func TestForeignKey_ValidationFlow(t *testing.T) {
 	deleteChildNode := &plan.DeleteNode{
 		TableName: "orders",
 		Predicate: func(r data.Row) bool {
-			id, _ := normalizeNumeric(r.Data["id"])
+			if len(r.Values) == 0 { return false }
+			id, _ := normalizeNumeric(r.Values[0])
 			return id == 11
 		},
 	}

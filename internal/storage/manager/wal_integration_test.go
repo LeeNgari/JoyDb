@@ -64,7 +64,19 @@ func createTempDir(t *testing.T) string {
 // createTestRow creates a test row with the given data.
 func createTestRow(t *testing.T, values map[string]interface{}) data.Row {
 	t.Helper()
-	return data.Row{Data: values}
+	if _, hasKey := values["key"]; hasKey {
+		return data.NewRow([]interface{}{values["key"], values["value"]})
+	}
+	if _, hasProduct := values["product"]; hasProduct {
+		return data.NewRow([]interface{}{values["id"], values["user_id"], values["product"]})
+	}
+	if _, hasPrice := values["price"]; hasPrice {
+		return data.NewRow([]interface{}{values["id"], values["name"], values["price"]})
+	}
+	if _, hasName := values["name"]; hasName {
+		return data.NewRow([]interface{}{values["id"], values["name"]})
+	}
+	return data.NewRow([]interface{}{values["id"]})
 }
 
 // createTestTransaction creates a transaction for testing.
@@ -296,13 +308,13 @@ func TestReplayInsertToDatabase(t *testing.T) {
 	target := NewDatabaseReplayTarget(db)
 
 	rowMap := map[string]interface{}{"id": int64(1), "name": "Alice"}
-	rowBytes, _ := data.NewRow(rowMap).Serialize()
+	rowBytes, _ := createTestRow(t, rowMap).Serialize()
 
 	err := target.ReplayInsert("users", "1", rowBytes)
 	assert.NilError(t, err)
 
 	assert.Equal(t, db.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db.Tables["users"].LiveRows()[0].Data["name"], "Alice")
+	assert.Equal(t, db.Tables["users"].LiveRows()[0].Values[1], "Alice")
 }
 
 // TestReplayUpdateToDatabase verifies ReplayUpdate:
@@ -318,13 +330,13 @@ func TestReplayUpdateToDatabase(t *testing.T) {
 	target := NewDatabaseReplayTarget(db)
 
 	newRowMap := map[string]interface{}{"id": int64(1), "name": "Bob"}
-	newRowBytes, _ := data.NewRow(newRowMap).Serialize()
+	newRowBytes, _ := createTestRow(t, newRowMap).Serialize()
 
 	err := target.ReplayUpdate("users", "1", newRowBytes)
 	assert.NilError(t, err)
 
 	assert.Equal(t, db.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db.Tables["users"].LiveRows()[0].Data["name"], "Bob")
+	assert.Equal(t, db.Tables["users"].LiveRows()[0].Values[1], "Bob")
 }
 
 // TestReplayDeleteFromDatabase verifies ReplayDelete:
@@ -427,7 +439,7 @@ func TestRegistryRecoveryOnLoad(t *testing.T) {
 	// Note: createMinimalDatabaseFiles creates empty tables.
 	// So only recovered row should be there.
 	assert.Equal(t, loadedDB.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, loadedDB.Tables["users"].LiveRows()[0].Data["name"], "Recovered")
+	assert.Equal(t, loadedDB.Tables["users"].LiveRows()[0].Values[1], "Recovered")
 }
 
 // TestRegistrySaveAllCheckpoint verifies checkpoint on save:

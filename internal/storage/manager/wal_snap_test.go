@@ -62,9 +62,9 @@ func TestSnap_CreateAndLoad(t *testing.T) {
 			},
 		},
 	}
-	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Widget", "price": float64(9.99)}})
-	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Gadget", "price": float64(19.99)}})
-	db.Tables["products"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(3), "name": "Doohickey", "price": float64(4.50)}})
+	db.Tables["products"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Widget", "price": float64(9.99)}))
+	db.Tables["products"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Gadget", "price": float64(19.99)}))
+	db.Tables["products"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(3), "name": "Doohickey", "price": float64(4.50)}))
 
 	eng := engine.NewMemoryEngine()
 
@@ -83,8 +83,8 @@ func TestSnap_CreateAndLoad(t *testing.T) {
 	products := loadedDB.Tables["products"]
 	assert.Assert(t, products != nil)
 	assert.Equal(t, products.LiveRowCount(), 3)
-	assert.Equal(t, products.LiveRows()[0].Data["name"], "Widget")
-	assert.Equal(t, products.LiveRows()[2].Data["price"], float64(4.50))
+	assert.Equal(t, products.LiveRows()[0].Values[1], "Widget")
+	assert.Equal(t, products.LiveRows()[2].Values[2], float64(4.50))
 }
 
 // TestSnap_KeepsTwo verifies that only 2 snapshots are retained:
@@ -157,7 +157,7 @@ func TestWALSnap_CheckpointCreatesSnapshot(t *testing.T) {
 			},
 		},
 	}
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
 
 	eng := engine.NewMemoryEngine()
 	wm, err := NewWALManager(db, dbPath, dbName, true, 0, 0, nil, eng)
@@ -204,7 +204,7 @@ func TestWALSnap_RecoveryAfterCheckpoint(t *testing.T) {
 	// --- Insert row 1 and commit ---
 	tx1 := transaction.NewTransaction()
 	wm.BeginTransaction(tx1)
-	row1 := data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}}
+	row1 := createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"})
 	wm.LogInsert(tx1, db.Tables["users"], row1)
 	wm.Commit(tx1)
 	db.Tables["users"].InsertReplay(row1)
@@ -216,7 +216,7 @@ func TestWALSnap_RecoveryAfterCheckpoint(t *testing.T) {
 	// --- Insert row 2 and commit (after checkpoint) ---
 	tx2 := transaction.NewTransaction()
 	wm.BeginTransaction(tx2)
-	row2 := data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Bob"}}
+	row2 := createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Bob"})
 	wm.LogInsert(tx2, db.Tables["users"], row2)
 	wm.Commit(tx2)
 	db.Tables["users"].InsertReplay(row2)
@@ -260,7 +260,7 @@ func TestWALSnap_MultipleInsertUpdateDelete(t *testing.T) {
 	tx1 := transaction.NewTransaction()
 	wm.BeginTransaction(tx1)
 	for i := int64(1); i <= 3; i++ {
-		row := data.Row{Data: map[string]interface{}{"id": i, "name": "User"}}
+		row := createTestRow(t, map[string]interface{}{"id": i, "name": "User"})
 		wm.LogInsert(tx1, db.Tables["users"], row)
 		db.Tables["users"].InsertReplay(row)
 	}
@@ -269,15 +269,15 @@ func TestWALSnap_MultipleInsertUpdateDelete(t *testing.T) {
 	// --- Update row id=2 ---
 	tx2 := transaction.NewTransaction()
 	wm.BeginTransaction(tx2)
-	oldRow := data.Row{Data: map[string]interface{}{"id": int64(2), "name": "User"}}
-	newRow := data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Updated"}}
+	oldRow := createTestRow(t, map[string]interface{}{"id": int64(2), "name": "User"})
+	newRow := createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Updated"})
 	wm.LogUpdate(tx2, db.Tables["users"], "2", oldRow, newRow)
 	wm.Commit(tx2)
 
 	// --- Delete row id=3 ---
 	tx3 := transaction.NewTransaction()
 	wm.BeginTransaction(tx3)
-	delRow := data.Row{Data: map[string]interface{}{"id": int64(3), "name": "User"}}
+	delRow := createTestRow(t, map[string]interface{}{"id": int64(3), "name": "User"})
 	wm.LogDelete(tx3, db.Tables["users"], "3", delRow)
 	wm.Commit(tx3)
 
@@ -336,7 +336,7 @@ func TestWALSnap_SaveAllThenLoad(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Insert into memory
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "SavedUser"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "SavedUser"}))
 
 	// SaveAll triggers checkpoint → snapshot
 	tx := transaction.NewTransaction()
@@ -351,7 +351,7 @@ func TestWALSnap_SaveAllThenLoad(t *testing.T) {
 	assert.NilError(t, err)
 
 	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "SavedUser")
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Values[1], "SavedUser")
 }
 
 // TestWALSnap_WALDisabled verifies that snapshots work without WAL:
@@ -374,7 +374,7 @@ func TestWALSnap_WALDisabled(t *testing.T) {
 	assert.Assert(t, wm == nil, "WAL manager should be nil when disabled")
 
 	// Insert into memory and snapshot
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "NoWAL"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "NoWAL"}))
 	_, _, err = eng.CreateSnapshot(db, filepath.Join(tempDir, dbName))
 	assert.NilError(t, err)
 
@@ -387,7 +387,7 @@ func TestWALSnap_WALDisabled(t *testing.T) {
 	db2, _, err := reg2.GetWithWAL(dbName)
 	assert.NilError(t, err)
 	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "NoWAL")
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Values[1], "NoWAL")
 
 	// No WAL file should exist
 	walPath := filepath.Join(tempDir, dbName, "wal_000001.wal")
@@ -497,7 +497,7 @@ func TestSnap_TruncatedFile(t *testing.T) {
 			},
 		},
 	}
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1)}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1)}))
 
 	eng := engine.NewMemoryEngine()
 	_, _, err := eng.CreateSnapshot(db, dbPath)
@@ -580,7 +580,7 @@ func TestWALSnap_CrashBeforeCommitNoRecovery(t *testing.T) {
 	// Begin but don't commit
 	tx := transaction.NewTransaction()
 	wm.BeginTransaction(tx)
-	wm.LogInsert(tx, db.Tables["users"], data.Row{Data: map[string]interface{}{"id": int64(99), "name": "Ghost"}})
+	wm.LogInsert(tx, db.Tables["users"], createTestRow(t, map[string]interface{}{"id": int64(99), "name": "Ghost"}))
 	// NO Commit!
 
 	reg.CloseAll()
@@ -809,11 +809,11 @@ func TestWALSnap_SnapshotAfterMultipleCheckpoints(t *testing.T) {
 	assert.NilError(t, err)
 
 	// Insert + checkpoint 1
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "First"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "First"}))
 	wm.WriteCheckpoint(db)
 
 	// Insert more + checkpoint 2
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "name": "Second"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(2), "name": "Second"}))
 	wm.WriteCheckpoint(db)
 
 	reg.CloseAll()
@@ -937,10 +937,10 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 		},
 	}
 
-	db.Tables["users"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "name": "Alice"}})
-	db.Tables["orders"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Widget"}})
-	db.Tables["orders"].InsertReplay(data.Row{Data: map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Gadget"}})
-	db.Tables["config"].InsertReplay(data.Row{Data: map[string]interface{}{"key": "version", "value": "1.0"}})
+	db.Tables["users"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "name": "Alice"}))
+	db.Tables["orders"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Widget"}))
+	db.Tables["orders"].InsertReplay(createTestRow(t, map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Gadget"}))
+	db.Tables["config"].InsertReplay(createTestRow(t, map[string]interface{}{"key": "version", "value": "1.0"}))
 
 	eng := engine.NewMemoryEngine()
 	_, _, err := eng.CreateSnapshot(db, dbPath)
@@ -954,6 +954,6 @@ func TestWALSnap_MultipleTablesSnapshot(t *testing.T) {
 	assert.Equal(t, loaded.Tables["users"].LiveRowCount(), 1)
 	assert.Equal(t, loaded.Tables["orders"].LiveRowCount(), 2)
 	assert.Equal(t, loaded.Tables["config"].LiveRowCount(), 1)
-	assert.Equal(t, loaded.Tables["orders"].LiveRows()[1].Data["product"], "Gadget")
-	assert.Equal(t, loaded.Tables["config"].LiveRows()[0].Data["value"], "1.0")
+	assert.Equal(t, loaded.Tables["orders"].LiveRows()[1].Values[2], "Gadget")
+	assert.Equal(t, loaded.Tables["config"].LiveRows()[0].Values[1], "1.0")
 }

@@ -98,6 +98,34 @@ Recognized that real Go databases *never* use maps for row storage. We refactore
 
 ---
 
+### Phase 5.4: Zero-Allocation Reads & True Hash Joins
+**What we did**: 
+Identified that `Select` and `SelectAll` were doing a deep `row.Copy()` for every row, allocating 10,000 slices per query. We realized that JoyDB's `UpdateRow` actually deep-copies *before* mutating the storage map, meaning the map values are strictly immutable! We stripped out the final `sync.Mutex` from the row struct and removed the `row.Copy()` during scans.
+For Joins, we deleted the obsolete `createTempTable` materialization logic and rewrote the Executor to perform a **True Hash Join** directly on the raw tuple streams ($O(N+M)$).
+**The Tradeoff**:
+- **Win**: Zero-allocation scans. Scan speeds jumped by +64% (hitting ~5.4 million rows/sec). Join speeds skyrocketed by over 350% (3.6x faster). The codebase actually became simpler as we deleted the entire intermediate `join` package.
+- **Loss**: None. We achieved pure speed by utilizing the native Map properties.
+
+---
+
+## What is Missing (The Roadmap)
+
+While the engine is blazing fast, there are several key architectural milestones left to tackle:
+
+### 1. Concurrency & Compaction
+* **Central Lock Manager:** We need to implement a Lock Manager to track fine-grained row-level locks by their logical `RID` to unblock concurrent writers (replacing the table-level RWMutex).
+* **Background Vacuum Thread:** A background worker is needed to periodically scan for and compact tombstones (deleted rows) to prevent memory leaks over time.
+
+### 2. Analytical SQL (Milestone 4)
+* **Pagination:** Implement `LIMIT` and `OFFSET` inside the Parser and Planner.
+* **Aggregations:** Support for `COUNT()`, `SUM()`, and `GROUP BY` to allow for basic analytics.
+
+### 3. The Embedded SDK (Phase 6)
+* **Module Rename:** Rename the project from `mini-rdbms` to `joydb`.
+* **Public API:** Expose a clean, two-tier public API (`Store` -> `DB`) so developers can easily `import "github.com/leengari/joydb/joydb"` and use it as an embedded database in their own applications.
+
+---
+
 ## Core Engineering Themes for the Blog
 
 1. **Memory Allocation is the Enemy in Go**: 

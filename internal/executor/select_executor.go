@@ -49,11 +49,8 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 
 	// Apply projection
 	projectedRows := make([]data.Row, len(rows))
-	for i, row := range rows {
-		// Convert Row to JoinedRow for projector (ProjectJoinedRow handles qualified names)
-		joined := data.JoinedRow{Data: row.Data}
-		projectedJoined := projection.ProjectJoinedRow(joined, node.Projection)
-		projectedRows[i] = data.Row{Data: projectedJoined.Data}
+	for i, r := range rows {
+		projectedRows[i] = projection.ProjectRow(r, node.Projection, resultSchema)
 	}
 
 	return &IntermediateResult{

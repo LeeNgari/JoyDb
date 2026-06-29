@@ -2,6 +2,7 @@ package join
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
@@ -45,10 +46,13 @@ func combineRowsWithNull(
 	joined := data.NewJoinedRow()
 
 	// Add left table columns (or NULLs if leftRow is empty)
-	if len(leftRow.Data) > 0 {
-		for colName, value := range leftRow.Data {
-			qualifiedName := fmt.Sprintf("%s.%s", leftTable.Name, colName)
-			joined.Set(qualifiedName, value)
+	if len(leftRow.Values) > 0 {
+		for i, col := range leftTable.Schema.Columns {
+			qualifiedName := col.Name
+			if !strings.Contains(col.Name, ".") {
+				qualifiedName = fmt.Sprintf("%s.%s", leftTable.Name, col.Name)
+			}
+			joined.Set(qualifiedName, leftRow.Values[i])
 		}
 	} else {
 		// Add NULL for all left columns
@@ -59,10 +63,13 @@ func combineRowsWithNull(
 	}
 
 	// Add right table columns (or NULLs if rightRow is empty)
-	if len(rightRow.Data) > 0 {
-		for colName, value := range rightRow.Data {
-			qualifiedName := fmt.Sprintf("%s.%s", rightTable.Name, colName)
-			joined.Set(qualifiedName, value)
+	if len(rightRow.Values) > 0 {
+		for i, col := range rightTable.Schema.Columns {
+			qualifiedName := col.Name
+			if !strings.Contains(col.Name, ".") {
+				qualifiedName = fmt.Sprintf("%s.%s", rightTable.Name, col.Name)
+			}
+			joined.Set(qualifiedName, rightRow.Values[i])
 		}
 	} else {
 		// Add NULL for all right columns

@@ -122,7 +122,7 @@ func TestServerJSON(t *testing.T) {
 
 		foundAdmin := false
 		for _, row := range res.Rows {
-			if row.Data["username"] == "admin" {
+			if getRowMap(row, res.Columns)["username"] == "admin" {
 				foundAdmin = true
 				break
 			}

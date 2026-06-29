@@ -47,19 +47,19 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	}
 
 	// Add some rows
-	row1 := data.NewRow(map[string]interface{}{
-		"id":     int64(1),
-		"name":   "Alice",
-		"age":    30.5,
-		"active": true,
+	row1 := data.NewRow([]interface{}{
+		int64(1),
+		"Alice",
+		30.5,
+		true,
 	})
 	table.InsertReplay(row1)
 
-	row2 := data.NewRow(map[string]interface{}{
-		"id":     int64(2),
-		"name":   "Bob",
-		"age":    float64(25),
-		"active": false,
+	row2 := data.NewRow([]interface{}{
+		int64(2),
+		"Bob",
+		float64(25),
+		false,
 	})
 	table.InsertReplay(row2)
 
@@ -112,7 +112,7 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	}
 
 	r1 := loadedTable.LiveRows()[0]
-	if r1.Data["id"] != int64(1) || r1.Data["name"] != "Alice" || r1.Data["age"] != 30.5 || r1.Data["active"] != true {
-		t.Errorf("Row 1 data mismatch: %v", r1.Data)
+	if len(r1.Values) < 4 || r1.Values[0] != int64(1) || r1.Values[1] != "Alice" || r1.Values[2] != 30.5 || r1.Values[3] != true {
+		t.Errorf("Row 1 data mismatch: %v", r1.Values)
 	}
 }

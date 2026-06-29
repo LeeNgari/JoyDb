@@ -2,9 +2,7 @@ package executor
 
 import (
 	"fmt"
-	"sort"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/plan"
 )
@@ -63,13 +61,15 @@ func formatSelectResult(node *plan.SelectNode, intermediate *IntermediateResult,
 				})
 			}
 		} else {
-			// JOIN or complex result - extract from rows
-			columns = extractColumnsFromRows(intermediate.Rows)
-			for _, colName := range columns {
-				metadata = append(metadata, ColumnMetadata{
-					Name: colName,
-					Type: "TEXT", // Default for complex results
-				})
+			// JOIN or complex result - extract from schema
+			if intermediate.Schema != nil {
+				for _, col := range intermediate.Schema.Columns {
+					columns = append(columns, col.Name)
+					metadata = append(metadata, ColumnMetadata{
+						Name: col.Name,
+						Type: string(col.Type),
+					})
+				}
 			}
 		}
 	} else {
@@ -78,22 +78,17 @@ func formatSelectResult(node *plan.SelectNode, intermediate *IntermediateResult,
 			colName := colRef.Column
 			if colRef.Alias != "" {
 				colName = colRef.Alias
-			} else if colRef.Table != "" {
-				colName = fmt.Sprintf("%s.%s", colRef.Table, colRef.Column)
 			}
 			columns = append(columns, colName)
 
-			// Try to find type if table is known
-			var colType = "TEXT"
-			if hasTable && colRef.Table == node.TableName {
-				for _, c := range table.Schema.Columns {
-					if c.Name == colRef.Column {
-						colType = string(c.Type)
-						break
-					}
+			// Find column type in table if possible
+			colType := "TEXT" // Default
+			if hasTable {
+				col := findColumnInSchema(table, colRef.Column)
+				if col != nil {
+					colType = string(col.Type)
 				}
 			}
-			
 			metadata = append(metadata, ColumnMetadata{
 				Name: colName,
 				Type: colType,
@@ -105,23 +100,15 @@ func formatSelectResult(node *plan.SelectNode, intermediate *IntermediateResult,
 		Columns:  columns,
 		Metadata: metadata,
 		Rows:     intermediate.Rows,
-		Message:  fmt.Sprintf("Returned %d rows", len(intermediate.Rows)),
 	}
 }
 
-// extractColumnsFromRows extracts column names from rows
-// Used when columns aren't explicitly provided
-func extractColumnsFromRows(rows []data.Row) []string {
-	if len(rows) == 0 {
-		return []string{}
+// findColumnInSchema helps locate a column definition in a table schema
+func findColumnInSchema(table *schema.Table, colName string) *schema.Column {
+	for i := range table.Schema.Columns {
+		if table.Schema.Columns[i].Name == colName {
+			return &table.Schema.Columns[i]
+		}
 	}
-
-	// Get columns from first row and sort for consistency
-	var columns []string
-	for col := range rows[0].Data {
-		columns = append(columns, col)
-	}
-	sort.Strings(columns)
-
-	return columns
+	return nil
 }

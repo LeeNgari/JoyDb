@@ -45,3 +45,12 @@ func (s *TableSchema) Validate() error {
 	}
 	return nil
 }
+
+// ColumnNames returns a slice of column names in schema order.
+func (s *TableSchema) ColumnNames() []string {
+	names := make([]string, len(s.Columns))
+	for i := range s.Columns {
+		names[i] = s.Columns[i].Name
+	}
+	return names
+}

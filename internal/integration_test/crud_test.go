@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
@@ -42,18 +43,25 @@ func TestCRUDOperations(t *testing.T) {
 		allRows := usersTable.SelectAll(tx)
 		var rows []data.Row
 		for _, row := range allRows {
-			rows = append(rows, projection.ProjectRow(row, proj, usersTable.Name))
+			rows = append(rows, projection.ProjectRow(row, proj, usersTable.Schema))
 		}
 		
 		if len(rows) == 0 {
 			t.Error("Expected rows, got none")
 		}
 
+		projSchema := &schema.TableSchema{
+			Columns: []schema.Column{
+				{Name: "id", Type: schema.ColumnTypeInt},
+				{Name: "username", Type: schema.ColumnTypeText},
+			},
+		}
+
 		// Verify only projected columns exist
 		for i, row := range rows {
-			testutil.AssertColumnExists(t, row, "id", "Row "+string(rune(i)))
-			testutil.AssertColumnExists(t, row, "username", "Row "+string(rune(i)))
-			testutil.AssertColumnNotExists(t, row, "email", "Row "+string(rune(i)))
+			testutil.AssertColumnExists(t, row, projSchema, "id", "Row "+string(rune(i)))
+			testutil.AssertColumnExists(t, row, projSchema, "username", "Row "+string(rune(i)))
+			testutil.AssertColumnNotExists(t, row, projSchema, "email", "Row "+string(rune(i)))
 		}
 	})
 
@@ -62,7 +70,8 @@ func TestCRUDOperations(t *testing.T) {
 		defer tx.Close()
 		// Find users with specific username
 		rows := usersTable.Select(func(row data.Row) bool {
-			username, ok := row.Data["username"].(string)
+			rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+			username, ok := rMap["username"].(string)
 			return ok && username == "guest"
 		}, tx)
 
@@ -81,7 +90,7 @@ func TestCRUDOperations(t *testing.T) {
 		}
 
 		// Get the first user's ID
-		firstUserID, ok := allRows[0].Data["id"].(int64)
+		firstUserID, ok := getRowMap(allRows[0], usersTable.Schema.ColumnNames())["id"].(int64)
 		if !ok {
 			t.Fatal("First user doesn't have a valid ID")
 		}
@@ -91,13 +100,14 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Errorf("Expected to find user with id=%d", firstUserID)
 		}
-		if len(row.Data) == 0 {
+		if len(row.Values) == 0 {
 			t.Error("Expected non-nil row")
 		}
 		
 		// Verify we got the right user
-		if len(row.Data) > 0 {
-			if rowID, ok := row.Data["id"].(int64); ok && rowID != firstUserID {
+		if len(row.Values) > 0 {
+			rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+			if rowID, ok := rMap["id"].(int64); ok && rowID != firstUserID {
 				t.Errorf("Expected id=%d, got id=%d", firstUserID, rowID)
 			}
 		}
@@ -107,10 +117,7 @@ func TestCRUDOperations(t *testing.T) {
 		tx := transaction.NewTransaction()
 		defer tx.Close()
 		// Insert a new user without specifying ID (let auto-increment handle it)
-		newUser := data.NewRow(map[string]interface{}{
-			"username": "newuser",
-			"email":    "new@example.com",
-		})
+		newUser := data.NewRow([]interface{}{nil, "newuser", "new@example.com", nil})
 		
 		err := usersTable.Insert(newUser, tx)
 		testutil.AssertNoError(t, err, "Insert operation")
@@ -123,9 +130,10 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Error("Expected to find newly inserted user")
 		}
-		if len(row.Data) > 0 {
-			if username, ok := row.Data["username"].(string); !ok || username != "newuser" {
-				t.Errorf("Expected username 'newuser', got '%v'", row.Data["username"])
+		if len(row.Values) > 0 {
+			rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+			if username, ok := rMap["username"].(string); !ok || username != "newuser" {
+				t.Errorf("Expected username 'newuser', got '%v'", rMap["username"])
 			}
 		}
 	})
@@ -135,11 +143,12 @@ func TestCRUDOperations(t *testing.T) {
 		defer tx.Close()
 		// Update a user's email
 		updated, err := usersTable.Update(func(row data.Row) bool {
-			id, ok := row.Data["id"].(int64)
+			rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+			id, ok := rMap["id"].(int64)
 			return ok && id == int64(2)
-		}, data.NewRow(map[string]interface{}{
+		}, map[string]interface{}{
 			"email": "newemail@example.com",
-		}), tx)
+		}, tx)
 
 		testutil.AssertNoError(t, err, "Update operation")
 		if updated == 0 {
@@ -151,8 +160,9 @@ func TestCRUDOperations(t *testing.T) {
 		if !found {
 			t.Fatal("User not found after update")
 		}
-		if email, ok := row.Data["email"].(string); !ok || email != "newemail@example.com" {
-			t.Errorf("Expected email to be updated, got: %v", row.Data["email"])
+		rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+		if email, ok := rMap["email"].(string); !ok || email != "newemail@example.com" {
+			t.Errorf("Expected email to be updated, got: %v", rMap["email"])
 		}
 	})
 
@@ -165,7 +175,8 @@ func TestCRUDOperations(t *testing.T) {
 		
 		// Delete a specific user (use ID 1 which should exist in fresh DB)
 		deleted, err := usersTable.Delete(func(row data.Row) bool {
-			id, ok := row.Data["id"].(int64)
+			rMap := getRowMap(row, usersTable.Schema.ColumnNames())
+			id, ok := rMap["id"].(int64)
 			return ok && id == int64(1)
 		}, tx)
 		

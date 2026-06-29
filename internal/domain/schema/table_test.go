@@ -27,23 +27,23 @@ func TestTable_InsertAndAutoIncrement(t *testing.T) {
 	}
 
 	// First insert: id should auto-increment to 1
-	row1 := data.Row{Data: map[string]interface{}{"name": "Alice"}}
+	row1 := data.Row{Values: []interface{}{nil, "Alice"}}
 	err := table.Insert(row1, nil)
 	assert.NoError(t, err)
 
 	liveRows := table.LiveRows()
 	assert.Len(t, liveRows, 1)
 	assert.Equal(t, int64(1), liveRows[0].RID)
-	assert.Equal(t, int64(1), liveRows[0].Data["id"])
+	assert.Equal(t, int64(1), liveRows[0].Values[0])
 
 	// Second insert: id should auto-increment to 2
-	row2 := data.Row{Data: map[string]interface{}{"name": "Bob"}}
+	row2 := data.Row{Values: []interface{}{nil, "Bob"}}
 	err = table.Insert(row2, nil)
 	assert.NoError(t, err)
 
 	liveRows = table.LiveRows()
 	assert.Len(t, liveRows, 2)
-	assert.Equal(t, int64(2), liveRows[1].Data["id"])
+	assert.Equal(t, int64(2), liveRows[1].Values[0])
 }
 
 func TestTable_UpdateUniqueConstraints(t *testing.T) {
@@ -70,24 +70,22 @@ func TestTable_UpdateUniqueConstraints(t *testing.T) {
 
 	// Insert Bob (id=1, email="bob@gmail.com")
 	err := table.Insert(data.Row{
-		Data: map[string]interface{}{"id": int64(1), "email": "bob@gmail.com"},
+		Values: []interface{}{int64(1), "bob@gmail.com"},
 	}, nil)
 	assert.NoError(t, err)
 
 	// Insert Alice (id=2, email="alice@gmail.com")
 	err = table.Insert(data.Row{
-		Data: map[string]interface{}{"id": int64(2), "email": "alice@gmail.com"},
+		Values: []interface{}{int64(2), "alice@gmail.com"},
 	}, nil)
 	assert.NoError(t, err)
 
 	// Update Bob to have the same email as Alice -> should FAIL
 	updatePred := func(r data.Row) bool {
-		idVal, ok := normalizeToInt64(r.Data["id"])
+		idVal, ok := normalizeToInt64(r.Values[0])
 		return ok && idVal == 1
 	}
-	updates := data.Row{
-		Data: map[string]interface{}{"email": "alice@gmail.com"},
-	}
+	updates := map[string]interface{}{"email": "alice@gmail.com"}
 
 	count, err := table.Update(updatePred, updates, nil)
 	assert.Error(t, err)
@@ -104,9 +102,7 @@ func TestTable_UpdateUniqueConstraints(t *testing.T) {
 	assert.Equal(t, int64(1), row.RID)
 
 	// Update Bob to a new unique email -> should SUCCEED
-	updatesValid := data.Row{
-		Data: map[string]interface{}{"email": "bob_new@gmail.com"},
-	}
+	updatesValid := map[string]interface{}{"email": "bob_new@gmail.com"}
 	count, err = table.Update(updatePred, updatesValid, nil)
 	assert.NoError(t, err)
 	assert.Equal(t, 1, count)

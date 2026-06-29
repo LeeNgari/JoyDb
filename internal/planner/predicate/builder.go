@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/parser/ast"
 	"github.com/leengari/mini-rdbms/internal/util/types"
 )
@@ -17,15 +18,15 @@ type PredicateFunc func(data.Row) bool
 //   - Logical operators: AND, OR
 //   - Nested expressions with parentheses
 // Returns a function that tests whether a row matches the condition
-func Build(expr ast.Expression) (PredicateFunc, error) {
+func Build(expr ast.Expression, tableSchema *schema.TableSchema) (PredicateFunc, error) {
 	switch e := expr.(type) {
 	case *ast.BinaryExpression:
 		// Handle comparison expressions (col op value)
-		return buildComparison(e)
+		return buildComparison(e, tableSchema)
 		
 	case *ast.LogicalExpression:
 		// Handle logical expressions (expr AND/OR expr)
-		return buildLogical(e)
+		return buildLogical(e, tableSchema)
 		
 	default:
 		return nil, fmt.Errorf("unsupported expression type in WHERE clause: %T", expr)
@@ -33,7 +34,7 @@ func Build(expr ast.Expression) (PredicateFunc, error) {
 }
 
 // buildComparison builds a predicate for comparison expressions
-func buildComparison(binExpr *ast.BinaryExpression) (PredicateFunc, error) {
+func buildComparison(binExpr *ast.BinaryExpression, tableSchema *schema.TableSchema) (PredicateFunc, error) {
 	leftIdent, ok := binExpr.Left.(*ast.Identifier)
 	if !ok {
 		return nil, fmt.Errorf("left side of comparison must be an identifier")
@@ -46,27 +47,30 @@ func buildComparison(binExpr *ast.BinaryExpression) (PredicateFunc, error) {
 
 	// Get column name (may be qualified like "orders.amount" or unqualified like "amount")
 	colName := leftIdent.Value
-	tableName := leftIdent.Table
 	operator := binExpr.Operator
 	targetVal := rightLit.Value
 
+	colIdx := -1
+	if tableSchema != nil {
+		colIdx = tableSchema.GetColumnIndex(colName)
+		if colIdx == -1 {
+			// If not found, maybe the AST has a table alias/prefix that we should ignore for now
+			// in a single-table context. For multi-table, this gets complex, but JoyDb joins
+			// currently handle this differently or strip it in planning.
+			// Let's just try to match without table prefix if it has one.
+			// Currently JoyDb parser outputs leftIdent.Value as the column name.
+			return nil, fmt.Errorf("column %q not found in schema", colName)
+		}
+	} else {
+		return nil, fmt.Errorf("schema required to build predicate")
+	}
+
 	return func(row data.Row) bool {
-		var val interface{}
-		var ok bool
-
-		// Try qualified name first if table is specified (e.g., "orders.amount")
-		if tableName != "" {
-			qualifiedName := tableName + "." + colName
-			val, ok = row.Data[qualifiedName]
+		if colIdx == -1 || colIdx >= len(row.Values) {
+			return false
 		}
-
-		// If not found with qualified name, try unqualified (e.g., "amount")
-		if !ok {
-			val, ok = row.Data[colName]
-		}
-
-		// If still not found, return false
-		if !ok {
+		val := row.Values[colIdx]
+		if val == nil {
 			return false
 		}
 		
@@ -77,14 +81,14 @@ func buildComparison(binExpr *ast.BinaryExpression) (PredicateFunc, error) {
 
 // buildLogical builds a predicate for logical expressions (AND/OR)
 // Recursively builds predicates for left and right sub-expressions
-func buildLogical(logExpr *ast.LogicalExpression) (PredicateFunc, error) {
+func buildLogical(logExpr *ast.LogicalExpression, tableSchema *schema.TableSchema) (PredicateFunc, error) {
 	// Recursively build predicates for left and right sides
-	leftPred, err := Build(logExpr.Left)
+	leftPred, err := Build(logExpr.Left, tableSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build left predicate: %w", err)
 	}
 
-	rightPred, err := Build(logExpr.Right)
+	rightPred, err := Build(logExpr.Right, tableSchema)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build right predicate: %w", err)
 	}

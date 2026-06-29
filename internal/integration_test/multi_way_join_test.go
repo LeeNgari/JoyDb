@@ -53,17 +53,18 @@ func TestSQLMultiWayJoin(t *testing.T) {
 	// Verify columns exist in the output rows without pointers
 	for _, row := range res.Rows {
 		// Output column keys should be just users.username, orders.product, products.price
-		username, exists := row.Data["users.username"]
+		rowMap := getRowMap(row, res.Columns)
+		username, exists := rowMap["username"]
 		if !exists {
-			t.Errorf("Expected 'users.username' in result, but row only had: %+v", row.Data)
+			t.Errorf("Expected 'username' in result, but row only had: %+v", rowMap)
 		}
-		product, exists := row.Data["orders.product"]
+		product, exists := rowMap["product"]
 		if !exists {
-			t.Errorf("Expected 'orders.product' in result, but row only had: %+v", row.Data)
+			t.Errorf("Expected 'product' in result, but row only had: %+v", rowMap)
 		}
-		price, exists := row.Data["products.price"]
+		price, exists := rowMap["price"]
 		if !exists {
-			t.Errorf("Expected 'products.price' in result, but row only had: %+v", row.Data)
+			t.Errorf("Expected 'price' in result, but row only had: %+v", rowMap)
 		}
 
 		if username == "admin" {

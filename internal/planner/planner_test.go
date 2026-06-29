@@ -57,7 +57,7 @@ func TestPlanInsertColumnless(t *testing.T) {
 	}
 
 	for k, v := range expectedRow {
-		val, exists := insertNode.Row.Data[k]
+		val, exists := insertNode.RawData[k]
 		if !exists {
 			t.Errorf("Expected row to contain column %s", k)
 			continue

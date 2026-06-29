@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"sync"
 )
 
 const (
@@ -19,19 +18,15 @@ const (
 // Row represents a single table row
 // Values = cell values ordered sequentially matching the table schema
 type Row struct {
-	Values []interface{}
-	// mu is a placeholder for future row-level locking implementation
-	// Currently unused but reserved for fine-grained concurrency control
-	mu *sync.Mutex
-	RID     int64  // Immutable Record ID assigned on insert
-	Deleted bool   // Tombstone flag — true means logically deleted
+	Values  []interface{}
+	RID     int64 // Immutable Record ID assigned on insert
+	Deleted bool  // Tombstone flag — true means logically deleted
 }
 
 // NewRow creates a new Row with the given values array
 func NewRow(values []interface{}) Row {
 	return Row{
 		Values:  values,
-		mu:      &sync.Mutex{},
 		RID:     0,
 		Deleted: false,
 	}
@@ -43,7 +38,6 @@ func (r Row) Copy() Row {
 	copy(copied, r.Values)
 	return Row{
 		Values:  copied,
-		mu:      &sync.Mutex{},
 		RID:     r.RID,
 		Deleted: r.Deleted,
 	}
@@ -71,8 +65,8 @@ func (r Row) Serialize() ([]byte, error) {
 	// Pre-calculate size
 	size := 9 + 2 // 8 bytes RID + 1 byte Deleted + 2 bytes FieldCount
 	for _, v := range r.Values {
-		size += 1          // TypeTag
-		size += 4          // ValLen
+		size += 1 // TypeTag
+		size += 4 // ValLen
 		switch val := v.(type) {
 		case int, int64, float64:
 			size += 8

@@ -34,9 +34,9 @@ func TestSQLAliases(t *testing.T) {
 		}
 
 		// Verify values
-		row := res.Rows[0]
-		if row.Data["name"] != "admin" || row.Data["mail"] != "admin@example.com" {
-			t.Errorf("Values mismatch: %+v", row.Data)
+		row := getRowMap(res.Rows[0], res.Columns)
+		if row["name"] != "admin" || row["mail"] != "admin@example.com" {
+			t.Errorf("Values mismatch: %+v", row)
 		}
 	})
 
@@ -60,10 +60,10 @@ func TestSQLAliases(t *testing.T) {
 		}
 
 		// Expect Laptop (user admin) and Mouse (user admin)
-		row0 := res.Rows[0]
-		row1 := res.Rows[1]
-		if row0.Data["user"] != "admin" || row1.Data["user"] != "admin" {
-			t.Errorf("Expected users to be admin, got %v and %v", row0.Data["user"], row1.Data["user"])
+		row0 := getRowMap(res.Rows[0], res.Columns)
+		row1 := getRowMap(res.Rows[1], res.Columns)
+		if row0["user"] != "admin" || row1["user"] != "admin" {
+			t.Errorf("Expected users to be admin, got %v and %v", row0["user"], row1["user"])
 		}
 	})
 

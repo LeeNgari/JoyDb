@@ -29,30 +29,16 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 	leftTableName := extractTableName(node.Left())
 	rightTableName := extractTableName(node.Right())
 
-	// Create temporary in-memory tables from child results using the propagated schema
-	leftTable := createTempTable(leftTableName, leftResult.Rows, leftResult.Schema)
-	rightTable := createTempTable(rightTableName, rightResult.Rows, rightResult.Schema)
-
-	// Execute JOIN using existing join operations
-	joinedRows, err := join.ExecuteJoin(
-		leftTable,
-		rightTable,
-		node.LeftOnCol,
-		node.RightOnCol,
-		node.JoinType,
-		nil, // No additional predicate at this level
-		nil, // No projection at this level
-		ctx.Transaction,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("JOIN execution failed: %w", err)
-	}
-
 	// Build the schema for the joined result (qualified names)
 	joinedSchema := &schema.TableSchema{
-		Columns: make([]schema.Column, 0, len(leftTable.Schema.Columns)+len(rightTable.Schema.Columns)),
+		Columns: make([]schema.Column, 0, len(leftResult.Schema.Columns)+len(rightResult.Schema.Columns)),
 	}
-	for _, col := range leftTable.Schema.Columns {
+
+	leftColIdx := -1
+	rightColIdx := -1
+
+	// Add left columns and find join column index
+	for i, col := range leftResult.Schema.Columns {
 		name := col.Name
 		if !strings.Contains(col.Name, ".") {
 			name = fmt.Sprintf("%s.%s", leftTableName, col.Name)
@@ -61,8 +47,14 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 			Name: name,
 			Type: col.Type,
 		})
+
+		if col.Name == node.LeftOnCol || strings.HasSuffix(col.Name, "."+node.LeftOnCol) {
+			leftColIdx = i
+		}
 	}
-	for _, col := range rightTable.Schema.Columns {
+
+	// Add right columns and find join column index
+	for i, col := range rightResult.Schema.Columns {
 		name := col.Name
 		if !strings.Contains(col.Name, ".") {
 			name = fmt.Sprintf("%s.%s", rightTableName, col.Name)
@@ -71,12 +63,89 @@ func executeJoinNode(node *plan.JoinNode, ctx *ExecutionContext) (*IntermediateR
 			Name: name,
 			Type: col.Type,
 		})
+
+		if col.Name == node.RightOnCol || strings.HasSuffix(col.Name, "."+node.RightOnCol) {
+			rightColIdx = i
+		}
 	}
 
-	// Convert JoinedRow back to Row
-	rows := make([]data.Row, len(joinedRows))
-	for i, jr := range joinedRows {
-		rows[i] = data.NewRow(jr.Data)
+	if leftColIdx == -1 {
+		return nil, fmt.Errorf("column '%s' not found in left side", node.LeftOnCol)
+	}
+	if rightColIdx == -1 {
+		return nil, fmt.Errorf("column '%s' not found in right side", node.RightOnCol)
+	}
+
+	var rows []data.Row
+
+	// Dual-Strategy execution:
+	// If AST ever adds inequality operators (e.g. node.Op == ">"), we will branch to Nested Loop here.
+	// Currently, JoinNode only supports equijoin, so we unconditionally use Hash Join.
+
+	// PHASE 1: Build Hash Map on the right side
+	// Key: interface{}, Value: slice of row indices in rightResult.Rows
+	hashTable := make(map[interface{}][]int)
+	for i, row := range rightResult.Rows {
+		if rightColIdx < len(row.Values) && row.Values[rightColIdx] != nil {
+			key := row.Values[rightColIdx]
+			hashTable[key] = append(hashTable[key], i)
+		}
+	}
+
+	// PHASE 2: Probe with left side
+	rightMatched := make(map[int]bool)
+
+	for _, leftRow := range leftResult.Rows {
+		var leftKey interface{}
+		if leftColIdx < len(leftRow.Values) {
+			leftKey = leftRow.Values[leftColIdx]
+		}
+
+		if leftKey == nil {
+			if node.JoinType == join.JoinTypeLeft || node.JoinType == join.JoinTypeFull {
+				// Emit left row with null right values
+				newVals := make([]interface{}, len(joinedSchema.Columns))
+				copy(newVals[:len(leftRow.Values)], leftRow.Values)
+				rows = append(rows, data.NewRow(newVals))
+			}
+			continue
+		}
+
+		rightIndices, found := hashTable[leftKey]
+		if found {
+			for _, rIdx := range rightIndices {
+				if node.JoinType == join.JoinTypeRight || node.JoinType == join.JoinTypeFull {
+					rightMatched[rIdx] = true
+				}
+				rightRow := rightResult.Rows[rIdx]
+
+				// Combine row values
+				newVals := make([]interface{}, len(joinedSchema.Columns))
+				copy(newVals[:len(leftRow.Values)], leftRow.Values)
+				for j, rightVal := range rightRow.Values {
+					newVals[len(leftRow.Values)+j] = rightVal
+				}
+				rows = append(rows, data.NewRow(newVals))
+			}
+		} else if node.JoinType == join.JoinTypeLeft || node.JoinType == join.JoinTypeFull {
+			// No match, emit left row with null right values
+			newVals := make([]interface{}, len(joinedSchema.Columns))
+			copy(newVals[:len(leftRow.Values)], leftRow.Values)
+			rows = append(rows, data.NewRow(newVals))
+		}
+	}
+
+	// PHASE 3: Emit unmatched right side rows (for RIGHT and FULL joins)
+	if node.JoinType == join.JoinTypeRight || node.JoinType == join.JoinTypeFull {
+		for i, rightRow := range rightResult.Rows {
+			if !rightMatched[i] {
+				newVals := make([]interface{}, len(joinedSchema.Columns))
+				for j, rightVal := range rightRow.Values {
+					newVals[len(leftResult.Schema.Columns)+j] = rightVal
+				}
+				rows = append(rows, data.NewRow(newVals))
+			}
+		}
 	}
 
 	return &IntermediateResult{
@@ -103,33 +172,4 @@ func extractTableName(node plan.Node) string {
 	default:
 		return "temp_table"
 	}
-}
-
-// createTempTable creates an in-memory table from rows and explicit schema
-func createTempTable(tableName string, rows []data.Row, tableSchema *schema.TableSchema) *schema.Table {
-	if tableSchema == nil {
-		// Fallback for nodes that don't provide schema (should be fixed in all nodes)
-		tableSchema = &schema.TableSchema{Columns: []schema.Column{}}
-		if len(rows) > 0 {
-			for colName := range rows[0].Data {
-				tableSchema.Columns = append(tableSchema.Columns, schema.Column{
-					Name: colName,
-					Type: schema.ColumnTypeText,
-				})
-			}
-		}
-	}
-
-	t := &schema.Table{
-		Name:      tableName,
-		Schema:    tableSchema,
-		RowsByRID: make(map[int64]data.Row),
-	}
-	var rid int64 = 1
-	for _, row := range rows {
-		row.RID = rid
-		t.RowsByRID[rid] = row
-		rid++
-	}
-	return t
 }

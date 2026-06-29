@@ -4,42 +4,43 @@ import (
 	"fmt"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 )
 
 // ProjectRow applies projection to a single row
 // Returns a new row containing only the requested columns
 // If projection is nil or SelectAll is true, returns a copy of the entire row
-func ProjectRow(row data.Row, proj *Projection, tableName string) data.Row {
+func ProjectRow(row data.Row, proj *Projection, tableSchema *schema.TableSchema) data.Row {
 	// If no projection or SELECT *, return full row
 	if proj == nil || proj.SelectAll {
 		return row.Copy()
 	}
 
-	projected := make(map[string]interface{})
+	projectedVals := make([]interface{}, len(proj.Columns))
 
-	for _, colRef := range proj.Columns {
-		// Skip columns from other tables (for JOIN queries)
-		if colRef.Table != "" && colRef.Table != tableName {
+	for i, colRef := range proj.Columns {
+		idx := -1
+		if tableSchema != nil {
+			name := colRef.Column
+			if colRef.Table != "" {
+				name = fmt.Sprintf("%s.%s", colRef.Table, colRef.Column)
+			}
+			idx = tableSchema.GetColumnIndex(name)
+			if idx == -1 {
+				// Fallback to unqualified name
+				idx = tableSchema.GetColumnIndex(colRef.Column)
+			}
+		}
+
+		if idx == -1 || idx >= len(row.Values) {
+			// Column doesn't exist in this row - skip it (nil value)
 			continue
 		}
 
-		value, exists := row.Data[colRef.Column]
-		if !exists {
-			// Column doesn't exist in this row - skip it
-			// This can happen in JOIN queries where not all columns are present
-			continue
-		}
-
-		// Use alias if provided, otherwise use column name
-		key := colRef.Column
-		if colRef.Alias != "" {
-			key = colRef.Alias
-		}
-
-		projected[key] = value
+		projectedVals[i] = row.Values[idx]
 	}
 
-	return data.NewRow(projected)
+	return data.NewRow(projectedVals)
 }
 
 // ProjectJoinedRow applies projection to a joined row

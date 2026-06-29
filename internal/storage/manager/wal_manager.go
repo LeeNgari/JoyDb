@@ -543,14 +543,14 @@ func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue []by
 
 	// Fallback linear scan if not found via index (or no index)
 	if !found {
+		pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
 		for r, row := range table.RowsByRID {
-			if !row.Deleted {
-				if pkVal, exists := row.Data[pkCol.Name]; exists {
-					if fmt.Sprintf("%v", pkVal) == key {
-						rid = r
-						found = true
-						break
-					}
+			if !row.Deleted && pkIdx != -1 && pkIdx < len(row.Values) {
+				pkVal := row.Values[pkIdx]
+				if pkVal != nil && fmt.Sprintf("%v", pkVal) == key {
+					rid = r
+					found = true
+					break
 				}
 			}
 		}
@@ -561,18 +561,37 @@ func (t *DatabaseReplayTarget) ReplayUpdate(tableName, key string, newValue []by
 
 		// Update PK index if PK column changed
 		if table.PKIndex != nil && pkCol != nil {
-			oldPK, oldExists := oldRow.Data[pkCol.Name]
-			newPK, newExists := newRow.Data[pkCol.Name]
-			if oldExists && newExists && oldPK != newPK {
-				table.PKIndex.Delete(oldPK)
-				_ = table.PKIndex.Insert(newPK, rid)
+			pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 && pkIdx < len(oldRow.Values) && pkIdx < len(newRow.Values) {
+				oldPK := oldRow.Values[pkIdx]
+				newPK := newRow.Values[pkIdx]
+				if oldPK != nil && newPK != nil && oldPK != newPK {
+					table.PKIndex.Delete(oldPK)
+					_ = table.PKIndex.Insert(newPK, rid)
+				}
 			}
 		}
 
 		// Update hash indexes
 		for colName, idx := range table.Indexes {
-			oldVal, oldExists := oldRow.Data[colName]
-			newVal, newExists := newRow.Data[colName]
+			colIdx := table.Schema.GetColumnIndex(colName)
+			if colIdx == -1 {
+				continue
+			}
+
+			var oldVal interface{}
+			var oldExists bool
+			if colIdx < len(oldRow.Values) {
+				oldVal = oldRow.Values[colIdx]
+				oldExists = oldVal != nil
+			}
+
+			var newVal interface{}
+			var newExists bool
+			if colIdx < len(newRow.Values) {
+				newVal = newRow.Values[colIdx]
+				newExists = newVal != nil
+			}
 
 			if oldExists && newExists && oldVal == newVal {
 				continue
@@ -638,15 +657,15 @@ func (t *DatabaseReplayTarget) ReplayDelete(tableName, key string) error {
 
 	// Fallback linear scan
 	if !found {
+		pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
 		for r, row := range table.RowsByRID {
-			if !row.Deleted {
-				if val, exists := row.Data[pkCol.Name]; exists {
-					if fmt.Sprintf("%v", val) == key {
-						rid = r
-						found = true
-						pkVal = val
-						break
-					}
+			if !row.Deleted && pkIdx != -1 && pkIdx < len(row.Values) {
+				val := row.Values[pkIdx]
+				if val != nil && fmt.Sprintf("%v", val) == key {
+					rid = r
+					found = true
+					pkVal = val
+					break
 				}
 			}
 		}
@@ -666,18 +685,22 @@ func (t *DatabaseReplayTarget) ReplayDelete(tableName, key string) error {
 
 		// Remove from hash indexes
 		for colName, idx := range table.Indexes {
-			if val, exists := row.Data[colName]; exists {
-				if rids, ok := idx.Data[val]; ok {
-					var newList []int64
-					for _, r := range rids {
-						if r != rid {
-							newList = append(newList, r)
+			colIdx := table.Schema.GetColumnIndex(colName)
+			if colIdx != -1 && colIdx < len(row.Values) {
+				val := row.Values[colIdx]
+				if val != nil {
+					if rids, ok := idx.Data[val]; ok {
+						var newList []int64
+						for _, r := range rids {
+							if r != rid {
+								newList = append(newList, r)
+							}
 						}
-					}
-					if len(newList) == 0 {
-						delete(idx.Data, val)
-					} else {
-						idx.Data[val] = newList
+						if len(newList) == 0 {
+							delete(idx.Data, val)
+						} else {
+							idx.Data[val] = newList
+						}
 					}
 				}
 			}
@@ -767,6 +790,14 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 		}
 
 		newCols := make([]schema.Column, 0, len(table.Schema.Columns))
+		colIdx := -1
+		for idx, c := range table.Schema.Columns {
+			if c.Name == col.Name {
+				colIdx = idx
+				break
+			}
+		}
+
 		for _, c := range table.Schema.Columns {
 			if c.Name != col.Name {
 				newCols = append(newCols, c)
@@ -774,13 +805,17 @@ func (t *DatabaseReplayTarget) ReplayAlterTable(name string, op uint8, colDesc [
 		}
 		table.Schema.Columns = newCols
 
-		for rid, row := range table.RowsByRID {
-			if row.Deleted {
-				continue
+		if colIdx != -1 {
+			for rid, row := range table.RowsByRID {
+				if row.Deleted {
+					continue
+				}
+				newRow := row.Copy() // Deep copy for isolation
+				if colIdx < len(newRow.Values) {
+					newRow.Values = append(newRow.Values[:colIdx], newRow.Values[colIdx+1:]...)
+				}
+				table.RowsByRID[rid] = newRow
 			}
-			newRow := row.Copy() // Deep copy for isolation
-			delete(newRow.Data, col.Name)
-			table.RowsByRID[rid] = newRow
 		}
 
 		table.MarkDirtyUnsafe()

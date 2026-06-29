@@ -31,10 +31,11 @@ func executeIndexScan(node *plan.IndexScanNode, ctx *ExecutionContext) (*Interme
 			rids = append(rids, rid)
 		}
 	case ">":
+		pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
 		allRIDs := table.PKIndex.RangeFrom(node.Bound)
 		for _, rid := range allRIDs {
-			if row, found := table.RowsByRID[rid]; found && !row.Deleted {
-				if btree.ToKey(row.Data[pkCol.Name]).Compare(btree.ToKey(node.Bound)) > 0 {
+			if row, found := table.RowsByRID[rid]; found && !row.Deleted && pkIdx != -1 && pkIdx < len(row.Values) {
+				if btree.ToKey(row.Values[pkIdx]).Compare(btree.ToKey(node.Bound)) > 0 {
 					rids = append(rids, rid)
 				}
 			}
@@ -42,10 +43,11 @@ func executeIndexScan(node *plan.IndexScanNode, ctx *ExecutionContext) (*Interme
 	case ">=":
 		rids = table.PKIndex.RangeFrom(node.Bound)
 	case "<":
+		pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
 		allRIDs := table.PKIndex.RangeTo(node.Bound)
 		for _, rid := range allRIDs {
-			if row, found := table.RowsByRID[rid]; found && !row.Deleted {
-				if btree.ToKey(row.Data[pkCol.Name]).Compare(btree.ToKey(node.Bound)) < 0 {
+			if row, found := table.RowsByRID[rid]; found && !row.Deleted && pkIdx != -1 && pkIdx < len(row.Values) {
+				if btree.ToKey(row.Values[pkIdx]).Compare(btree.ToKey(node.Bound)) < 0 {
 					rids = append(rids, rid)
 				}
 			}

@@ -103,7 +103,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	var indexScan *plan.IndexScanNode
 
 	if stmt.Where != nil {
-		p, err := predicate.Build(stmt.Where)
+		p, err := predicate.Build(stmt.Where, table.Schema)
 		if err != nil {
 			return nil, err
 		}
@@ -329,7 +329,7 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 	var pred func(data.Row) bool
 	if stmt.Where != nil {
 		var err error
-		pred, err = predicate.Build(stmt.Where)
+		pred, err = predicate.Build(stmt.Where, table.Schema)
 		if err != nil {
 			return nil, err
 		}
@@ -360,7 +360,11 @@ func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.
 	var pred func(data.Row) bool
 	if stmt.Where != nil {
 		var err error
-		pred, err = predicate.Build(stmt.Where)
+		table, ok := db.Tables[tableName]
+		if !ok {
+			return nil, fmt.Errorf("table not found: %s", tableName)
+		}
+		pred, err = predicate.Build(stmt.Where, table.Schema)
 		if err != nil {
 			return nil, err
 		}

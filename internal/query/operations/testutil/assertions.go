@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
 )
 
 // AssertRowCount checks if the result has the expected number of rows
@@ -23,17 +24,25 @@ func AssertColumnCount(t *testing.T, actual, expected int, context string) {
 }
 
 // AssertColumnExists checks if a column exists in a row
-func AssertColumnExists(t *testing.T, row data.Row, column, context string) {
+func AssertColumnExists(t *testing.T, row data.Row, ts *schema.TableSchema, column, context string) {
 	t.Helper()
-	if _, exists := row.Data[column]; !exists {
+	idx := -1
+	if ts != nil {
+		idx = ts.GetColumnIndex(column)
+	}
+	if idx == -1 || idx >= len(row.Values) {
 		t.Errorf("%s: expected column '%s' to exist", context, column)
 	}
 }
 
 // AssertColumnNotExists checks if a column does not exist in a row
-func AssertColumnNotExists(t *testing.T, row data.Row, column, context string) {
+func AssertColumnNotExists(t *testing.T, row data.Row, ts *schema.TableSchema, column, context string) {
 	t.Helper()
-	if _, exists := row.Data[column]; exists {
+	idx := -1
+	if ts != nil {
+		idx = ts.GetColumnIndex(column)
+	}
+	if idx != -1 && idx < len(row.Values) {
 		t.Errorf("%s: did not expect column '%s' to exist", context, column)
 	}
 }

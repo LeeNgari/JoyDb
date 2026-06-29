@@ -121,16 +121,15 @@ func PrintResult(w io.Writer, res *executor.Result) {
 
 		// Rows
 		for _, row := range res.Rows {
-			for i, col := range res.Columns {
-				val, ok := row.Data[col]
-				if !ok {
+			for i := range res.Columns {
+				var val interface{}
+				if i < len(row.Values) {
+					val = row.Values[i]
+				}
+				if val == nil {
 					fmt.Fprintf(tw, "NULL")
 				} else {
-					if val == nil {
-						fmt.Fprintf(tw, "NULL")
-					} else {
-						fmt.Fprintf(tw, "%v", val)
-					}
+					fmt.Fprintf(tw, "%v", val)
 				}
 				if i < len(res.Columns)-1 {
 					fmt.Fprintf(tw, "\t")

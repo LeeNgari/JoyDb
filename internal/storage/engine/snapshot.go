@@ -281,14 +281,22 @@ func readTable(dbPath string, dataBytes []byte, offset int) (*schema.Table, int,
 		table.RowsByRID[rid] = row
 
 		if table.PKIndex != nil && pkCol != nil {
-			if val, exists := row.Data[pkCol.Name]; exists {
-				table.PKIndex.Insert(val, rid)
+			pkIdx := table.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 && pkIdx < len(row.Values) {
+				val := row.Values[pkIdx]
+				if val != nil {
+					table.PKIndex.Insert(val, rid)
+				}
 			}
 		}
 
 		for colName, idx := range table.Indexes {
-			if val, exists := row.Data[colName]; exists {
-				idx.Data[val] = append(idx.Data[val], rid)
+			colIdx := table.Schema.GetColumnIndex(colName)
+			if colIdx != -1 && colIdx < len(row.Values) {
+				val := row.Values[colIdx]
+				if val != nil {
+					idx.Data[val] = append(idx.Data[val], rid)
+				}
 			}
 		}
 		

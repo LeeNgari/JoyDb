@@ -357,7 +357,7 @@ func TestRecoveryRestoresData(t *testing.T) {
 	assert.NilError(t, err)
 
 	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "Alice")
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Values[1], "Alice")
 }
 
 // TestRecoveryUpdateDeleteRestore tests UPDATE and DELETE recovery:
@@ -415,7 +415,7 @@ func TestRecoveryUpdateDeleteRestore(t *testing.T) {
 	assert.NilError(t, err)
 
 	assert.Equal(t, db2.Tables["users"].LiveRowCount(), 1)
-	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Data["name"], "AliceUpdated")
+	assert.Equal(t, db2.Tables["users"].LiveRows()[0].Values[1], "AliceUpdated")
 }
 
 // TestRecoveryIndexRebuild verifies indexes are rebuilt after recovery:
@@ -473,7 +473,7 @@ func TestRecoveryIndexRebuild(t *testing.T) {
 	}
 
 	assert.Assert(t, found)
-	assert.Equal(t, row.Data["name"], "Alice")
+	assert.Equal(t, row.Values[1], "Alice")
 }
 
 // =============================================================================

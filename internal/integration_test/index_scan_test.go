@@ -39,8 +39,8 @@ func TestSQLIndexScanQueries(t *testing.T) {
 		if len(res.Rows) != 1 {
 			t.Fatalf("Expected 1 row, got %d", len(res.Rows))
 		}
-		if res.Rows[0].Data["username"] != "user3" {
-			t.Errorf("Expected 'user3', got '%v'", res.Rows[0].Data["username"])
+		if getRowMap(res.Rows[0], res.Columns)["username"] != "user3" {
+			t.Errorf("Expected 'user3', got '%v'", getRowMap(res.Rows[0], res.Columns)["username"])
 		}
 	})
 
@@ -54,8 +54,8 @@ func TestSQLIndexScanQueries(t *testing.T) {
 		}
 		// Expect user4 (id 4), user5 (id 5)
 		usernames := map[string]bool{
-			res.Rows[0].Data["username"].(string): true,
-			res.Rows[1].Data["username"].(string): true,
+			getRowMap(res.Rows[0], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[1], res.Columns)["username"].(string): true,
 		}
 		if !usernames["user4"] || !usernames["user5"] {
 			t.Errorf("Expected user4 and user5, got %v", usernames)
@@ -71,9 +71,9 @@ func TestSQLIndexScanQueries(t *testing.T) {
 			t.Fatalf("Expected 3 rows, got %d", len(res.Rows))
 		}
 		usernames := map[string]bool{
-			res.Rows[0].Data["username"].(string): true,
-			res.Rows[1].Data["username"].(string): true,
-			res.Rows[2].Data["username"].(string): true,
+			getRowMap(res.Rows[0], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[1], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[2], res.Columns)["username"].(string): true,
 		}
 		if !usernames["user3"] || !usernames["user4"] || !usernames["user5"] {
 			t.Errorf("Expected user3, user4, and user5, got %v", usernames)
@@ -89,8 +89,8 @@ func TestSQLIndexScanQueries(t *testing.T) {
 			t.Fatalf("Expected 2 rows, got %d", len(res.Rows))
 		}
 		usernames := map[string]bool{
-			res.Rows[0].Data["username"].(string): true,
-			res.Rows[1].Data["username"].(string): true,
+			getRowMap(res.Rows[0], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[1], res.Columns)["username"].(string): true,
 		}
 		if !usernames["admin"] || !usernames["guest"] {
 			t.Errorf("Expected admin and guest, got %v", usernames)
@@ -106,9 +106,9 @@ func TestSQLIndexScanQueries(t *testing.T) {
 			t.Fatalf("Expected 3 rows, got %d", len(res.Rows))
 		}
 		usernames := map[string]bool{
-			res.Rows[0].Data["username"].(string): true,
-			res.Rows[1].Data["username"].(string): true,
-			res.Rows[2].Data["username"].(string): true,
+			getRowMap(res.Rows[0], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[1], res.Columns)["username"].(string): true,
+			getRowMap(res.Rows[2], res.Columns)["username"].(string): true,
 		}
 		if !usernames["admin"] || !usernames["guest"] || !usernames["user3"] {
 			t.Errorf("Expected admin, guest, and user3, got %v", usernames)

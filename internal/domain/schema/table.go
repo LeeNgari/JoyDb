@@ -20,7 +20,7 @@ type Table struct {
 	RowsByRID      map[int64]data.Row
 	NextRID        int64
 	TombstoneCount int
-	PKIndex        *btree.BPlusTree   // primary key B+Tree index (nil if no PK)
+	PKIndex        *btree.BPlusTree // primary key B+Tree index (nil if no PK)
 	Indexes        map[string]*data.Index
 	LastInsertID   int64
 	Dirty          bool // tracks if table has unsaved changes
@@ -66,7 +66,7 @@ func (t *Table) RUnlock() {
 func (t *Table) LiveRows() []data.Row {
 	t.RLock()
 	defer t.RUnlock()
-	
+
 	result := make([]data.Row, 0, len(t.RowsByRID))
 	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
 		result = append(result, row.Copy())
@@ -76,7 +76,7 @@ func (t *Table) LiveRows() []data.Row {
 }
 
 // ForEachLiveRowUnsafe calls fn for each non-deleted row in PK order.
-// The row passed to fn is a direct reference — DO NOT mutate row.Data.
+// The row passed to fn is a direct reference — DO NOT mutate row.Values.
 // If fn returns false, iteration stops early.
 // MUST be called while holding at least a read lock.
 func (t *Table) ForEachLiveRowUnsafe(fn func(row data.Row) bool) {
@@ -260,7 +260,9 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	if t.RowsByRID == nil {
 		t.RowsByRID = make(map[int64]data.Row)
 	}
-	if t.NextRID == 0 { t.NextRID = 1 }
+	if t.NextRID == 0 {
+		t.NextRID = 1
+	}
 	rid := t.NextRID
 	t.NextRID++
 	row.RID = rid
@@ -305,7 +307,8 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	return nil
 }
 
-// SelectAll returns all rows of the table
+// SelectAll returns all rows of the table.
+// Order is not guaranteed. For sorted results, use an index.
 func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 	t.RLock()
 	defer t.RUnlock()
@@ -315,14 +318,16 @@ func (t *Table) SelectAll(tx *transaction.Transaction) []data.Row {
 	}
 
 	result := make([]data.Row, 0, len(t.RowsByRID))
-	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
-		result = append(result, row.Copy())
-		return true
-	})
+	for _, row := range t.RowsByRID {
+		if !row.Deleted {
+			result = append(result, row)
+		}
+	}
 	return result
 }
 
 // Select returns rows that match the given predicate
+// Order is not guaranteed.
 func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transaction) []data.Row {
 	t.RLock()
 	defer t.RUnlock()
@@ -333,12 +338,11 @@ func (t *Table) Select(predicate func(data.Row) bool, tx *transaction.Transactio
 
 	// Pre-allocate slice to capacity of RowsByRID to prevent reallocation overhead
 	result := make([]data.Row, 0, len(t.RowsByRID))
-	t.ForEachLiveRowUnsafe(func(row data.Row) bool {
-		if predicate(row) {
-			result = append(result, row.Copy())
+	for _, row := range t.RowsByRID {
+		if !row.Deleted && predicate(row) {
+			result = append(result, row)
 		}
-		return true
-	})
+	}
 	return result
 }
 
@@ -348,7 +352,9 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 	t.RLock()
 	defer t.RUnlock()
 
-	if t.RowsByRID == nil { return data.Row{}, false }
+	if t.RowsByRID == nil {
+		return data.Row{}, false
+	}
 
 	if tx != nil {
 		slog.Debug("SelectByIndex operation", "table", t.Name, "column", colName, "tx_id", tx.TxID)
@@ -430,7 +436,9 @@ func (t *Table) Update(predicate func(data.Row) bool, updates map[string]interfa
 			}
 
 			oldValue := newRow.Values[colIdx]
-			if oldValue == newValue { continue }
+			if oldValue == newValue {
+				continue
+			}
 
 			col := &t.Schema.Columns[colIdx]
 
@@ -475,7 +483,9 @@ func (t *Table) Update(predicate func(data.Row) bool, updates map[string]interfa
 		for colName, newValue := range updates {
 			colIdx := t.Schema.GetColumnIndex(colName)
 			oldValue := newRow.Values[colIdx]
-			if oldValue == newValue { continue }
+			if oldValue == newValue {
+				continue
+			}
 
 			// Update PK index if PK column changed
 			if pkCol != nil && pkCol.Name == colName {
@@ -490,7 +500,9 @@ func (t *Table) Update(predicate func(data.Row) bool, updates map[string]interfa
 				if oldList, found := idx.Data[oldValue]; found {
 					var newList []int64
 					for _, r := range oldList {
-						if r != rid { newList = append(newList, r) }
+						if r != rid {
+							newList = append(newList, r)
+						}
 					}
 					if len(newList) == 0 {
 						delete(idx.Data, oldValue)
@@ -508,7 +520,9 @@ func (t *Table) Update(predicate func(data.Row) bool, updates map[string]interfa
 		count++
 	}
 
-	if count > 0 { t.MarkDirtyUnsafe() }
+	if count > 0 {
+		t.MarkDirtyUnsafe()
+	}
 	return count, nil
 }
 
@@ -560,7 +574,9 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 					if rids, found := idx.Data[val]; found {
 						var newList []int64
 						for _, r := range rids {
-							if r != rid { newList = append(newList, r) }
+							if r != rid {
+								newList = append(newList, r)
+							}
 						}
 						if len(newList) == 0 {
 							delete(idx.Data, val)
@@ -692,7 +708,9 @@ func (t *Table) InsertReplay(row data.Row) {
 
 	// Ensure RID is set correctly and NextRID is advanced
 	if row.RID == 0 {
-		if t.NextRID == 0 { t.NextRID = 1 }
+		if t.NextRID == 0 {
+			t.NextRID = 1
+		}
 		row.RID = t.NextRID
 		t.NextRID++
 	} else {

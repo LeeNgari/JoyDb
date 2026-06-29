@@ -44,8 +44,8 @@ func setupTestDB(t *testing.T) *schema.Database {
 		RowsByRID:    make(map[int64]data.Row),
 		Indexes:      make(map[string]*data.Index),
 	}
-	usersTable.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(1), "username": "admin", "email": "admin@example.com", "is_active": true}))
-	usersTable.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(2), "username": "guest", "email": "guest@example.com", "is_active": false}))
+	usersTable.InsertReplay(data.NewRow([]interface{}{int64(1), "admin", "admin@example.com", true}))
+	usersTable.InsertReplay(data.NewRow([]interface{}{int64(2), "guest", "guest@example.com", false}))
 	usersTable.Path = testDBPath
 	db.Tables["users"] = usersTable
 
@@ -64,8 +64,8 @@ func setupTestDB(t *testing.T) *schema.Database {
 		RowsByRID:    make(map[int64]data.Row),
 		Indexes:      make(map[string]*data.Index),
 	}
-	ordersTable.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(1), "user_id": int64(1), "product": "Laptop", "amount": float64(1200.50)}))
-	ordersTable.InsertReplay(data.NewRow(map[string]interface{}{"id": int64(2), "user_id": int64(1), "product": "Mouse", "amount": float64(25.99)}))
+	ordersTable.InsertReplay(data.NewRow([]interface{}{int64(1), int64(1), "Laptop", float64(1200.50)}))
+	ordersTable.InsertReplay(data.NewRow([]interface{}{int64(2), int64(1), "Mouse", float64(25.99)}))
 	ordersTable.Path = testDBPath
 	db.Tables["orders"] = ordersTable
 
@@ -89,4 +89,15 @@ func teardownTestDB(t *testing.T, db *schema.Database) {
 	// Save database before cleanup (optional, for debugging)
 	engine := storageEngine.NewMemoryEngine()
 	engine.CreateSnapshot(db, db.Path)
+}
+
+// getRowMap converts a slice-based row into a map representation for assertions
+func getRowMap(row data.Row, columns []string) map[string]interface{} {
+	m := make(map[string]interface{})
+	for i, col := range columns {
+		if i < len(row.Values) {
+			m[col] = row.Values[i]
+		}
+	}
+	return m
 }

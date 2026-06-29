@@ -30,12 +30,17 @@ func BuildIndexes(table *schema.Table) error {
 			Unique: col.PrimaryKey || col.Unique,
 		}
 
+		colIdx := table.Schema.GetColumnIndex(col.Name)
+		if colIdx == -1 {
+			continue
+		}
+
 		for rid, row := range table.RowsByRID {
 			if row.Deleted {
 				continue
 			}
-			val, ok := row.Data[col.Name]
-			if !ok {
+			val := row.Values[colIdx]
+			if val == nil {
 				if col.NotNull {
 					return errors.NewNotNullViolation(table.Name, col.Name, int(rid))
 				}
