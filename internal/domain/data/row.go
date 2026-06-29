@@ -17,9 +17,9 @@ const (
 )
 
 // Row represents a single table row
-// Key = column name, Value = cell value
+// Values = cell values ordered sequentially matching the table schema
 type Row struct {
-	Data map[string]interface{}
+	Values []interface{}
 	// mu is a placeholder for future row-level locking implementation
 	// Currently unused but reserved for fine-grained concurrency control
 	mu *sync.Mutex
@@ -27,10 +27,10 @@ type Row struct {
 	Deleted bool   // Tombstone flag — true means logically deleted
 }
 
-// NewRow creates a new Row with the given data
-func NewRow(data map[string]interface{}) Row {
+// NewRow creates a new Row with the given values array
+func NewRow(values []interface{}) Row {
 	return Row{
-		Data:    data,
+		Values:  values,
 		mu:      &sync.Mutex{},
 		RID:     0,
 		Deleted: false,
@@ -39,12 +39,10 @@ func NewRow(data map[string]interface{}) Row {
 
 // Copy creates a deep copy of the row to prevent mutation
 func (r Row) Copy() Row {
-	copy := make(map[string]interface{}, len(r.Data))
-	for k, v := range r.Data {
-		copy[k] = v
-	}
+	copied := make([]interface{}, len(r.Values))
+	copy(copied, r.Values)
 	return Row{
-		Data:    copy,
+		Values:  copied,
 		mu:      &sync.Mutex{},
 		RID:     r.RID,
 		Deleted: r.Deleted,
@@ -52,28 +50,27 @@ func (r Row) Copy() Row {
 }
 
 // UnmarshalJSON implements json.Unmarshaler interface
-// This allows Row to be unmarshaled from JSON as a map
+// This allows Row to be unmarshaled from JSON as an array
 func (r *Row) UnmarshalJSON(data []byte) error {
-	var m map[string]interface{}
+	var m []interface{}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return err
 	}
-	r.Data = m
+	r.Values = m
 	return nil
 }
 
 // MarshalJSON implements json.Marshaler interface
-// This allows Row to be marshaled to JSON as a map
+// This allows Row to be marshaled to JSON as an array
 func (r Row) MarshalJSON() ([]byte, error) {
-	return json.Marshal(r.Data)
+	return json.Marshal(r.Values)
 }
 
 // Serialize serializes the row to []byte using a custom binary format.
 func (r Row) Serialize() ([]byte, error) {
 	// Pre-calculate size
 	size := 9 + 2 // 8 bytes RID + 1 byte Deleted + 2 bytes FieldCount
-	for k, v := range r.Data {
-		size += 2 + len(k) // KeyLen + Key
+	for _, v := range r.Values {
 		size += 1          // TypeTag
 		size += 4          // ValLen
 		switch val := v.(type) {
@@ -106,16 +103,10 @@ func (r Row) Serialize() ([]byte, error) {
 	offset++
 
 	// FieldCount (2 bytes)
-	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(r.Data)))
+	binary.LittleEndian.PutUint16(buf[offset:], uint16(len(r.Values)))
 	offset += 2
 
-	for k, v := range r.Data {
-		// KeyLen + Key
-		binary.LittleEndian.PutUint16(buf[offset:], uint16(len(k)))
-		offset += 2
-		copy(buf[offset:], k)
-		offset += len(k)
-
+	for _, v := range r.Values {
 		// TypeTag, ValLen, Val
 		switch val := v.(type) {
 		case int:
@@ -187,21 +178,9 @@ func Deserialize(data []byte) (Row, error) {
 	fieldCount := int(binary.LittleEndian.Uint16(data[offset:]))
 	offset += 2
 
-	m := make(map[string]interface{}, fieldCount)
+	m := make([]interface{}, fieldCount)
 
 	for i := 0; i < fieldCount; i++ {
-		if offset+2 > len(data) {
-			return Row{}, fmt.Errorf("data too short for key length")
-		}
-		keyLen := int(binary.LittleEndian.Uint16(data[offset:]))
-		offset += 2
-
-		if offset+keyLen > len(data) {
-			return Row{}, fmt.Errorf("data too short for key string")
-		}
-		key := string(data[offset : offset+keyLen])
-		offset += keyLen
-
 		if offset+5 > len(data) {
 			return Row{}, fmt.Errorf("data too short for type tag and value length")
 		}
@@ -221,22 +200,22 @@ func Deserialize(data []byte) (Row, error) {
 				return Row{}, fmt.Errorf("invalid value length for int64: %d", valLen)
 			}
 			val := int64(binary.LittleEndian.Uint64(data[offset:]))
-			m[key] = val
+			m[i] = val
 		case typeTagFloat64:
 			if valLen != 8 {
 				return Row{}, fmt.Errorf("invalid value length for float64: %d", valLen)
 			}
 			val := math.Float64frombits(binary.LittleEndian.Uint64(data[offset:]))
-			m[key] = val
+			m[i] = val
 		case typeTagString:
-			m[key] = string(data[offset : offset+valLen])
+			m[i] = string(data[offset : offset+valLen])
 		case typeTagBool:
 			if valLen != 1 {
 				return Row{}, fmt.Errorf("invalid value length for bool: %d", valLen)
 			}
-			m[key] = data[offset] == 1
+			m[i] = data[offset] == 1
 		case typeTagNull:
-			m[key] = nil
+			m[i] = nil
 		default:
 			return Row{}, fmt.Errorf("unknown type tag: %d", typeTag)
 		}

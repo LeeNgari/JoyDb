@@ -16,6 +16,16 @@ type TableSchema struct {
 	ForeignKeys []ForeignKey `json:"foreign_keys,omitempty"`
 }
 
+// GetColumnIndex returns the index of the column with the given name, or -1 if not found.
+func (s *TableSchema) GetColumnIndex(name string) int {
+	for i := range s.Columns {
+		if s.Columns[i].Name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // GetPrimaryKeyColumn returns the primary key column if it exists
 func (s *TableSchema) GetPrimaryKeyColumn() *Column {
 	for i := range s.Columns {
