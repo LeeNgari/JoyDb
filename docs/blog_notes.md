@@ -91,6 +91,7 @@ Furthermore, we discovered the **Ultimate Bottleneck**: Deep-copying `map[string
 **What we did**: 
 Recognized that real Go databases *never* use maps for row storage. We refactored `Row` to use `[]interface{}` instead of `map[string]interface{}`, relying on `TableSchema` to resolve column names to array indexes at planning time.
 * **Phase 1 (Core)**: Transitioned the base `Row` struct and binary/JSON serialization. We observed that dropping the column name strings from the binary format inherently shrinks the row size on disk.
+* **Phase 2 (Operations)**: Refactored base table operations (`Insert`, `Update`, `Delete`) and Executors to perform map-to-array translation using `TableSchema.GetColumnIndex`. Data enters the executor as a map (from the parser) but is immediately packed into contiguous arrays for storage.
 **The Tradeoff**: 
 - **Win**: Slices copy in nanoseconds; maps take microseconds. Scan speeds increased exponentially. Cache locality drastically improved, and Go Garbage Collection pressure dropped by ~60%. WAL file sizes shrank by 50% because we stopped writing column names in JSON objects.
 - **Loss**: The codebase became more complex. The query planner now had to be "schema-aware" to map `WHERE age > 25` into `row.Values[2] > 25` before execution.

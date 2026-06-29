@@ -19,8 +19,11 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		if node.Predicate(row) {
 			// Compute newRow
 			newRow := row.Copy()
-			for col, val := range node.Updates.Data {
-				newRow.Data[col] = val
+			for col, val := range node.Updates {
+				idx := table.Schema.GetColumnIndex(col)
+				if idx != -1 {
+					newRow.Values[idx] = val
+				}
 			}
 			rowsToValidate = append(rowsToValidate, struct{ oldRow, newRow data.Row }{row.Copy(), newRow})
 		}
@@ -42,11 +45,14 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 			}
 			for _, fk := range childTable.Schema.ForeignKeys {
 				if fk.RefTableName == node.TableName {
-					oldVal := item.oldRow.Data[fk.RefColumnName]
-					newVal := item.newRow.Data[fk.RefColumnName]
-					if oldVal != newVal {
-						hasKeyChange = true
-						break
+					idx := table.Schema.GetColumnIndex(fk.RefColumnName)
+					if idx != -1 {
+						oldVal := item.oldRow.Values[idx]
+						newVal := item.newRow.Values[idx]
+						if oldVal != newVal {
+							hasKeyChange = true
+							break
+						}
 					}
 				}
 			}
@@ -90,8 +96,11 @@ func executeUpdateNode(node *plan.UpdateNode, ctx *ExecutionContext) (*Intermedi
 		for _, info := range oldRowInfos {
 			// Compute the new row by applying updates to old row
 			newRow := info.oldRow.Copy()
-			for col, val := range node.Updates.Data {
-				newRow.Data[col] = val
+			for col, val := range node.Updates {
+				idx := table.Schema.GetColumnIndex(col)
+				if idx != -1 {
+					newRow.Values[idx] = val
+				}
 			}
 
 			if err := ctx.WALManager.LogUpdate(ctx.Transaction, table, info.key, info.oldRow, newRow); err != nil {

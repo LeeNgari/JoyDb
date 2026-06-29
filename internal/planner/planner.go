@@ -295,7 +295,7 @@ func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.
 
 	return &plan.InsertNode{
 		TableName:   tableName,
-		Row:         data.NewRow(row),
+		RawData:     row,
 		Transaction: tx,
 	}, nil
 }
@@ -340,7 +340,7 @@ func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.
 	node := &plan.UpdateNode{
 		TableName:   tableName,
 		Predicate:   pred,
-		Updates:     data.NewRow(updates),
+		Updates:     updates,
 		Transaction: tx,
 	}
 

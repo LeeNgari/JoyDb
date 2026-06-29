@@ -170,9 +170,11 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 1. Handle auto-increment primary key FIRST (before validation)
 	var autoIncCol *Column
+	var autoIncColIdx int
 	for i := range t.Schema.Columns {
 		if t.Schema.Columns[i].AutoIncrement && t.Schema.Columns[i].PrimaryKey {
 			autoIncCol = &t.Schema.Columns[i]
+			autoIncColIdx = i
 			break
 		}
 	}
@@ -182,7 +184,7 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		nextID := t.LastInsertID + 1
 
 		// Allow user to override auto-increment
-		if val, exists := row.Data[autoIncCol.Name]; exists {
+		if val := row.Values[autoIncColIdx]; val != nil {
 			userID, ok := normalizeToInt64(val)
 			if !ok {
 				return &errors.ConstraintError{
@@ -207,13 +209,14 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 		}
 
 		// Set the auto-increment value
-		row.Data[autoIncCol.Name] = nextID
+		row.Values[autoIncColIdx] = nextID
 		t.LastInsertID = nextID
 	} else {
 		// If PK is not auto-increment, it must be provided
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			if _, exists := row.Data[pkCol.Name]; !exists {
+			pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx == -1 || row.Values[pkIdx] == nil {
 				return &errors.ConstraintError{
 					Table:      t.Name,
 					Column:     pkCol.Name,
@@ -231,8 +234,12 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 3. Check unique/primary constraints using current indexes
 	for colName, idx := range t.Indexes {
-		val, exists := row.Data[colName]
-		if !exists {
+		colIdx := t.Schema.GetColumnIndex(colName)
+		if colIdx == -1 {
+			continue
+		}
+		val := row.Values[colIdx]
+		if val == nil {
 			continue
 		}
 
@@ -263,7 +270,9 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 	if t.PKIndex != nil {
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			if pkVal, exists := row.Data[pkCol.Name]; exists {
+			pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 && row.Values[pkIdx] != nil {
+				pkVal := row.Values[pkIdx]
 				if err := t.PKIndex.Insert(pkVal, rid); err != nil {
 					return &errors.ConstraintError{
 						Table:      t.Name,
@@ -279,8 +288,12 @@ func (t *Table) Insert(mutRow data.Row, tx *transaction.Transaction) error {
 
 	// 6. Update hash indexes
 	for colName, idx := range t.Indexes {
-		if val, exists := row.Data[colName]; exists {
-			idx.Data[val] = append(idx.Data[val], rid)
+		colIdx := t.Schema.GetColumnIndex(colName)
+		if colIdx != -1 {
+			val := row.Values[colIdx]
+			if val != nil {
+				idx.Data[val] = append(idx.Data[val], rid)
+			}
 		}
 	}
 
@@ -382,7 +395,7 @@ func (t *Table) SelectByIndex(colName string, value interface{}, tx *transaction
 
 // Update modifies rows that match the given predicate
 // Returns the number of rows updated
-func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *transaction.Transaction) (int, error) {
+func (t *Table) Update(predicate func(data.Row) bool, updates map[string]interface{}, tx *transaction.Transaction) (int, error) {
 	t.Lock()
 	defer t.Unlock()
 
@@ -407,24 +420,19 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 		newRow := row.Copy() // Deep copy before mutation
 
 		// Phase 2a: Validation (check types and uniqueness before any mutations)
-		for colName, newValue := range updates.Data {
-			oldValue := newRow.Data[colName]
-			if oldValue == newValue { continue }
-
-			// Find column in schema
-			var col *Column
-			for i := range t.Schema.Columns {
-				if t.Schema.Columns[i].Name == colName {
-					col = &t.Schema.Columns[i]
-					break
-				}
-			}
-			if col == nil {
+		for colName, newValue := range updates {
+			colIdx := t.Schema.GetColumnIndex(colName)
+			if colIdx == -1 {
 				return 0, &errors.ColumnNotFoundError{
 					TableName:  t.Name,
 					ColumnName: colName,
 				}
 			}
+
+			oldValue := newRow.Values[colIdx]
+			if oldValue == newValue { continue }
+
+			col := &t.Schema.Columns[colIdx]
 
 			if err := t.validateType(col.Name, newValue, col.Type); err != nil {
 				return 0, err
@@ -464,8 +472,9 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 		}
 
 		// Phase 2b: Mutation (safe to perform because all validations passed)
-		for colName, newValue := range updates.Data {
-			oldValue := newRow.Data[colName]
+		for colName, newValue := range updates {
+			colIdx := t.Schema.GetColumnIndex(colName)
+			oldValue := newRow.Values[colIdx]
 			if oldValue == newValue { continue }
 
 			// Update PK index if PK column changed
@@ -492,7 +501,7 @@ func (t *Table) Update(predicate func(data.Row) bool, updates data.Row, tx *tran
 				idx.Data[newValue] = append(idx.Data[newValue], rid)
 			}
 
-			newRow.Data[colName] = newValue
+			newRow.Values[colIdx] = newValue
 		}
 
 		t.RowsByRID[rid] = newRow
@@ -536,23 +545,28 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 
 		// Remove from PK index
 		if pkCol != nil && t.PKIndex != nil {
-			if pkVal, exists := row.Data[pkCol.Name]; exists {
-				_ = t.PKIndex.Delete(pkVal)
+			pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 && row.Values[pkIdx] != nil {
+				_ = t.PKIndex.Delete(row.Values[pkIdx])
 			}
 		}
 
 		// Remove from hash indexes
 		for colName, idx := range t.Indexes {
-			if val, exists := row.Data[colName]; exists {
-				if rids, found := idx.Data[val]; found {
-					var newList []int64
-					for _, r := range rids {
-						if r != rid { newList = append(newList, r) }
-					}
-					if len(newList) == 0 {
-						delete(idx.Data, val)
-					} else {
-						idx.Data[val] = newList
+			colIdx := t.Schema.GetColumnIndex(colName)
+			if colIdx != -1 {
+				val := row.Values[colIdx]
+				if val != nil {
+					if rids, found := idx.Data[val]; found {
+						var newList []int64
+						for _, r := range rids {
+							if r != rid { newList = append(newList, r) }
+						}
+						if len(newList) == 0 {
+							delete(idx.Data, val)
+						} else {
+							idx.Data[val] = newList
+						}
 					}
 				}
 			}
@@ -573,11 +587,11 @@ func (t *Table) Delete(predicate func(data.Row) bool, tx *transaction.Transactio
 // validateRow validates a row against the table schema
 // Must be called while holding a lock
 func (t *Table) validateRow(row data.Row) error {
-	for _, col := range t.Schema.Columns {
-		value, exists := row.Data[col.Name]
+	for i, col := range t.Schema.Columns {
+		value := row.Values[i]
 
 		// Check NOT NULL constraint
-		if col.NotNull && !exists {
+		if col.NotNull && value == nil {
 			return &errors.ConstraintError{
 				Table:      t.Name,
 				Column:     col.Name,
@@ -587,7 +601,7 @@ func (t *Table) validateRow(row data.Row) error {
 		}
 
 		// Skip type validation if value doesn't exist
-		if !exists {
+		if value == nil {
 			continue
 		}
 
@@ -640,10 +654,11 @@ func (t *Table) rebuildIndexesUnsafe() {
 		t.PKIndex.Clear()
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			for rid, row := range t.RowsByRID {
-				if !row.Deleted {
-					if val, exists := row.Data[pkCol.Name]; exists {
-						t.PKIndex.Insert(val, rid)
+			pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 {
+				for rid, row := range t.RowsByRID {
+					if !row.Deleted && row.Values[pkIdx] != nil {
+						t.PKIndex.Insert(row.Values[pkIdx], rid)
 					}
 				}
 			}
@@ -654,8 +669,12 @@ func (t *Table) rebuildIndexesUnsafe() {
 	for rid, row := range t.RowsByRID {
 		if !row.Deleted {
 			for colName, idx := range t.Indexes {
-				if val, exists := row.Data[colName]; exists {
-					idx.Data[val] = append(idx.Data[val], rid)
+				colIdx := t.Schema.GetColumnIndex(colName)
+				if colIdx != -1 {
+					val := row.Values[colIdx]
+					if val != nil {
+						idx.Data[val] = append(idx.Data[val], rid)
+					}
 				}
 			}
 		}
@@ -689,15 +708,20 @@ func (t *Table) InsertReplay(row data.Row) {
 	if t.PKIndex != nil {
 		pkCol := t.Schema.GetPrimaryKeyColumn()
 		if pkCol != nil {
-			if val, exists := row.Data[pkCol.Name]; exists {
-				t.PKIndex.Insert(val, rid)
+			pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+			if pkIdx != -1 && row.Values[pkIdx] != nil {
+				t.PKIndex.Insert(row.Values[pkIdx], rid)
 			}
 		}
 	}
 	// Update hash indexes too
 	for colName, idx := range t.Indexes {
-		if val, exists := row.Data[colName]; exists {
-			idx.Data[val] = append(idx.Data[val], rid)
+		colIdx := t.Schema.GetColumnIndex(colName)
+		if colIdx != -1 {
+			val := row.Values[colIdx]
+			if val != nil {
+				idx.Data[val] = append(idx.Data[val], rid)
+			}
 		}
 	}
 }
@@ -729,10 +753,11 @@ func (t *Table) GetPrimaryKeyValue(row data.Row) (string, error) {
 		return "", fmt.Errorf("table %s has no primary key", t.Name)
 	}
 
-	val, exists := row.Data[pkCol.Name]
-	if !exists {
+	pkIdx := t.Schema.GetColumnIndex(pkCol.Name)
+	if pkIdx == -1 || row.Values[pkIdx] == nil {
 		return "", fmt.Errorf("row missing primary key column %s", pkCol.Name)
 	}
+	val := row.Values[pkIdx]
 
 	// Convert value to string based on type
 	switch v := val.(type) {

@@ -25,28 +25,37 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		}
 	}
 	if autoIncCol != nil {
-		if _, exists := node.Row.Data[autoIncCol.Name]; !exists {
+		if _, exists := node.RawData[autoIncCol.Name]; !exists {
 			table.Lock()
 			nextID := table.LastInsertID + 1
 			table.Unlock()
-			node.Row.Data[autoIncCol.Name] = nextID
+			node.RawData[autoIncCol.Name] = nextID
 		}
 	}
 
+	// Map the raw map to []interface{}
+	rowValues := make([]interface{}, len(table.Schema.Columns))
+	for i, col := range table.Schema.Columns {
+		if val, ok := node.RawData[col.Name]; ok {
+			rowValues[i] = val
+		}
+	}
+	mappedRow := data.Row{Values: rowValues}
+
 	// Validate foreign keys before successful insert
-	if err := validateInsertFKs(node.TableName, node.Row, ctx); err != nil {
+	if err := validateInsertFKs(node.TableName, mappedRow, ctx); err != nil {
 		return nil, err
 	}
 
 	// Log to WAL before successful insert
 	if ctx.WALManager != nil {
-		if err := ctx.WALManager.LogInsert(ctx.Transaction, table, node.Row); err != nil {
+		if err := ctx.WALManager.LogInsert(ctx.Transaction, table, mappedRow); err != nil {
 			return nil, err
 		}
 	}
 
 	// Insert the row using domain model
-	if err := table.Insert(node.Row, ctx.Transaction); err != nil {
+	if err := table.Insert(mappedRow, ctx.Transaction); err != nil {
 		// If table insert fails, the engine will call WALManager.Abort(tx)
 		return nil, err
 	}

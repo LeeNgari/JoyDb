@@ -20,8 +20,10 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 	}
 
 	for _, fk := range table.Schema.ForeignKeys {
-		val, exists := row.Data[fk.ColumnName]
-		if !exists || val == nil {
+		idx := table.Schema.GetColumnIndex(fk.ColumnName)
+		if idx == -1 { continue }
+		val := row.Values[idx]
+		if val == nil {
 			// NULL foreign keys are typically allowed in SQL (unless NOT NULL is set, which is checked by validateRow)
 			continue
 		}
@@ -40,8 +42,10 @@ func validateInsertFKs(tableName string, row data.Row, ctx *ExecutionContext) er
 		} else {
 			// Slow path fallback: search all rows
 			parentTable.RLock()
+			pIdx := parentTable.Schema.GetColumnIndex(fk.RefColumnName)
 			parentTable.ForEachLiveRowUnsafe(func(pRow data.Row) bool {
-				pVal := pRow.Data[fk.RefColumnName]
+				if pIdx == -1 { return true }
+				pVal := pRow.Values[pIdx]
 				if pVal == val {
 					found = true
 					return false
@@ -89,17 +93,22 @@ func validateDeleteFKs(tableName string, oldRow data.Row, ctx *ExecutionContext)
 
 			// This childTable has a foreign key referencing tableName!
 			// We must ensure no row in childTable references oldRow's value for RefColumnName.
-			parentVal, exists := oldRow.Data[fk.RefColumnName]
-			if !exists || parentVal == nil {
+			table, _ := ctx.Database.Tables[tableName]
+			pIdx := table.Schema.GetColumnIndex(fk.RefColumnName)
+			if pIdx == -1 { continue }
+			parentVal := oldRow.Values[pIdx]
+			if parentVal == nil {
 				continue
 			}
 
 			childTable.RLock()
 			conflict := false
+			cIdx := childTable.Schema.GetColumnIndex(fk.ColumnName)
 			// Check if any child row references this value
 			childTable.ForEachLiveRowUnsafe(func(cRow data.Row) bool {
-				childVal, cExists := cRow.Data[fk.ColumnName]
-				if !cExists || childVal == nil {
+				if cIdx == -1 { return true }
+				childVal := cRow.Values[cIdx]
+				if childVal == nil {
 					return true
 				}
 

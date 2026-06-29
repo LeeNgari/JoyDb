@@ -13,11 +13,11 @@ import (
 // - Validates type compatibility (with JSON reality)
 // - Returns ConstraintError for better error handling
 func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
-	for _, col := range table.Schema.Columns {
-		val, exists := row.Data[col.Name]
+	for i, col := range table.Schema.Columns {
+		val := row.Values[i]
 
 		// Handle missing value
-		if !exists {
+		if val == nil {
 			if col.NotNull {
 				return &errors.ConstraintError{
 					Table:      table.Name,
@@ -47,13 +47,13 @@ func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
 			// Normalize to int64 for consistency
 			switch v := val.(type) {
 			case int:
-				row.Data[col.Name] = int64(v) // normalize to int64
+				row.Values[i] = int64(v) // normalize to int64
 			case int64:
 				// already int64, perfect
 			case float64:
 				// JSON numbers come as float64
 				if v == float64(int64(v)) {
-					row.Data[col.Name] = int64(v)
+					row.Values[i] = int64(v)
 				} else {
 					return &errors.ConstraintError{
 						Table:      table.Name,

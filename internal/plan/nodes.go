@@ -154,7 +154,7 @@ func (n *SelectNode) NodeType() string {
 // InsertNode represents an INSERT operation
 type InsertNode struct {
 	TableName   string
-	Row         data.Row
+	RawData     map[string]interface{}
 	Transaction *transaction.Transaction
 
 	children []Node
@@ -180,7 +180,7 @@ func (n *InsertNode) NodeType() string {
 type UpdateNode struct {
 	TableName   string
 	Predicate   func(data.Row) bool
-	Updates     data.Row
+	Updates     map[string]interface{}
 	Transaction *transaction.Transaction
 
 	children []Node
