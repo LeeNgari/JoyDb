@@ -47,6 +47,7 @@ func runBench(b *testing.B, w benchmark.Workload) {
 	runGoBench(h, b, w)
 }
 
+func BenchmarkBaselineMap(b *testing.B)     { runBench(b, NewBaselineMap()) }
 func BenchmarkInsertSingleRow(b *testing.B) { runBench(b, NewInsertSingleRow()) }
 func BenchmarkInsertBulk100(b *testing.B)   { runBench(b, NewInsertBulk100()) }
 func BenchmarkInsertWithFK(b *testing.B)    { runBench(b, NewInsertWithFK()) }

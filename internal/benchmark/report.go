@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"text/tabwriter"
 	"time"
 )
@@ -197,12 +198,13 @@ func AppendToHistory(path string, report *Report) error {
 		return err
 	}
 
-	// Strip raw latencies from the history copy to keep the file manageable
+	// Keep sampled latencies (900 uniform + 100 worst) in the history copy
 	historyReport := *report
 	trimmedResults := make([]WorkloadResult, len(report.Results))
 	for i, r := range report.Results {
 		trimmed := r
-		trimmed.Latencies = nil // Don't store raw latency arrays in history
+		trimmed.Latencies = sampleLatencies(r.Latencies)
+
 		trimmedResults[i] = trimmed
 	}
 	historyReport.Results = trimmedResults
@@ -286,8 +288,34 @@ func WriteHistoryText(history *BenchmarkHistory, w io.Writer) error {
 				row += "\t-"
 			}
 		}
-		fmt.Fprintln(tw, row+"\t")
+		fmt.Fprintf(tw, "%s\t\n", row)
 	}
 
 	return tw.Flush()
+}
+
+// sampleLatencies reduces the slice to max 1000 items (900 uniform, 100 worst)
+func sampleLatencies(latencies []time.Duration) []time.Duration {
+	if len(latencies) <= 1000 {
+		return latencies
+	}
+
+	sorted := make([]time.Duration, len(latencies))
+	copy(sorted, latencies)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	sampled := make([]time.Duration, 0, 1000)
+	
+	nUniform := len(sorted) - 100
+	step := float64(nUniform) / 900.0
+	for i := 0; i < 900; i++ {
+		idx := int(float64(i) * step)
+		if idx >= nUniform {
+			idx = nUniform - 1
+		}
+		sampled = append(sampled, sorted[idx])
+	}
+	
+	sampled = append(sampled, sorted[len(sorted)-100:]...)
+	return sampled
 }

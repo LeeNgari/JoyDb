@@ -106,6 +106,20 @@ For Joins, we deleted the obsolete `createTempTable` materialization logic and r
 - **Win**: Zero-allocation scans. Scan speeds jumped by +64% (hitting ~5.4 million rows/sec). Join speeds skyrocketed by over 350% (3.6x faster). The codebase actually became simpler as we deleted the entire intermediate `join` package.
 - **Loss**: None. We achieved pure speed by utilizing the native Map properties.
 
+### Phase 5.5: Benchmarking Reality Check (Visibility over Ops/sec)
+**What we did**: 
+Received critical feedback that our benchmark harness was measuring raw throughput (`ops/sec`) while completely ignoring database behavior (tail latencies, garbage collection, memory overhead, and concurrency). We discovered a massive blind spot: we were explicitly turning off the GC (`debug.SetGCPercent(-1)`) during benchmarks and throwing away raw latency data to save JSON size!
+We overhauled the harness to:
+1. Capture `runtime.MemStats` (Heap Allocations and GC Pause times).
+2. Persist a statistically significant down-sampled slice of raw Latencies (900 uniform + 100 worst) so we could observe P99 tail spikes.
+3. Add true goroutine concurrency for lock contention testing.
+4. Add a `baseline_map_mutex` workload (raw Go map with RWMutex) to compare JoyDb's engine overhead against pure language bounds.
+**The Tradeoff**: 
+- **Win**: We discovered that JoyDb is actually incredibly efficient—only about ~10x slower than a raw native Go map for inserts (`~61k TPS` vs `~618k TPS`). However, we also proved the GC pauses theory: P99 tail latencies spike by 10x (0.01ms -> 0.10ms) due to garbage collection cycles. We also discovered that synchronous WAL (`fsync` per commit) plummets throughput to just 111 TPS.
+- **Loss**: JSON history files got slightly larger due to the latency arrays, but it was worth it.
+**The Lesson**: 
+A benchmark suite that throws away tail latencies and disables the garbage collector is a harness lying to itself. "Fast on average" doesn't matter for databases; tail latency under load is the only thing that matters.
+
 ---
 
 ## What is Missing (The Roadmap)

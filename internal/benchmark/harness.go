@@ -3,8 +3,9 @@ package benchmark
 import (
 	"math"
 	"runtime"
-	"runtime/debug"
 	"sort"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -95,56 +96,106 @@ func (h *BenchmarkHarness) Run(w Workload, opts RunOptions) *WorkloadResult {
 	}
 
 	// Pre-allocate slice capacity to eliminate hot-path allocation overhead
+	concurrency := opts.Concurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+
 	capacity := 100000
 	if !useDuration && opts.Iterations > 0 {
-		capacity = opts.Iterations
+		capacity = opts.Iterations / concurrency
 	}
-	latencies := make([]time.Duration, 0, capacity)
-	errors := 0
-
-	// Trigger manual GC to start with a clean heap and disable GOGC during timed loop
+	
+	// Trigger manual GC to start with a clean heap
 	runtime.GC()
-	oldGC := debug.SetGCPercent(-1)
-	defer debug.SetGCPercent(oldGC)
+	// NOTE: We DO NOT disable GC here anymore, so we can measure actual GC pauses
+
+	var startStats runtime.MemStats
+	runtime.ReadMemStats(&startStats)
 
 	startTotal := time.Now()
-	i := 0
 
-	// Note: Concurrency option is currently a no-op scaffold. 
-	// It will be activated in Phase 5 (Row-level locking).
-	// For now, everything runs in this single goroutine.
-	
-	for {
-		if !useDuration && i >= opts.Iterations {
-			break
-		}
-		if useDuration && time.Since(startTotal) >= targetDuration {
-			break
-		}
+	// Spin up N goroutines
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
 
-		startOp := time.Now()
-		err := w.Run(eng, i)
-		latencies = append(latencies, time.Since(startOp))
-		
-		if err != nil {
-			errors++
-		}
-		i++
+	// Collect results from each goroutine
+	type routineResult struct {
+		latencies []time.Duration
+		errors    int
+	}
+	results := make([]routineResult, concurrency)
+
+	var iterationCounter atomic.Int64 // only used if Iterations > 0
+
+	for g := 0; g < concurrency; g++ {
+		go func(gIdx int) {
+			defer wg.Done()
+			
+			localLatencies := make([]time.Duration, 0, capacity)
+			localErrors := 0
+			
+			for {
+				var i int
+				if !useDuration {
+					i = int(iterationCounter.Add(1)) - 1
+					if i >= opts.Iterations {
+						break
+					}
+				} else {
+					if time.Since(startTotal) >= targetDuration {
+						break
+					}
+					i = int(iterationCounter.Add(1)) - 1
+				}
+
+				startOp := time.Now()
+				err := w.Run(eng, i)
+				localLatencies = append(localLatencies, time.Since(startOp))
+				
+				if err != nil {
+					localErrors++
+				}
+			}
+			
+			results[gIdx] = routineResult{
+				latencies: localLatencies,
+				errors:    localErrors,
+			}
+		}(g)
 	}
 
+	wg.Wait()
 	totalTime := time.Since(startTotal)
 
+	var endStats runtime.MemStats
+	runtime.ReadMemStats(&endStats)
+
+	// Merge results
+	var allLatencies []time.Duration
+	var totalErrors int
+	for _, res := range results {
+		allLatencies = append(allLatencies, res.latencies...)
+		totalErrors += res.errors
+	}
+
 	// 5. Compute Stats
-	stats := computeStats(latencies, totalTime)
+	stats := computeStats(allLatencies, totalTime)
+
+	metadata := map[string]interface{}{
+		"NumGC_Cycles": endStats.NumGC - startStats.NumGC,
+		"GCPause_us":   (endStats.PauseTotalNs - startStats.PauseTotalNs) / 1000,
+		"HeapAlloc_MB": float64(endStats.HeapAlloc) / 1024.0 / 1024.0,
+	}
 
 	return &WorkloadResult{
 		Name:       w.Name(),
-		Latencies:  latencies,
+		Latencies:  allLatencies,
 		TotalTime:  totalTime,
-		Iterations: len(latencies),
+		Iterations: len(allLatencies),
 		Stats:      stats,
-		Errors:     errors,
-		Metadata:   make(map[string]interface{}),
+		Errors:     totalErrors,
+		Metadata:   metadata,
 	}
 }
 

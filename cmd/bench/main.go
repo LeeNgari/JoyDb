@@ -71,6 +71,7 @@ func main() {
 
 	// Register all available workloads
 	allWorkloads := []benchmark.Workload{
+		workloads.NewBaselineMap(),
 		workloads.NewInsertSingleRow(),
 		workloads.NewInsertBulk100(),
 		workloads.NewInsertWithFK(),
