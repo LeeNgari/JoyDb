@@ -169,6 +169,16 @@ SELECT table1.column1, table2.column2 FROM table1 JOIN table2 ON ...;
 SELECT * FROM table_name ORDER BY column [ASC|DESC] LIMIT number OFFSET number;
 ```
 
+#### With Column Aliases
+```sql
+SELECT column_name AS alias_name FROM table_name;
+```
+
+#### With Aggregations
+```sql
+SELECT COUNT(*), SUM(column), AVG(column), MIN(column), MAX(column) FROM table_name;
+```
+
 #### Examples
 ```sql
 -- Select all columns
@@ -183,6 +193,9 @@ SELECT users.username, users.email FROM users;
 -- Select with Table Aliases
 SELECT u.username, o.product FROM users u JOIN orders o ON u.id = o.user_id;
 
+-- Select with Column Aliases
+SELECT username AS name, email AS contact FROM users;
+
 -- Select with WHERE
 SELECT * FROM users WHERE id = 5;
 SELECT username, email FROM users WHERE is_active = true;
@@ -194,6 +207,10 @@ SELECT * FROM users ORDER BY score DESC, username ASC;
 -- Select with LIMIT and OFFSET (Pagination)
 SELECT * FROM users ORDER BY id LIMIT 10;
 SELECT * FROM users ORDER BY id LIMIT 10 OFFSET 20;
+
+-- Select with Aggregations
+SELECT COUNT(*) FROM users;
+SELECT COUNT(*) AS total_users, AVG(age) AS average_age FROM users;
 ```
 
 ---

@@ -14,7 +14,7 @@ type OrderByClause struct {
 // SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
 // Represents a SELECT SQL query with optional JOINs and WHERE clause
 type SelectStatement struct {
-	Fields     []*Identifier
+	Fields     []Expression
 	TableName  *Identifier
 	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
 	Joins      []*JoinClause // Optional JOIN clauses

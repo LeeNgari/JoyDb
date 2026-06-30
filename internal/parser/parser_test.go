@@ -28,11 +28,11 @@ func TestParseSelect(t *testing.T) {
 	if len(sel.Fields) != 2 {
 		t.Fatalf("Expected 2 fields, got %d", len(sel.Fields))
 	}
-	if sel.Fields[0].Value != "id" {
-		t.Errorf("Expected field 0 to be id, got %s", sel.Fields[0].Value)
+	if sel.Fields[0].(*ast.Identifier).Value != "id" {
+		t.Errorf("Expected field 0 to be id, got %s", sel.Fields[0].(*ast.Identifier).Value)
 	}
-	if sel.Fields[1].Value != "name" {
-		t.Errorf("Expected field 1 to be name, got %s", sel.Fields[1].Value)
+	if sel.Fields[1].(*ast.Identifier).Value != "name" {
+		t.Errorf("Expected field 1 to be name, got %s", sel.Fields[1].(*ast.Identifier).Value)
 	}
 
 	if sel.TableName.Value != "users" {

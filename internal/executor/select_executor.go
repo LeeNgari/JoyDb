@@ -1,7 +1,7 @@
 package executor
 
 import (
-	
+	"fmt"
 	"sort"
 	"strings"
 
@@ -99,6 +99,111 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 			}
 			return false // All order by columns equal
 		})
+	}
+
+	// Apply Aggregations
+	if len(node.Aggregates) > 0 {
+		var syntheticValues []interface{}
+		var syntheticColumns []schema.Column
+		
+		for _, agg := range node.Aggregates {
+			colIdx := -1
+			if agg.Column != "*" {
+				for idx, col := range resultSchema.Columns {
+					if col.Name == agg.Column || col.Name == "*."+agg.Column || strings.HasSuffix(col.Name, "."+agg.Column) {
+						colIdx = idx
+						break
+					}
+				}
+				if colIdx == -1 {
+					return nil, fmt.Errorf("column not found for aggregate: %s", agg.Column)
+				}
+			}
+
+			var val interface{}
+			
+			switch agg.Function {
+			case "COUNT":
+				count := 0
+				for _, r := range rows {
+					if colIdx == -1 {
+						count++ // COUNT(*)
+					} else if r.Values[colIdx] != nil {
+						count++
+					}
+				}
+				val = int64(count)
+			case "SUM":
+				var sum float64
+				for _, r := range rows {
+					if colIdx != -1 && r.Values[colIdx] != nil {
+						sum += toFloat64(r.Values[colIdx])
+					}
+				}
+				val = sum
+			case "AVG":
+				var sum float64
+				var count int
+				for _, r := range rows {
+					if colIdx != -1 && r.Values[colIdx] != nil {
+						sum += toFloat64(r.Values[colIdx])
+						count++
+					}
+				}
+				if count > 0 {
+					val = sum / float64(count)
+				} else {
+					val = nil
+				}
+			case "MIN":
+				var min interface{}
+				for _, r := range rows {
+					if colIdx != -1 && r.Values[colIdx] != nil {
+						if min == nil || compareValues(r.Values[colIdx], min) < 0 {
+							min = r.Values[colIdx]
+						}
+					}
+				}
+				val = min
+			case "MAX":
+				var max interface{}
+				for _, r := range rows {
+					if colIdx != -1 && r.Values[colIdx] != nil {
+						if max == nil || compareValues(r.Values[colIdx], max) > 0 {
+							max = r.Values[colIdx]
+						}
+					}
+				}
+				val = max
+			}
+			
+			syntheticValues = append(syntheticValues, val)
+			
+			colType := schema.ColumnTypeFloat
+			if agg.Function == "COUNT" {
+				colType = schema.ColumnTypeInt
+			}
+			syntheticColumns = append(syntheticColumns, schema.Column{
+				Name: agg.Alias,
+				Type: colType,
+			})
+		}
+		
+		syntheticRow := data.Row{
+			Values: syntheticValues,
+		}
+		
+		return &IntermediateResult{
+			Rows: []data.Row{syntheticRow},
+			Schema: &schema.TableSchema{
+				TableName: "synthetic",
+				Columns:   syntheticColumns,
+			},
+			Metadata: map[string]interface{}{
+				"row_count": 1,
+				"is_aggregate": true,
+			},
+		}, nil
 	}
 
 	// Apply projection
@@ -206,6 +311,19 @@ func compareValues(a, b interface{}) int {
 		return 0
 	default:
 		// Cannot compare unsupported types
+		return 0
+	}
+}
+
+func toFloat64(v interface{}) float64 {
+	switch val := v.(type) {
+	case int:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case float64:
+		return val
+	default:
 		return 0
 	}
 }

@@ -16,7 +16,7 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 	p.nextToken()
 
 	// Fields
-	fields, err := p.parseIdentifierList()
+	fields, err := p.parseSelectFields()
 	if err != nil {
 		return nil, err
 	}

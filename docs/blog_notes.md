@@ -122,6 +122,18 @@ A benchmark suite that throws away tail latencies and disables the garbage colle
 
 ---
 
+### Phase M4.3: Aggregations (`COUNT`, `SUM`, `MIN`, `MAX`, `AVG`)
+**What we did**: 
+- **Lexer & AST:** Introduced tokens for aggregate functions and added `AggregateFunctionCall` struct in AST. Updated `SelectStatement.Fields` from `[]*Identifier` to `[]Expression` to support function calls.
+- **Parsing:** Implemented `parseSelectFields()` to handle both identifiers and aggregate functions, supporting optional `AS` aliases for aggregates.
+- **Planner:** Updated planner to validate aggregate arguments and extract `plan.AggregateSpec` structures into the `SelectNode`.
+- **Execution:** Added a blocking loop in `select_executor.go`. When aggregates are present, the executor streams all rows, computes running accumulators, and yields a single synthetic row with a synthetic `TableSchema`. Added type coercion (`toFloat64`) to handle numbers gracefully.
+**The Tradeoff**: 
+- **Win**: We now have basic analytics capabilities.
+- **Loss**: Aggregations are pipeline breakers. They require iterating all rows in the intermediate result before emitting a single synthetic row, unlike normal projection which streams nicely.
+
+---
+
 ## What is Missing (The Roadmap)
 
 While the engine is blazing fast, there are several key architectural milestones left to tackle:

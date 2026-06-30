@@ -298,3 +298,62 @@ func TestOrderBy(t *testing.T) {
 		t.Errorf("Expected Alice then Charlie, got %v and %v", res.Rows[0].Values[0], res.Rows[1].Values[0])
 	}
 }
+
+func TestAggregations(t *testing.T) {
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
+
+	storageEng := storageEngine.NewMemoryEngine()
+	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
+	eng := engine.New(db, registry)
+
+	exec := func(t *testing.T, sql string) *executor.Result {
+		res, err := eng.Execute(sql)
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		return res
+	}
+
+	exec(t, "CREATE TABLE agg_test (id INT PRIMARY KEY, amount FLOAT, qty INT);")
+	exec(t, "INSERT INTO agg_test (id, amount, qty) VALUES (1, 10.5, 2);")
+	exec(t, "INSERT INTO agg_test (id, amount, qty) VALUES (2, 20.0, 4);")
+	exec(t, "INSERT INTO agg_test (id, amount, qty) VALUES (3, 30.5, 6);")
+	exec(t, "INSERT INTO agg_test (id, amount, qty) VALUES (4, 10.0, NULL);")
+
+	// 1. Test COUNT(*)
+	res := exec(t, "SELECT COUNT(*) FROM agg_test;")
+	if len(res.Rows) != 1 || fmt.Sprintf("%v", res.Rows[0].Values[0]) != "4" {
+		t.Errorf("Expected COUNT(*) = 4, got %v", res.Rows[0].Values)
+	}
+
+	// 2. Test COUNT(col) ignoring NULLs
+	res = exec(t, "SELECT COUNT(qty) FROM agg_test;")
+	if len(res.Rows) != 1 || fmt.Sprintf("%v", res.Rows[0].Values[0]) != "3" {
+		t.Errorf("Expected COUNT(qty) = 3, got %v", res.Rows[0].Values)
+	}
+
+	// 3. Test SUM
+	res = exec(t, "SELECT SUM(amount) FROM agg_test;")
+	if len(res.Rows) != 1 || fmt.Sprintf("%v", res.Rows[0].Values[0]) != "71" {
+		t.Errorf("Expected SUM(amount) = 71, got %v", res.Rows[0].Values)
+	}
+
+	// 4. Test AVG
+	res = exec(t, "SELECT AVG(qty) FROM agg_test;")
+	if len(res.Rows) != 1 || fmt.Sprintf("%v", res.Rows[0].Values[0]) != "4" {
+		t.Errorf("Expected AVG(qty) = 4, got %v", res.Rows[0].Values)
+	}
+
+	// 5. Test MIN and MAX with alias
+	res = exec(t, "SELECT MIN(amount) AS min_amt, MAX(amount) AS max_amt FROM agg_test;")
+	if len(res.Rows) != 1 {
+		t.Fatalf("Expected 1 row, got %d", len(res.Rows))
+	}
+	if fmt.Sprintf("%v", res.Rows[0].Values[0]) != "10" {
+		t.Errorf("Expected MIN(amount) = 10, got %v", res.Rows[0].Values[0])
+	}
+	if fmt.Sprintf("%v", res.Rows[0].Values[1]) != "30.5" {
+		t.Errorf("Expected MAX(amount) = 30.5, got %v", res.Rows[0].Values[1])
+	}
+}

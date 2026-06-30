@@ -13,6 +13,12 @@ type OrderByClause struct {
 	Desc   bool   // true if descending
 }
 
+type AggregateSpec struct {
+	Function string // e.g., "COUNT", "SUM"
+	Column   string // column name or "*"
+	Alias    string // the output column name
+}
+
 // Node is the base interface for all execution plan nodes
 type Node interface {
 	// Children returns child nodes for tree walking
@@ -134,6 +140,7 @@ type SelectNode struct {
 	OrderBy []OrderByClause
 	Limit   *int
 	Offset  *int
+	Aggregates []AggregateSpec
 
 	// Tree structure - children are JOINs or other operations
 	children []Node

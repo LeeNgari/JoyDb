@@ -57,10 +57,18 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	}
 
 	// Validate AST fields
-	for _, f := range stmt.Fields {
-		if f.Table != "" {
-			if !validTables[strings.ToLower(f.Table)] {
-				return nil, fmt.Errorf("table or alias not found: %s", f.Table)
+	for _, expr := range stmt.Fields {
+		if f, ok := expr.(*ast.Identifier); ok {
+			if f.Table != "" {
+				if !validTables[strings.ToLower(f.Table)] {
+					return nil, fmt.Errorf("table or alias not found: %s", f.Table)
+				}
+			}
+		} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+			if agg.Argument != nil && agg.Argument.Table != "" {
+				if !validTables[strings.ToLower(agg.Argument.Table)] {
+					return nil, fmt.Errorf("table or alias not found in aggregate: %s", agg.Argument.Table)
+				}
 			}
 		}
 	}
@@ -78,10 +86,18 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	}
 
 	// Substitute aliases in AST fields
-	for _, f := range stmt.Fields {
-		if f.Table != "" {
-			if realTable, ok := aliasMap[strings.ToLower(f.Table)]; ok {
-				f.Table = realTable
+	for _, expr := range stmt.Fields {
+		if f, ok := expr.(*ast.Identifier); ok {
+			if f.Table != "" {
+				if realTable, ok := aliasMap[strings.ToLower(f.Table)]; ok {
+					f.Table = realTable
+				}
+			}
+		} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+			if agg.Argument != nil && agg.Argument.Table != "" {
+				if realTable, ok := aliasMap[strings.ToLower(agg.Argument.Table)]; ok {
+					agg.Argument.Table = realTable
+				}
 			}
 		}
 	}
@@ -140,18 +156,43 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	}
 
 	var proj *projection.Projection
-	if len(stmt.Fields) == 1 && stmt.Fields[0].Value == "*" {
-		proj = projection.NewProjection()
-	} else {
+	var planAggregates []plan.AggregateSpec
+
+	if len(stmt.Fields) == 1 {
+		if f, ok := stmt.Fields[0].(*ast.Identifier); ok && f.Value == "*" {
+			proj = projection.NewProjection()
+		}
+	}
+
+	if proj == nil {
 		proj = &projection.Projection{
 			SelectAll: false,
-			Columns:   make([]projection.ColumnRef, len(stmt.Fields)),
+			Columns:   []projection.ColumnRef{},
 		}
-		for i, f := range stmt.Fields {
-			proj.Columns[i] = projection.ColumnRef{
-				Table:  f.Table,
-				Column: f.Value,
-				Alias:  f.Alias,
+		for _, expr := range stmt.Fields {
+			if f, ok := expr.(*ast.Identifier); ok {
+				proj.Columns = append(proj.Columns, projection.ColumnRef{
+					Table:  f.Table,
+					Column: f.Value,
+					Alias:  f.Alias,
+				})
+			} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+				colName := "*"
+				if agg.Argument != nil {
+					colName = agg.Argument.Value
+				}
+				
+				alias := agg.Alias
+				if alias == "" {
+					alias = fmt.Sprintf("%s(%s)", agg.Function, colName)
+				}
+				
+				planAggregates = append(planAggregates, plan.AggregateSpec{
+					Function: agg.Function,
+					Column:   colName,
+					Alias:    alias,
+				})
+				// For aggregates, we don't put them in the normal projection columns yet.
 			}
 		}
 	}
@@ -172,6 +213,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		OrderBy:     planOrderBy,
 		Limit:       stmt.Limit,
 		Offset:      stmt.Offset,
+		Aggregates:  planAggregates,
 	}
 
 	if indexScan != nil {

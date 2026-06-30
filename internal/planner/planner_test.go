@@ -91,7 +91,7 @@ func TestPlanSelectIndexScan(t *testing.T) {
 	// 1. SELECT * FROM users WHERE id > 10
 	stmt := &ast.SelectStatement{
 		TableName: &ast.Identifier{TokenLiteralValue: "users", Value: "users"},
-		Fields:    []*ast.Identifier{{TokenLiteralValue: "*", Value: "*"}},
+		Fields:    []ast.Expression{&ast.Identifier{TokenLiteralValue: "*", Value: "*"}},
 		Where: &ast.BinaryExpression{
 			Left:     &ast.Identifier{TokenLiteralValue: "id", Value: "id"},
 			Operator: ">",
@@ -125,7 +125,7 @@ func TestPlanSelectIndexScan(t *testing.T) {
 	// 2. Non-indexed column SELECT * FROM users WHERE name = 'Alice'
 	stmtSeq := &ast.SelectStatement{
 		TableName: &ast.Identifier{TokenLiteralValue: "users", Value: "users"},
-		Fields:    []*ast.Identifier{{TokenLiteralValue: "*", Value: "*"}},
+		Fields:    []ast.Expression{&ast.Identifier{TokenLiteralValue: "*", Value: "*"}},
 		Where: &ast.BinaryExpression{
 			Left:     &ast.Identifier{TokenLiteralValue: "name", Value: "name"},
 			Operator: "=",

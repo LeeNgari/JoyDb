@@ -1,5 +1,7 @@
 package ast
 
+import "fmt"
+
 // Identifier represents a column or table name
 // Can be qualified (table.column) or unqualified (column)
 type Identifier struct {
@@ -43,3 +45,21 @@ type Literal struct {
 func (l *Literal) expressionNode()      {}
 func (l *Literal) TokenLiteral() string { return l.TokenLiteralValue }
 func (l *Literal) String() string       { return l.TokenLiteralValue }
+
+// AggregateFunctionCall represents an aggregate function like COUNT(*), SUM(col)
+type AggregateFunctionCall struct {
+	Function string // e.g., "COUNT", "SUM"
+	Argument *Identifier // The argument, can be "*" (which we represent as an Identifier with Value "*")
+	Alias    string // Optional alias (e.g. "total" in "COUNT(*) AS total")
+}
+
+func (a *AggregateFunctionCall) String() string {
+	argStr := ""
+	if a.Argument != nil {
+		argStr = a.Argument.String()
+	}
+	return fmt.Sprintf("%s(%s)", a.Function, argStr)
+}
+
+func (a *AggregateFunctionCall) expressionNode()      {}
+func (a *AggregateFunctionCall) TokenLiteral() string { return a.Function }

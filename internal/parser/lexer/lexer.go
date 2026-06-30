@@ -57,6 +57,11 @@ const (
 	BY
 	ASC
 	DESC
+	COUNT
+	SUM
+	MIN
+	MAX
+	AVG
 	ASTERISK      // *
 	COMMA         // ,
 	PAREN_OPEN    // (
@@ -110,6 +115,11 @@ var keywords = map[string]TokenType{
 	"BY":       BY,
 	"ASC":      ASC,
 	"DESC":     DESC,
+	"COUNT":    COUNT,
+	"SUM":      SUM,
+	"MIN":      MIN,
+	"MAX":      MAX,
+	"AVG":      AVG,
 }
 
 type Token struct {
