@@ -161,6 +161,8 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		Predicate:   pred,
 		Projection:  proj,
 		Transaction: tx,
+		Limit:       stmt.Limit,
+		Offset:      stmt.Offset,
 	}
 
 	if indexScan != nil {

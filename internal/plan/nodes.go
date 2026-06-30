@@ -125,6 +125,9 @@ type SelectNode struct {
 	Projection *projection.Projection
 	// Transaction context
 	Transaction *transaction.Transaction
+	
+	Limit  *int
+	Offset *int
 
 	// Tree structure - children are JOINs or other operations
 	children []Node

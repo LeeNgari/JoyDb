@@ -51,6 +51,8 @@ const (
 	RENAME
 	TO
 
+	LIMIT
+	OFFSET
 	ASTERISK      // *
 	COMMA         // ,
 	PAREN_OPEN    // (
@@ -98,6 +100,8 @@ var keywords = map[string]TokenType{
 	"USE":      USE,
 	"RENAME":   RENAME,
 	"TO":       TO,
+	"LIMIT":    LIMIT,
+	"OFFSET":   OFFSET,
 }
 
 type Token struct {

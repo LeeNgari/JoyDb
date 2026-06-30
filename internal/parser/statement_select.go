@@ -64,6 +64,34 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 		stmt.Where = expr
 	}
 
+	// LIMIT (Optional)
+	if p.curTok.Type == lexer.LIMIT {
+		p.nextToken()
+		if p.curTok.Type != lexer.NUMBER {
+			return nil, fmt.Errorf("expected number after LIMIT, got %s", p.curTok.Literal)
+		}
+		var limit int
+		if _, err := fmt.Sscanf(p.curTok.Literal, "%d", &limit); err != nil {
+			return nil, fmt.Errorf("invalid LIMIT value: %s", p.curTok.Literal)
+		}
+		stmt.Limit = &limit
+		p.nextToken()
+	}
+
+	// OFFSET (Optional)
+	if p.curTok.Type == lexer.OFFSET {
+		p.nextToken()
+		if p.curTok.Type != lexer.NUMBER {
+			return nil, fmt.Errorf("expected number after OFFSET, got %s", p.curTok.Literal)
+		}
+		var offset int
+		if _, err := fmt.Sscanf(p.curTok.Literal, "%d", &offset); err != nil {
+			return nil, fmt.Errorf("invalid OFFSET value: %s", p.curTok.Literal)
+		}
+		stmt.Offset = &offset
+		p.nextToken()
+	}
+
 	// Semicolon (Optional)
 	if p.curTok.Type == lexer.SEMICOLON {
 		p.nextToken()

@@ -1,6 +1,9 @@
 package ast
 
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+)
 
 // SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
 // Represents a SELECT SQL query with optional JOINs and WHERE clause
@@ -10,6 +13,8 @@ type SelectStatement struct {
 	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
 	Joins      []*JoinClause // Optional JOIN clauses
 	Where      Expression    // Optional WHERE clause
+	Limit      *int          // Optional LIMIT
+	Offset     *int          // Optional OFFSET
 }
 
 func (s *SelectStatement) statementNode()       {}
@@ -36,6 +41,15 @@ func (s *SelectStatement) String() string {
 		out.WriteString(" WHERE ")
 		out.WriteString(s.Where.String())
 	}
+	
+	if s.Limit != nil {
+		out.WriteString(fmt.Sprintf(" LIMIT %d", *s.Limit))
+	}
+	
+	if s.Offset != nil {
+		out.WriteString(fmt.Sprintf(" OFFSET %d", *s.Offset))
+	}
+	
 	return out.String()
 }
 

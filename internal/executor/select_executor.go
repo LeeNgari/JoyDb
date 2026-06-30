@@ -53,8 +53,25 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 		projectedRows[i] = projection.ProjectRow(r, node.Projection, resultSchema)
 	}
 
+	// Apply Offset and Limit
+	finalRows := projectedRows
+	if node.Offset != nil {
+		offset := *node.Offset
+		if offset > len(finalRows) {
+			finalRows = nil
+		} else {
+			finalRows = finalRows[offset:]
+		}
+	}
+	if node.Limit != nil {
+		limit := *node.Limit
+		if limit < len(finalRows) {
+			finalRows = finalRows[:limit]
+		}
+	}
+
 	return &IntermediateResult{
-		Rows:   projectedRows,
+		Rows:   finalRows,
 		Schema: resultSchema,
 		Metadata: map[string]interface{}{
 			"projection": node.Projection,

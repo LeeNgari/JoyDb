@@ -1,13 +1,18 @@
 package integration
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/leengari/mini-rdbms/internal/domain/data"
 	"github.com/leengari/mini-rdbms/internal/domain/schema"
 	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/mini-rdbms/internal/executor"
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
+	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
+	"github.com/leengari/mini-rdbms/internal/storage/manager"
 )
 
 // TestCRUDOperations tests all CRUD operations with isolated test database
@@ -198,4 +203,53 @@ func TestCRUDOperations(t *testing.T) {
 			t.Error("Expected user to be deleted")
 		}
 	})
+}
+
+func TestLimitOffset(t *testing.T) {
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
+
+	storageEng := storageEngine.NewMemoryEngine()
+	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
+	eng := engine.New(db, registry)
+
+	exec := func(t *testing.T, sql string) *executor.Result {
+		res, err := eng.Execute(sql)
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		return res
+	}
+
+	// 1. Create table and insert data
+	exec(t, "CREATE TABLE paginated (id INT PRIMARY KEY, name STRING);")
+	exec(t, "INSERT INTO paginated (id, name) VALUES (1, 'A');")
+	exec(t, "INSERT INTO paginated (id, name) VALUES (2, 'B');")
+	exec(t, "INSERT INTO paginated (id, name) VALUES (3, 'C');")
+	exec(t, "INSERT INTO paginated (id, name) VALUES (4, 'D');")
+	exec(t, "INSERT INTO paginated (id, name) VALUES (5, 'E');")
+
+	// 2. Test LIMIT only
+	res := exec(t, "SELECT id FROM paginated LIMIT 2;")
+	if len(res.Rows) != 2 {
+		t.Errorf("Expected 2 rows, got %d", len(res.Rows))
+	}
+
+	// 3. Test OFFSET only
+	res = exec(t, "SELECT id FROM paginated OFFSET 3;")
+	if len(res.Rows) != 2 {
+		t.Errorf("Expected 2 rows, got %d", len(res.Rows))
+	}
+
+	// 4. Test LIMIT and OFFSET
+	res = exec(t, "SELECT id FROM paginated LIMIT 2 OFFSET 1;")
+	if len(res.Rows) != 2 {
+		t.Errorf("Expected 2 rows, got %d", len(res.Rows))
+	}
+
+	// 5. Test OFFSET past end
+	res = exec(t, "SELECT id FROM paginated OFFSET 10;")
+	if len(res.Rows) != 0 {
+		t.Errorf("Expected 0 rows, got %d", len(res.Rows))
+	}
 }

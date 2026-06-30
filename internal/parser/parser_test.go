@@ -59,6 +59,33 @@ func TestParseSelect(t *testing.T) {
 	}
 }
 
+func TestParseSelectLimitOffset(t *testing.T) {
+	input := "SELECT id FROM users LIMIT 10 OFFSET 5;"
+	tokens, err := lexer.Tokenize(input)
+	if err != nil {
+		t.Fatalf("Lexer error: %v", err)
+	}
+
+	p := New(tokens)
+	stmt, err := p.Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	sel, ok := stmt.(*ast.SelectStatement)
+	if !ok {
+		t.Fatalf("Expected SelectStatement, got %T", stmt)
+	}
+
+	if sel.Limit == nil || *sel.Limit != 10 {
+		t.Errorf("Expected Limit 10, got %v", sel.Limit)
+	}
+
+	if sel.Offset == nil || *sel.Offset != 5 {
+		t.Errorf("Expected Offset 5, got %v", sel.Offset)
+	}
+}
+
 func TestParseInsert(t *testing.T) {
 	input := "INSERT INTO items (name, price) VALUES ('apple', 1.23);"
 	tokens, err := lexer.Tokenize(input)
