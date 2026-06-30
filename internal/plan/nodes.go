@@ -8,6 +8,11 @@ import (
 	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
 )
 
+type OrderByClause struct {
+	Column string // the resolved column name
+	Desc   bool   // true if descending
+}
+
 // Node is the base interface for all execution plan nodes
 type Node interface {
 	// Children returns child nodes for tree walking
@@ -126,8 +131,9 @@ type SelectNode struct {
 	// Transaction context
 	Transaction *transaction.Transaction
 	
-	Limit  *int
-	Offset *int
+	OrderBy []OrderByClause
+	Limit   *int
+	Offset  *int
 
 	// Tree structure - children are JOINs or other operations
 	children []Node

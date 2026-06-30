@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 
@@ -251,5 +252,49 @@ func TestLimitOffset(t *testing.T) {
 	res = exec(t, "SELECT id FROM paginated OFFSET 10;")
 	if len(res.Rows) != 0 {
 		t.Errorf("Expected 0 rows, got %d", len(res.Rows))
+	}
+}
+func TestOrderBy(t *testing.T) {
+	db := setupTestDB(t)
+	defer teardownTestDB(t, db)
+
+	storageEng := storageEngine.NewMemoryEngine()
+	registry := manager.NewRegistry(filepath.Dir(db.Path), storageEng)
+	eng := engine.New(db, registry)
+
+	exec := func(t *testing.T, sql string) *executor.Result {
+		res, err := eng.Execute(sql)
+		if err != nil {
+			t.Fatalf("Query failed: %v", err)
+		}
+		return res
+	}
+
+	exec(t, "CREATE TABLE sort_test (id INT PRIMARY KEY, name STRING, score INT);")
+	exec(t, "INSERT INTO sort_test (id, name, score) VALUES (1, 'Alice', 90);")
+	exec(t, "INSERT INTO sort_test (id, name, score) VALUES (2, 'Bob', 80);")
+	exec(t, "INSERT INTO sort_test (id, name, score) VALUES (3, 'Charlie', 90);")
+	exec(t, "INSERT INTO sort_test (id, name, score) VALUES (4, 'Dave', 70);")
+
+	// 1. Single column ASC
+	res := exec(t, "SELECT id FROM sort_test ORDER BY score ASC;")
+	if len(res.Rows) != 4 {
+		t.Errorf("Expected 4 rows, got %d", len(res.Rows))
+	}
+	if fmt.Sprintf("%v", res.Rows[0].Values[0]) != "4" { // Dave (70)
+		t.Errorf("Expected first row to be id 4, got %v", res.Rows[0].Values[0])
+	}
+
+	// 2. Single column DESC
+	res = exec(t, "SELECT id FROM sort_test ORDER BY score DESC;")
+	firstId := fmt.Sprintf("%v", res.Rows[0].Values[0])
+	if firstId != "1" && firstId != "3" { // Alice or Charlie (90)
+		t.Errorf("Expected first row to be id 1 or 3, got %v", res.Rows[0].Values[0])
+	}
+
+	// 3. Multi-column sort (score DESC, name ASC)
+	res = exec(t, "SELECT name FROM sort_test ORDER BY score DESC, name ASC;")
+	if fmt.Sprintf("%v", res.Rows[0].Values[0]) != "Alice" || fmt.Sprintf("%v", res.Rows[1].Values[0]) != "Charlie" {
+		t.Errorf("Expected Alice then Charlie, got %v and %v", res.Rows[0].Values[0], res.Rows[1].Values[0])
 	}
 }

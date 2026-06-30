@@ -53,6 +53,10 @@ const (
 
 	LIMIT
 	OFFSET
+	ORDER
+	BY
+	ASC
+	DESC
 	ASTERISK      // *
 	COMMA         // ,
 	PAREN_OPEN    // (
@@ -102,6 +106,10 @@ var keywords = map[string]TokenType{
 	"TO":       TO,
 	"LIMIT":    LIMIT,
 	"OFFSET":   OFFSET,
+	"ORDER":    ORDER,
+	"BY":       BY,
+	"ASC":      ASC,
+	"DESC":     DESC,
 }
 
 type Token struct {

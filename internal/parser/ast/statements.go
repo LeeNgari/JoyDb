@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+// OrderByClause represents a column to order by and the direction
+type OrderByClause struct {
+	Column *Identifier
+	Desc   bool // false = ASC (default), true = DESC
+}
+
 // SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
 // Represents a SELECT SQL query with optional JOINs and WHERE clause
 type SelectStatement struct {
@@ -13,6 +19,7 @@ type SelectStatement struct {
 	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
 	Joins      []*JoinClause // Optional JOIN clauses
 	Where      Expression    // Optional WHERE clause
+	OrderBy    []OrderByClause // Optional ORDER BY clauses
 	Limit      *int          // Optional LIMIT
 	Offset     *int          // Optional OFFSET
 }
@@ -40,6 +47,21 @@ func (s *SelectStatement) String() string {
 	if s.Where != nil {
 		out.WriteString(" WHERE ")
 		out.WriteString(s.Where.String())
+	}
+	
+	if len(s.OrderBy) > 0 {
+		out.WriteString(" ORDER BY ")
+		for i, ob := range s.OrderBy {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			out.WriteString(ob.Column.String())
+			if ob.Desc {
+				out.WriteString(" DESC")
+			} else {
+				out.WriteString(" ASC")
+			}
+		}
 	}
 	
 	if s.Limit != nil {

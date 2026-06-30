@@ -156,11 +156,20 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		}
 	}
 
+	var planOrderBy []plan.OrderByClause
+	for _, ob := range stmt.OrderBy {
+		planOrderBy = append(planOrderBy, plan.OrderByClause{
+			Column: ob.Column.Value, // For now just use the column value (no table qualifier check yet)
+			Desc:   ob.Desc,
+		})
+	}
+
 	selectNode := &plan.SelectNode{
 		TableName:   tableName,
 		Predicate:   pred,
 		Projection:  proj,
 		Transaction: tx,
+		OrderBy:     planOrderBy,
 		Limit:       stmt.Limit,
 		Offset:      stmt.Offset,
 	}

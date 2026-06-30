@@ -46,6 +46,7 @@ INNER JOIN orders ON users.id = orders.user_id;
 | **Insert** | `INSERT INTO table (cols) VALUES (vals);` | `INSERT INTO users (id, name) VALUES (1, 'Alice');` |
 | **Update** | `UPDATE table SET col = val WHERE condition;` | `UPDATE users SET active = true WHERE id = 5;` |
 | **Delete** | `DELETE FROM table WHERE condition;` | `DELETE FROM users WHERE id = 5;` |
+| **Order/Limit** | `SELECT * FROM table ORDER BY col DESC LIMIT n;` | `SELECT * FROM users ORDER BY age DESC LIMIT 10;` |
 | **Join** | `SELECT * FROM t1 JOIN t2 ON t1.id = t2.fk;` | `SELECT * FROM users JOIN orders ON users.id = orders.user_id;` |
 
 ---
@@ -147,6 +148,12 @@ SELECT column1, column2, ... FROM table_name;
 SELECT * FROM table_name;
 ```
 
+#### With Table Aliases
+```sql
+SELECT u.username, u.email FROM users AS u;
+SELECT u.username FROM users u;
+```
+
 #### With WHERE Clause
 ```sql
 SELECT column1, column2 FROM table_name WHERE condition;
@@ -155,6 +162,11 @@ SELECT column1, column2 FROM table_name WHERE condition;
 #### With Qualified Column Names
 ```sql
 SELECT table1.column1, table2.column2 FROM table1 JOIN table2 ON ...;
+```
+
+#### With ORDER BY, LIMIT, and OFFSET
+```sql
+SELECT * FROM table_name ORDER BY column [ASC|DESC] LIMIT number OFFSET number;
 ```
 
 #### Examples
@@ -168,9 +180,20 @@ SELECT username, email FROM users;
 -- Select with qualified names
 SELECT users.username, users.email FROM users;
 
+-- Select with Table Aliases
+SELECT u.username, o.product FROM users u JOIN orders o ON u.id = o.user_id;
+
 -- Select with WHERE
 SELECT * FROM users WHERE id = 5;
 SELECT username, email FROM users WHERE is_active = true;
+
+-- Select with ORDER BY
+SELECT * FROM users ORDER BY username ASC;
+SELECT * FROM users ORDER BY score DESC, username ASC;
+
+-- Select with LIMIT and OFFSET (Pagination)
+SELECT * FROM users ORDER BY id LIMIT 10;
+SELECT * FROM users ORDER BY id LIMIT 10 OFFSET 20;
 ```
 
 ---
@@ -309,13 +332,28 @@ SELECT * FROM orders WHERE orders.amount > 100;
 ### Syntax
 ```sql
 SELECT columns
-FROM table1
-[INNER|LEFT|RIGHT|FULL] [OUTER] JOIN table2 
-ON table1.column = table2.column
+FROM table1 [AS t1]
+[INNER|LEFT|RIGHT|FULL] [OUTER] JOIN table2 [AS t2] 
+ON t1.column = t2.column
+[[INNER|LEFT...] JOIN table3 ON t2.column = table3.column ...]
 [WHERE condition];
 ```
 
 ### Examples
+
+#### Table Aliases and Multi-way JOINs
+```sql
+-- Using table aliases for brevity
+SELECT u.username, o.product 
+FROM users AS u 
+INNER JOIN orders AS o ON u.id = o.user_id;
+
+-- Multi-way JOIN (joining 3 or more tables)
+SELECT u.username, o.product, i.item_name
+FROM users u
+INNER JOIN orders o ON u.id = o.user_id
+INNER JOIN order_items i ON o.id = i.order_id;
+```
 
 #### INNER JOIN
 ```sql

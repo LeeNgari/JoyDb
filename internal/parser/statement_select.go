@@ -64,6 +64,57 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 		stmt.Where = expr
 	}
 
+	// ORDER BY (Optional)
+	if p.curTok.Type == lexer.ORDER {
+		p.nextToken()
+		if p.curTok.Type != lexer.BY {
+			return nil, fmt.Errorf("expected BY after ORDER, got %s", p.curTok.Literal)
+		}
+		p.nextToken()
+
+		var orderBy []ast.OrderByClause
+		for {
+			if p.curTok.Type != lexer.IDENTIFIER {
+				return nil, fmt.Errorf("expected column name after ORDER BY, got %s", p.curTok.Literal)
+			}
+			
+			col := &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal}
+			p.nextToken()
+
+			// Check for table qualification (table.column)
+			if p.curTok.Type == lexer.DOT {
+				p.nextToken()
+				if p.curTok.Type != lexer.IDENTIFIER {
+					return nil, fmt.Errorf("expected column name after dot, got %s", p.curTok.Literal)
+				}
+				col.Table = col.Value
+				col.Value = p.curTok.Literal
+				col.TokenLiteralValue = col.Table + "." + col.Value
+				p.nextToken()
+			}
+
+			desc := false
+			if p.curTok.Type == lexer.ASC {
+				p.nextToken()
+			} else if p.curTok.Type == lexer.DESC {
+				desc = true
+				p.nextToken()
+			}
+
+			orderBy = append(orderBy, ast.OrderByClause{
+				Column: col,
+				Desc:   desc,
+			})
+
+			if p.curTok.Type == lexer.COMMA {
+				p.nextToken()
+				continue
+			}
+			break
+		}
+		stmt.OrderBy = orderBy
+	}
+
 	// LIMIT (Optional)
 	if p.curTok.Type == lexer.LIMIT {
 		p.nextToken()
