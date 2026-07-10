@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/errors"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/errors"
+	"github.com/leengari/joydb/internal/domain/schema"
 )
 
 // BuildIndexes rebuilds all indexes for primary/unique columns

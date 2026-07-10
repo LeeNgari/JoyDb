@@ -3,8 +3,8 @@ package parser
 import (
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseCreateTable parses a CREATE TABLE statement

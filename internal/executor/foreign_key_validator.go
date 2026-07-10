@@ -3,8 +3,8 @@ package executor
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/errors"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/errors"
 )
 
 // validateInsertFKs verifies that inserting/updating a row in the child table

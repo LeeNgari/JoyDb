@@ -3,8 +3,8 @@ package testutil
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
 )
 
 // AssertRowCount checks if the result has the expected number of rows

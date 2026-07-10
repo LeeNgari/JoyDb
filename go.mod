@@ -1,4 +1,4 @@
-module github.com/leengari/mini-rdbms
+module github.com/leengari/joydb
 
 go 1.25.4
 

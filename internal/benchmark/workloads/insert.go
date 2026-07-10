@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 
-	"github.com/leengari/mini-rdbms/internal/benchmark"
-	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/joydb/internal/benchmark"
+	"github.com/leengari/joydb/internal/engine"
 )
 
 // InsertSingleRow measures the throughput of single-row inserts

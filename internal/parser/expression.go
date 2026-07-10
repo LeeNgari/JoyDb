@@ -3,8 +3,8 @@ package parser
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseExpression parses expressions with logical operators (AND, OR) and comparisons

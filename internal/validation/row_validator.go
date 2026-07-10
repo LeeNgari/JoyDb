@@ -3,9 +3,9 @@ package validation
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/errors"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/errors"
+	"github.com/leengari/joydb/internal/domain/schema"
 )
 
 // ValidateRow checks if the given row matches the table's schema

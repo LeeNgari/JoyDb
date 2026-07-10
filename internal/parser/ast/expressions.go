@@ -46,11 +46,20 @@ func (l *Literal) expressionNode()      {}
 func (l *Literal) TokenLiteral() string { return l.TokenLiteralValue }
 func (l *Literal) String() string       { return l.TokenLiteralValue }
 
+// ParameterExpression is a positional parameter marker bound before planning.
+type ParameterExpression struct {
+	Index int
+}
+
+func (p *ParameterExpression) expressionNode()      {}
+func (p *ParameterExpression) TokenLiteral() string { return "?" }
+func (p *ParameterExpression) String() string       { return "?" }
+
 // AggregateFunctionCall represents an aggregate function like COUNT(*), SUM(col)
 type AggregateFunctionCall struct {
-	Function string // e.g., "COUNT", "SUM"
+	Function string      // e.g., "COUNT", "SUM"
 	Argument *Identifier // The argument, can be "*" (which we represent as an Identifier with Value "*")
-	Alias    string // Optional alias (e.g. "total" in "COUNT(*) AS total")
+	Alias    string      // Optional alias (e.g. "total" in "COUNT(*) AS total")
 }
 
 func (a *AggregateFunctionCall) String() string {

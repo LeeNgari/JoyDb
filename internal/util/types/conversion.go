@@ -3,9 +3,9 @@ package types
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/validation"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/validation"
 )
 
 // ConvertLiteralToSchemaType attempts to convert a literal to match the schema type.

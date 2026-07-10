@@ -1,8 +1,8 @@
 package executor
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 func executeScan(node *plan.ScanNode, ctx *ExecutionContext) (*IntermediateResult, error) {

@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // Checks if a token type is a typed literal keyword (DATE, TIME, EMAIL)

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/domain/transaction"
 )
 
 // TestTreeStructure verifies that nodes form a tree

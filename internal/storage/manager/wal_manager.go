@@ -7,12 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/index/btree"
-	"github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/wal"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/index/btree"
+	"github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/wal"
 )
 
 // WALManager bridges the WAL package with the storage layer

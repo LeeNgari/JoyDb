@@ -1,7 +1,7 @@
 package predicate
 
 import (
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/ast"
 )
 
 // PredicateInfo holds structured metadata extracted from a WHERE clause

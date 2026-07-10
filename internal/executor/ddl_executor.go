@@ -3,10 +3,10 @@ package executor
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/index/btree"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/index/btree"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 // executeCreateTable executes a CREATE TABLE operation

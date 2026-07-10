@@ -8,9 +8,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/executor"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/engine"
+	"github.com/leengari/joydb/internal/executor"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 func Start(registry *manager.Registry) {

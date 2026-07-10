@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
 )
 
 // MemoryEngine implements StorageEngine using binary snapshot files for persistence.
@@ -60,9 +60,10 @@ func (e *MemoryEngine) LoadDatabase(dbPath string) (*schema.Database, error) {
 	return db, nil
 }
 
-// SaveDatabase is managed by WAL/Checkpoints in MemoryEngine
+// SaveDatabase persists the current state for callers that are not using WAL checkpoints.
 func (e *MemoryEngine) SaveDatabase(db *schema.Database, tx *transaction.Transaction) error {
-	return nil
+	_, _, err := e.CreateSnapshot(db, db.Path)
+	return err
 }
 
 // CreateDatabase creates a new database directory

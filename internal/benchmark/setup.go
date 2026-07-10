@@ -6,10 +6,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/engine"
-	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/engine"
+	storageEngine "github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 // EngineOptions configures the creation of a benchmark database engine

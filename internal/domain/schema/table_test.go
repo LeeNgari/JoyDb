@@ -3,9 +3,9 @@ package schema
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/errors"
-	"github.com/leengari/mini-rdbms/internal/index/btree"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/errors"
+	"github.com/leengari/joydb/internal/index/btree"
 	"github.com/stretchr/testify/assert"
 )
 

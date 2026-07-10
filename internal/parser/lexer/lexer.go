@@ -54,6 +54,7 @@ const (
 	LIMIT
 	OFFSET
 	ORDER
+	GROUP
 	BY
 	ASC
 	DESC
@@ -74,6 +75,7 @@ const (
 	NOT_EQUAL     // != or <>
 	DOT           // .
 	SEMICOLON     // ;
+	QUESTION      // ? positional parameter
 )
 
 var keywords = map[string]TokenType{
@@ -112,6 +114,7 @@ var keywords = map[string]TokenType{
 	"LIMIT":    LIMIT,
 	"OFFSET":   OFFSET,
 	"ORDER":    ORDER,
+	"GROUP":    GROUP,
 	"BY":       BY,
 	"ASC":      ASC,
 	"DESC":     DESC,
@@ -239,6 +242,8 @@ func (l *Lexer) NextToken() Token {
 		tok = newToken(DOT, l.ch, l.line, l.column)
 	case ';':
 		tok = newToken(SEMICOLON, l.ch, l.line, l.column)
+	case '?':
+		tok = newToken(QUESTION, l.ch, l.line, l.column)
 	case '\'':
 		tok.Type = STRING
 		tok.Literal = l.readString()

@@ -3,8 +3,8 @@ package executor
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 // formatInsertResult creates a Result for INSERT operations
@@ -13,10 +13,12 @@ func formatInsertResult(intermediate *IntermediateResult) *Result {
 	if rowsAffected == 0 {
 		rowsAffected = 1
 	}
+	lastInsertID, _ := intermediate.Metadata["last_insert_id"].(int64)
 
 	return &Result{
 		Message:      "INSERT 1",
 		RowsAffected: rowsAffected,
+		LastInsertID: lastInsertID,
 	}
 }
 
@@ -44,9 +46,16 @@ func formatDeleteResult(intermediate *IntermediateResult) *Result {
 func formatSelectResult(node *plan.SelectNode, intermediate *IntermediateResult, db *schema.Database) *Result {
 	var columns []string
 	var metadata []ColumnMetadata
+	if len(node.GroupBy) > 0 || len(node.Aggregates) > 0 {
+		for _, column := range intermediate.Schema.Columns {
+			columns = append(columns, column.Name)
+			metadata = append(metadata, ColumnMetadata{Name: column.Name, Type: string(column.Type)})
+		}
+		return &Result{Columns: columns, Metadata: metadata, Rows: intermediate.Rows}
+	}
 
 	proj := node.Projection
-	
+
 	// If it's a simple select (no joins), we can get types from the table
 	table, hasTable := db.Tables[node.TableName]
 

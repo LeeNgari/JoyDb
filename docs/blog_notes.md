@@ -143,8 +143,8 @@ While the engine is blazing fast, there are several key architectural milestones
 * **Background Vacuum Thread:** A background worker is needed to periodically scan for and compact tombstones (deleted rows) to prevent memory leaks over time.
 
 ### 2. Analytical SQL (Milestone 4)
-* **Pagination:** Implement `LIMIT` and `OFFSET` inside the Parser and Planner.
-* **Aggregations:** Support for `COUNT()`, `SUM()`, and `GROUP BY` to allow for basic analytics.
+* **HAVING:** Add post-aggregation predicates once aggregate expressions can be represented in general expression trees.
+* **Grouping Expressions:** Extend identifier-only grouping to expressions, ordinals, and aggregate expressions in `ORDER BY`.
 
 ### 3. The Embedded SDK (Phase 6)
 * **Module Rename:** Rename the project from `mini-rdbms` to `joydb`.
@@ -162,3 +162,57 @@ While the engine is blazing fast, there are several key architectural milestones
    We wouldn't have found the map-lookup penalty in Phase 5.2 without rigorous, workload-specific benchmarks. When a "zero-copy optimization" makes things slower, profiling and benchmarking are the only ways to uncover the hidden overheads of the runtime.
 4. **Data Structures dictate Architecture**:
    The move from a slice to a map enabled concurrent B+Tree indexing but destroyed table scan performance. Every data structure solves one problem by creating another.
+
+---
+
+## Phase 6: From Database Engine to Embedded Go Library (2026-07-10)
+
+### 1. A Public API at the Module Root
+**What we did**: Renamed the module from `github.com/leengari/mini-rdbms` to `github.com/leengari/joydb` and exposed the SDK directly at the module root. Applications now call `joydb.Open`, access isolated databases through `Store.DB`, and use `Exec`/`Query` without importing internal packages.
+**The lesson**: Package ergonomics are part of product design. Avoiding `joydb/joydb` import stutter made the first interaction with the library simpler, while keeping engine, planner, executor, WAL, and storage implementation details behind Go's `internal` boundary.
+
+### 2. Create-on-Open and Two Storage Modes
+**What we did**: Added create-on-open database handles, per-store handle caching, lifecycle methods, functional WAL/checkpoint options, and a genuine RAM-only `InMemoryEngine` for `Open(":memory:")`.
+**The tradeoff**: The existing `MemoryEngine` was actually disk-backed snapshot storage. Adding a separate in-memory backend duplicated a small lifecycle surface, but it kept filesystem concerns out of RAM mode and made the no-disk guarantee testable.
+
+### 3. Typed Results Without Exposing Internal Rows
+**What we did**: Wrapped executor results in a `Rows` iterator with `Scan`, `StructScan`, column metadata, null checks, and named typed accessors. `ExecResult` now exposes affected rows and auto-increment IDs.
+**The lesson**: A user-friendly embedded API should make the common path direct without hiding errors. Struct tags and ordered scans cover most application code, while raw values remain available for dynamic consumers.
+
+### 4. Parameters Belong in the AST
+**What we did**: Added `?` tokens, ordinal `ParameterExpression` AST nodes, typed parameter binding, and engine argument propagation across SELECT, INSERT, UPDATE, DELETE, and JOIN expressions.
+**The lesson**: String replacement is not parameterization. Binding values after parsing prevents question marks and quotes inside data from changing SQL structure, and lets schema conversion operate on typed values rather than reconstructed SQL text.
+
+### 5. Transactions Before Fine-Grained Locks
+**What we did**: Split engine execution into auto-commit and caller-owned transaction paths. A public transaction buffers one WAL transaction, holds exclusive ownership of its `DB`, and keeps a deep catalog snapshot so DDL and DML can both be rolled back. Context-aware APIs stop work at execution-stage boundaries.
+**The tradeoff**: Transactions are correct but serialized. Holding the DB lock sacrifices concurrent transaction throughput, yet provides clear atomic behavior today. The future row-level lock manager can improve concurrency without changing the public transaction contract.
+
+### Phase 6 Verification
+- Full repository test suite passes with `go test ./...`.
+- Every package and command builds with `go build ./...`.
+- Black-box SDK tests cover persistent recovery, in-memory isolation, typed scanning, parameter edge cases, public errors, transaction commit/rollback, DDL rollback, and cancelled contexts.
+
+---
+
+## Phase M4.4: GROUP BY and the Shape of Aggregate Results (2026-07-10)
+
+### 1. Grouping Is More Than a Hash Map
+**What we did**: Added `GROUP BY` across the lexer, AST, parser, planner, and executor. The first release supports one or more identifier columns, qualified columns across joins, every existing aggregate function, NULL groups, grouped distinct results, and post-aggregation ordering and pagination.
+**The lesson**: Partitioning rows was the easy part. The difficult contract was preserving the SELECT-list order while carrying enough column lineage to distinguish `employees.id` from `departments.id`. The plan now keeps ordered select items instead of treating projections and aggregates as unrelated lists.
+
+### 2. Aggregate Queries Need a Result Pipeline
+**What we did**: Replaced the aggregate executor's early return with a unified aggregate-result path. Both grouped and ungrouped aggregates now produce a typed intermediate schema before `ORDER BY`, `OFFSET`, and `LIMIT` run.
+**The lesson**: Aggregation changes the meaning of every downstream operator. Sorting input rows before `COUNT` is wasted work, and returning immediately after aggregation silently skips pagination. A pipeline breaker still needs to rejoin the execution pipeline as a normal relation.
+
+### 3. Stable Groups and Typed Keys
+**What we did**: Used a typed binary encoding for multi-column group keys and retained groups in first-seen order. NULL, integer, float, text, and boolean values cannot collide through delimiter tricks, while explicit `ORDER BY` remains the authority for requested output order.
+**The tradeoff**: The initial implementation stores rows per group and reuses the existing aggregate semantics. Incremental accumulator state would reduce memory for large analytical workloads, but the current design keeps behavior centralized and testable while the SQL surface is still growing.
+
+### 4. Strict SQL Validation
+**What we did**: The planner rejects non-aggregate SELECT columns missing from `GROUP BY`, mixed grouped and ungrouped projections, `SELECT *` with grouping, missing columns, and ambiguous unqualified join columns. `HAVING`, grouping expressions, ordinals, and `ORDER BY COUNT(*)` remain explicit follow-up work.
+**The lesson**: Rejecting an unsupported query is safer than returning a plausible but incorrect row. Planner errors turn silent data bugs into actionable feedback before execution starts.
+
+### GROUP BY Verification
+- Parser tests cover single, multiple, and qualified grouping columns with following clauses.
+- Planner tests cover ordered output items and invalid non-grouped columns.
+- Integration tests cover all aggregates, NULL handling, WHERE, multi-column grouping, grouped distinct results, ORDER BY aliases, LIMIT/OFFSET, empty input, validation failures, and grouping across a join.

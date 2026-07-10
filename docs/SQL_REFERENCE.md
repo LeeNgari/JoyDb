@@ -179,6 +179,25 @@ SELECT column_name AS alias_name FROM table_name;
 SELECT COUNT(*), SUM(column), AVG(column), MIN(column), MAX(column) FROM table_name;
 ```
 
+#### With GROUP BY
+```sql
+SELECT grouping_column, aggregate_function(column)
+FROM table_name
+[WHERE condition]
+GROUP BY grouping_column [, grouping_column ...]
+[ORDER BY grouping_column_or_alias [ASC|DESC]]
+[LIMIT number [OFFSET number]];
+```
+
+Every non-aggregate column in the SELECT list must appear in `GROUP BY`. Grouping columns
+may be qualified with a table name or alias. `NULL` grouping values form one group, and
+`WHERE` filters rows before grouping. `ORDER BY`, `LIMIT`, and `OFFSET` apply to the grouped
+result rows.
+
+JoyDb currently supports identifier columns in `GROUP BY`. Grouping expressions, positional
+references such as `GROUP BY 1`, `HAVING`, and aggregate expressions in `ORDER BY` are not
+yet supported. Use an aggregate alias in `ORDER BY` instead.
+
 #### Examples
 ```sql
 -- Select all columns
@@ -211,6 +230,12 @@ SELECT * FROM users ORDER BY id LIMIT 10 OFFSET 20;
 -- Select with Aggregations
 SELECT COUNT(*) FROM users;
 SELECT COUNT(*) AS total_users, AVG(age) AS average_age FROM users;
+
+-- Grouped aggregation
+SELECT role, COUNT(*) AS total_users
+FROM users
+GROUP BY role
+ORDER BY total_users DESC;
 ```
 
 ---

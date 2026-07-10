@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseUpdate parses an UPDATE statement
@@ -57,11 +57,12 @@ func (p *Parser) parseUpdate() (*ast.UpdateStatement, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse value in SET clause: %w", err)
 		}
-		lit, ok := val.(*ast.Literal)
-		if !ok {
+		switch val.(type) {
+		case *ast.Literal, *ast.ParameterExpression:
+		default:
 			return nil, fmt.Errorf("expected literal value in SET clause")
 		}
-		stmt.Updates[colName] = lit
+		stmt.Updates[colName] = val
 
 		// Check for comma (more updates) or end of SET clause
 		if p.curTok.Type == lexer.COMMA {

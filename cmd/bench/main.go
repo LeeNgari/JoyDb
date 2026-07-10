@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/benchmark"
-	"github.com/leengari/mini-rdbms/internal/benchmark/workloads"
+	"github.com/leengari/joydb/internal/benchmark"
+	"github.com/leengari/joydb/internal/benchmark/workloads"
 )
 
 const defaultHistoryPath = "benchmarks/history.json"

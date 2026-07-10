@@ -1,9 +1,9 @@
 package executor
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 // executeInsertNode handles INSERT using tree-walking pattern
@@ -64,9 +64,9 @@ func executeInsertNode(node *plan.InsertNode, ctx *ExecutionContext) (*Intermedi
 		Rows:   []data.Row{},
 		Schema: nil,
 		Metadata: map[string]interface{}{
-			"operation":     "INSERT",
-			"rows_affected": 1,
+			"operation":      "INSERT",
+			"rows_affected":  1,
+			"last_insert_id": table.LastInsertID,
 		},
 	}, nil
 }
-

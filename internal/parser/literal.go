@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
-	"github.com/leengari/mini-rdbms/internal/validation"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/validation"
 )
 
 // parseAtom parses atomic expressions (identifiers, literals, typed literals)
@@ -117,6 +117,11 @@ func (p *Parser) parseAtom() (ast.Expression, error) {
 	case lexer.NULL_KW:
 		p.nextToken()
 		return &ast.Literal{TokenLiteralValue: "NULL", Value: nil, Kind: ast.LiteralNull}, nil
+	case lexer.QUESTION:
+		parameter := &ast.ParameterExpression{Index: p.parameterCount}
+		p.parameterCount++
+		p.nextToken()
+		return parameter, nil
 	default:
 		return nil, fmt.Errorf("unexpected token in expression: %s", p.curTok.Literal)
 	}

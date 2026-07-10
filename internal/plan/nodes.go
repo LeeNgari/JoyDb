@@ -1,11 +1,11 @@
 package plan
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/query/operations/join"
-	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/query/operations/join"
+	"github.com/leengari/joydb/internal/query/operations/projection"
 )
 
 type OrderByClause struct {
@@ -15,8 +15,20 @@ type OrderByClause struct {
 
 type AggregateSpec struct {
 	Function string // e.g., "COUNT", "SUM"
+	Table    string // optional resolved table qualifier
 	Column   string // column name or "*"
 	Alias    string // the output column name
+}
+
+type ColumnRef struct {
+	Table  string
+	Column string
+	Alias  string
+}
+
+type SelectItemSpec struct {
+	Column    *ColumnRef
+	Aggregate *AggregateSpec
 }
 
 // Node is the base interface for all execution plan nodes
@@ -136,11 +148,13 @@ type SelectNode struct {
 	Projection *projection.Projection
 	// Transaction context
 	Transaction *transaction.Transaction
-	
-	OrderBy []OrderByClause
-	Limit   *int
-	Offset  *int
-	Aggregates []AggregateSpec
+
+	OrderBy     []OrderByClause
+	Limit       *int
+	Offset      *int
+	Aggregates  []AggregateSpec
+	GroupBy     []ColumnRef
+	SelectItems []SelectItemSpec
 
 	// Tree structure - children are JOINs or other operations
 	children []Node

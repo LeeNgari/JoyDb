@@ -4,10 +4,10 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/query/indexing"
-	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/query/indexing"
+	storageEngine "github.com/leengari/joydb/internal/storage/engine"
 )
 
 // setupTestDB creates a fresh test database for integration tests

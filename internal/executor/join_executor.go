@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/plan"
-	"github.com/leengari/mini-rdbms/internal/query/operations/join"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/plan"
+	"github.com/leengari/joydb/internal/query/operations/join"
 )
 
 // executeJoinNode recursively executes JOIN using tree-walking pattern

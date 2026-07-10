@@ -3,11 +3,11 @@ package executor
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/plan"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/plan"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 type ColumnMetadata struct {
@@ -22,6 +22,7 @@ type Result struct {
 	Rows         []data.Row       // Result rows
 	Message      string           // Status message
 	RowsAffected int              // Rows affected by INSERT/UPDATE/DELETE
+	LastInsertID int64            // Auto-increment value produced by INSERT
 	Error        string           // Error message if any
 }
 
