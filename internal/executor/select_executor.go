@@ -1,14 +1,17 @@
 package executor
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/plan"
-	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/plan"
+	"github.com/leengari/joydb/internal/query/operations/projection"
 )
 
 // executeSelectNode handles SelectNode using tree-walking pattern
@@ -49,6 +52,10 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 			}
 		}
 		rows = filteredRows
+	}
+
+	if len(node.GroupBy) > 0 || len(node.Aggregates) > 0 {
+		return executeAggregateSelect(node, rows, resultSchema)
 	}
 
 	// Apply ORDER BY BEFORE projection so we have access to all columns
@@ -101,111 +108,6 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 		})
 	}
 
-	// Apply Aggregations
-	if len(node.Aggregates) > 0 {
-		var syntheticValues []interface{}
-		var syntheticColumns []schema.Column
-		
-		for _, agg := range node.Aggregates {
-			colIdx := -1
-			if agg.Column != "*" {
-				for idx, col := range resultSchema.Columns {
-					if col.Name == agg.Column || col.Name == "*."+agg.Column || strings.HasSuffix(col.Name, "."+agg.Column) {
-						colIdx = idx
-						break
-					}
-				}
-				if colIdx == -1 {
-					return nil, fmt.Errorf("column not found for aggregate: %s", agg.Column)
-				}
-			}
-
-			var val interface{}
-			
-			switch agg.Function {
-			case "COUNT":
-				count := 0
-				for _, r := range rows {
-					if colIdx == -1 {
-						count++ // COUNT(*)
-					} else if r.Values[colIdx] != nil {
-						count++
-					}
-				}
-				val = int64(count)
-			case "SUM":
-				var sum float64
-				for _, r := range rows {
-					if colIdx != -1 && r.Values[colIdx] != nil {
-						sum += toFloat64(r.Values[colIdx])
-					}
-				}
-				val = sum
-			case "AVG":
-				var sum float64
-				var count int
-				for _, r := range rows {
-					if colIdx != -1 && r.Values[colIdx] != nil {
-						sum += toFloat64(r.Values[colIdx])
-						count++
-					}
-				}
-				if count > 0 {
-					val = sum / float64(count)
-				} else {
-					val = nil
-				}
-			case "MIN":
-				var min interface{}
-				for _, r := range rows {
-					if colIdx != -1 && r.Values[colIdx] != nil {
-						if min == nil || compareValues(r.Values[colIdx], min) < 0 {
-							min = r.Values[colIdx]
-						}
-					}
-				}
-				val = min
-			case "MAX":
-				var max interface{}
-				for _, r := range rows {
-					if colIdx != -1 && r.Values[colIdx] != nil {
-						if max == nil || compareValues(r.Values[colIdx], max) > 0 {
-							max = r.Values[colIdx]
-						}
-					}
-				}
-				val = max
-			}
-			
-			syntheticValues = append(syntheticValues, val)
-			
-			colType := schema.ColumnTypeFloat
-			if agg.Function == "COUNT" {
-				colType = schema.ColumnTypeInt
-			}
-			syntheticColumns = append(syntheticColumns, schema.Column{
-				Name: agg.Alias,
-				Type: colType,
-			})
-		}
-		
-		syntheticRow := data.Row{
-			Values: syntheticValues,
-		}
-		
-		return &IntermediateResult{
-			Rows: []data.Row{syntheticRow},
-			Schema: &schema.TableSchema{
-				TableName: "synthetic",
-				Columns:   syntheticColumns,
-			},
-			Metadata: map[string]interface{}{
-				"row_count": 1,
-				"is_aggregate": true,
-			},
-		}, nil
-	}
-
 	// Apply projection
 	projectedRows := make([]data.Row, len(rows))
 	for i, r := range rows {
@@ -238,6 +140,272 @@ func executeSelectNode(node *plan.SelectNode, ctx *ExecutionContext) (*Intermedi
 			"filtered":   node.Predicate != nil,
 		},
 	}, nil
+}
+
+type aggregateGroup struct {
+	rows []data.Row
+}
+
+func executeAggregateSelect(node *plan.SelectNode, rows []data.Row, inputSchema *schema.TableSchema) (*IntermediateResult, error) {
+	groups := make([]aggregateGroup, 0)
+	if len(node.GroupBy) == 0 {
+		groups = append(groups, aggregateGroup{rows: rows})
+	} else {
+		groupIndexes := make([]int, len(node.GroupBy))
+		for i, column := range node.GroupBy {
+			index, err := resolveResultColumn(inputSchema, column.Table, column.Column)
+			if err != nil {
+				return nil, fmt.Errorf("GROUP BY: %w", err)
+			}
+			groupIndexes[i] = index
+		}
+
+		groupLookup := make(map[string]int)
+		for _, row := range rows {
+			values := make([]interface{}, len(groupIndexes))
+			for i, index := range groupIndexes {
+				values[i] = row.Values[index]
+			}
+			key, err := encodeGroupKey(values)
+			if err != nil {
+				return nil, err
+			}
+			groupIndex, exists := groupLookup[key]
+			if !exists {
+				groupIndex = len(groups)
+				groupLookup[key] = groupIndex
+				groups = append(groups, aggregateGroup{})
+			}
+			groups[groupIndex].rows = append(groups[groupIndex].rows, row)
+		}
+	}
+
+	outputSchema, err := aggregateOutputSchema(node, inputSchema)
+	if err != nil {
+		return nil, err
+	}
+	outputRows := make([]data.Row, 0, len(groups))
+	for _, group := range groups {
+		values := make([]interface{}, 0, len(node.SelectItems))
+		for _, item := range node.SelectItems {
+			switch {
+			case item.Column != nil:
+				index, err := resolveResultColumn(inputSchema, item.Column.Table, item.Column.Column)
+				if err != nil {
+					return nil, err
+				}
+				values = append(values, group.rows[0].Values[index])
+			case item.Aggregate != nil:
+				value, err := computeAggregate(*item.Aggregate, group.rows, inputSchema)
+				if err != nil {
+					return nil, err
+				}
+				values = append(values, value)
+			}
+		}
+		outputRows = append(outputRows, data.NewRow(values))
+	}
+
+	if err := sortResultRows(outputRows, outputSchema, node.OrderBy); err != nil {
+		return nil, err
+	}
+	outputRows = applyOffsetLimit(outputRows, node.Offset, node.Limit)
+
+	return &IntermediateResult{
+		Rows:   outputRows,
+		Schema: outputSchema,
+		Metadata: map[string]interface{}{
+			"row_count":    len(outputRows),
+			"is_aggregate": len(node.Aggregates) > 0,
+			"is_grouped":   len(node.GroupBy) > 0,
+		},
+	}, nil
+}
+
+func aggregateOutputSchema(node *plan.SelectNode, inputSchema *schema.TableSchema) (*schema.TableSchema, error) {
+	columns := make([]schema.Column, 0, len(node.SelectItems))
+	for _, item := range node.SelectItems {
+		switch {
+		case item.Column != nil:
+			index, err := resolveResultColumn(inputSchema, item.Column.Table, item.Column.Column)
+			if err != nil {
+				return nil, err
+			}
+			name := item.Column.Column
+			if item.Column.Alias != "" {
+				name = item.Column.Alias
+			}
+			columns = append(columns, schema.Column{Name: name, Type: inputSchema.Columns[index].Type})
+		case item.Aggregate != nil:
+			columnType := schema.ColumnTypeFloat
+			if item.Aggregate.Function == "COUNT" {
+				columnType = schema.ColumnTypeInt
+			} else if item.Aggregate.Function == "MIN" || item.Aggregate.Function == "MAX" {
+				index, err := resolveResultColumn(inputSchema, item.Aggregate.Table, item.Aggregate.Column)
+				if err != nil {
+					return nil, err
+				}
+				columnType = inputSchema.Columns[index].Type
+			}
+			columns = append(columns, schema.Column{Name: item.Aggregate.Alias, Type: columnType})
+		}
+	}
+	return &schema.TableSchema{TableName: "aggregate", Columns: columns}, nil
+}
+
+func computeAggregate(spec plan.AggregateSpec, rows []data.Row, inputSchema *schema.TableSchema) (interface{}, error) {
+	columnIndex := -1
+	if spec.Column != "*" {
+		var err error
+		columnIndex, err = resolveResultColumn(inputSchema, spec.Table, spec.Column)
+		if err != nil {
+			return nil, fmt.Errorf("aggregate %s: %w", spec.Function, err)
+		}
+	}
+
+	switch spec.Function {
+	case "COUNT":
+		var count int64
+		for _, row := range rows {
+			if columnIndex < 0 || row.Values[columnIndex] != nil {
+				count++
+			}
+		}
+		return count, nil
+	case "SUM":
+		var sum float64
+		for _, row := range rows {
+			if columnIndex >= 0 && row.Values[columnIndex] != nil {
+				sum += toFloat64(row.Values[columnIndex])
+			}
+		}
+		return sum, nil
+	case "AVG":
+		var sum float64
+		var count int
+		for _, row := range rows {
+			if columnIndex >= 0 && row.Values[columnIndex] != nil {
+				sum += toFloat64(row.Values[columnIndex])
+				count++
+			}
+		}
+		if count == 0 {
+			return nil, nil
+		}
+		return sum / float64(count), nil
+	case "MIN", "MAX":
+		var selected interface{}
+		for _, row := range rows {
+			if columnIndex < 0 || row.Values[columnIndex] == nil {
+				continue
+			}
+			if selected == nil || spec.Function == "MIN" && compareValues(row.Values[columnIndex], selected) < 0 || spec.Function == "MAX" && compareValues(row.Values[columnIndex], selected) > 0 {
+				selected = row.Values[columnIndex]
+			}
+		}
+		return selected, nil
+	default:
+		return nil, fmt.Errorf("unsupported aggregate function: %s", spec.Function)
+	}
+}
+
+func resolveResultColumn(resultSchema *schema.TableSchema, table, column string) (int, error) {
+	qualified := column
+	if table != "" {
+		qualified = table + "." + column
+	}
+	match := -1
+	for index, candidate := range resultSchema.Columns {
+		if candidate.Name == qualified || table != "" && candidate.Name == column || table == "" && (candidate.Name == column || strings.HasSuffix(candidate.Name, "."+column)) {
+			if match >= 0 && match != index {
+				return -1, fmt.Errorf("column is ambiguous: %s", column)
+			}
+			match = index
+		}
+	}
+	if match < 0 {
+		return -1, fmt.Errorf("column not found: %s", qualified)
+	}
+	return match, nil
+}
+
+func encodeGroupKey(values []interface{}) (string, error) {
+	var buffer bytes.Buffer
+	for _, value := range values {
+		switch typed := value.(type) {
+		case nil:
+			buffer.WriteByte(0)
+		case int:
+			buffer.WriteByte(1)
+			_ = binary.Write(&buffer, binary.LittleEndian, int64(typed))
+		case int64:
+			buffer.WriteByte(1)
+			_ = binary.Write(&buffer, binary.LittleEndian, typed)
+		case float64:
+			buffer.WriteByte(2)
+			_ = binary.Write(&buffer, binary.LittleEndian, math.Float64bits(typed))
+		case string:
+			buffer.WriteByte(3)
+			_ = binary.Write(&buffer, binary.LittleEndian, uint64(len(typed)))
+			buffer.WriteString(typed)
+		case bool:
+			buffer.WriteByte(4)
+			if typed {
+				buffer.WriteByte(1)
+			} else {
+				buffer.WriteByte(0)
+			}
+		default:
+			return "", fmt.Errorf("unsupported GROUP BY value type %T", value)
+		}
+	}
+	return buffer.String(), nil
+}
+
+func sortResultRows(rows []data.Row, resultSchema *schema.TableSchema, orderBy []plan.OrderByClause) error {
+	indexes := make([]int, len(orderBy))
+	for i, clause := range orderBy {
+		index, err := resolveResultColumn(resultSchema, "", clause.Column)
+		if err != nil {
+			return fmt.Errorf("ORDER BY: %w", err)
+		}
+		indexes[i] = index
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		for clauseIndex, clause := range orderBy {
+			left := rows[i].Values[indexes[clauseIndex]]
+			right := rows[j].Values[indexes[clauseIndex]]
+			if left == nil || right == nil {
+				if left == nil && right == nil {
+					continue
+				}
+				return (left == nil) != clause.Desc
+			}
+			comparison := compareValues(left, right)
+			if comparison == 0 {
+				continue
+			}
+			if clause.Desc {
+				return comparison > 0
+			}
+			return comparison < 0
+		}
+		return false
+	})
+	return nil
+}
+
+func applyOffsetLimit(rows []data.Row, offset, limit *int) []data.Row {
+	if offset != nil {
+		if *offset >= len(rows) {
+			return nil
+		}
+		rows = rows[*offset:]
+	}
+	if limit != nil && *limit < len(rows) {
+		rows = rows[:*limit]
+	}
+	return rows
 }
 
 // compareValues returns -1 if a < b, 0 if a == b, 1 if a > b

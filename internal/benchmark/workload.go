@@ -1,7 +1,7 @@
 package benchmark
 
 import (
-	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/joydb/internal/engine"
 )
 
 // Workload defines a specific database operation or sequence of operations to be benchmarked.

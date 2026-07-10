@@ -3,8 +3,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // TestParseComparisonExpressions tests parsing of all comparison operators

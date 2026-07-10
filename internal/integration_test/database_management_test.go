@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/engine"
-	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/engine"
+	storageEngine "github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 func TestDatabaseManagement(t *testing.T) {

@@ -3,7 +3,7 @@ package predicate
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/ast"
 )
 
 func TestAnalyzeForIndexScan(t *testing.T) {

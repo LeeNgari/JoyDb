@@ -1,10 +1,10 @@
 package executor
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/plan"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/plan"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 // ExecutionStrategy defines how a plan node is executed

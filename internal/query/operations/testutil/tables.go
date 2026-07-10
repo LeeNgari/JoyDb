@@ -1,9 +1,9 @@
 package testutil
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/query/indexing"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/query/indexing"
 )
 
 // CreateTestTable creates a basic test table with common columns

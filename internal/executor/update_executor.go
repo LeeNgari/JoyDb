@@ -1,8 +1,8 @@
 package executor
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 // executeUpdateNode handles UPDATE using tree-walking pattern

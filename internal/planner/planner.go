@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/plan"
-	"github.com/leengari/mini-rdbms/internal/planner/predicate"
-	"github.com/leengari/mini-rdbms/internal/query/operations/join"
-	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
-	"github.com/leengari/mini-rdbms/internal/util/types"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/plan"
+	"github.com/leengari/joydb/internal/planner/predicate"
+	"github.com/leengari/joydb/internal/query/operations/join"
+	"github.com/leengari/joydb/internal/query/operations/projection"
+	"github.com/leengari/joydb/internal/util/types"
 )
 
 // Plan converts an AST statement into an execution plan
@@ -42,7 +42,7 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	// Build alias registry & validate table/alias references
 	validTables := make(map[string]bool)
 	validTables[strings.ToLower(tableName)] = true
-	
+
 	aliasMap := make(map[string]string)
 	if stmt.TableAlias != "" {
 		aliasMap[strings.ToLower(stmt.TableAlias)] = tableName
@@ -70,6 +70,11 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 					return nil, fmt.Errorf("table or alias not found in aggregate: %s", agg.Argument.Table)
 				}
 			}
+		}
+	}
+	for _, group := range stmt.GroupBy {
+		if group.Table != "" && !validTables[strings.ToLower(group.Table)] {
+			return nil, fmt.Errorf("table or alias not found in GROUP BY: %s", group.Table)
 		}
 	}
 
@@ -101,6 +106,11 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 			}
 		}
 	}
+	for _, group := range stmt.GroupBy {
+		if realTable, ok := aliasMap[strings.ToLower(group.Table)]; ok {
+			group.Table = realTable
+		}
+	}
 
 	// Substitute aliases in AST WHERE clause
 	resolveExpressionAliases(stmt.Where, aliasMap)
@@ -113,6 +123,16 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	table, ok := db.Tables[tableName]
 	if !ok {
 		return nil, fmt.Errorf("table not found: %s", tableName)
+	}
+
+	sourceTables := map[string]*schema.Table{tableName: table}
+	for _, joinClause := range stmt.Joins {
+		joinTableName := joinClause.RightTable.Value
+		joinTable, exists := db.Tables[joinTableName]
+		if !exists {
+			return nil, fmt.Errorf("right table not found: %s", joinTableName)
+		}
+		sourceTables[joinTableName] = joinTable
 	}
 
 	var pred func(data.Row) bool
@@ -157,6 +177,21 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 
 	var proj *projection.Projection
 	var planAggregates []plan.AggregateSpec
+	var selectItems []plan.SelectItemSpec
+	var groupBy []plan.ColumnRef
+
+	for _, group := range stmt.GroupBy {
+		resolved, err := resolveSelectColumn(group, sourceTables)
+		if err != nil {
+			return nil, fmt.Errorf("GROUP BY: %w", err)
+		}
+		groupBy = append(groupBy, resolved)
+	}
+	if len(groupBy) > 0 && len(stmt.Fields) == 1 {
+		if field, ok := stmt.Fields[0].(*ast.Identifier); ok && field.Value == "*" {
+			return nil, fmt.Errorf("SELECT * is not supported with GROUP BY")
+		}
+	}
 
 	if len(stmt.Fields) == 1 {
 		if f, ok := stmt.Fields[0].(*ast.Identifier); ok && f.Value == "*" {
@@ -171,28 +206,59 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		}
 		for _, expr := range stmt.Fields {
 			if f, ok := expr.(*ast.Identifier); ok {
+				if f.Value == "*" && len(groupBy) > 0 {
+					return nil, fmt.Errorf("SELECT * is not supported with GROUP BY")
+				}
+				resolved, err := resolveSelectColumn(f, sourceTables)
+				if err != nil {
+					return nil, err
+				}
+				resolved.Alias = f.Alias
 				proj.Columns = append(proj.Columns, projection.ColumnRef{
 					Table:  f.Table,
 					Column: f.Value,
 					Alias:  f.Alias,
 				})
+				selectItems = append(selectItems, plan.SelectItemSpec{Column: &resolved})
 			} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
 				colName := "*"
 				if agg.Argument != nil {
 					colName = agg.Argument.Value
 				}
-				
+
 				alias := agg.Alias
 				if alias == "" {
 					alias = fmt.Sprintf("%s(%s)", agg.Function, colName)
 				}
-				
-				planAggregates = append(planAggregates, plan.AggregateSpec{
+
+				tableQualifier := ""
+				if colName != "*" {
+					resolved, err := resolveSelectColumn(agg.Argument, sourceTables)
+					if err != nil {
+						return nil, fmt.Errorf("aggregate %s: %w", agg.Function, err)
+					}
+					tableQualifier = resolved.Table
+				}
+				spec := plan.AggregateSpec{
 					Function: agg.Function,
+					Table:    tableQualifier,
 					Column:   colName,
 					Alias:    alias,
-				})
+				}
+				planAggregates = append(planAggregates, spec)
+				selectItems = append(selectItems, plan.SelectItemSpec{Aggregate: &spec})
 				// For aggregates, we don't put them in the normal projection columns yet.
+			}
+		}
+	}
+
+	if len(planAggregates) > 0 && len(groupBy) == 0 && len(proj.Columns) > 0 {
+		return nil, fmt.Errorf("non-aggregate SELECT columns require GROUP BY")
+	}
+	if len(groupBy) > 0 {
+		for _, item := range selectItems {
+			if item.Column != nil && !containsColumn(groupBy, *item.Column) {
+				return nil, fmt.Errorf("column %s must appear in GROUP BY or be used in an aggregate function", qualifiedColumn(*item.Column))
 			}
 		}
 	}
@@ -214,6 +280,8 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 		Limit:       stmt.Limit,
 		Offset:      stmt.Offset,
 		Aggregates:  planAggregates,
+		GroupBy:     groupBy,
+		SelectItems: selectItems,
 	}
 
 	if indexScan != nil {
@@ -303,6 +371,56 @@ func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.
 	}
 
 	return selectNode, nil
+}
+
+func resolveSelectColumn(identifier *ast.Identifier, sourceTables map[string]*schema.Table) (plan.ColumnRef, error) {
+	if identifier == nil {
+		return plan.ColumnRef{}, fmt.Errorf("column is required")
+	}
+	if identifier.Value == "*" {
+		return plan.ColumnRef{Column: "*"}, nil
+	}
+	if identifier.Table != "" {
+		table, ok := sourceTables[identifier.Table]
+		if !ok {
+			return plan.ColumnRef{}, fmt.Errorf("table not found: %s", identifier.Table)
+		}
+		if table.Schema.GetColumnIndex(identifier.Value) < 0 {
+			return plan.ColumnRef{}, fmt.Errorf("column not found: %s.%s", identifier.Table, identifier.Value)
+		}
+		return plan.ColumnRef{Table: identifier.Table, Column: identifier.Value}, nil
+	}
+
+	matchedTable := ""
+	for tableName, table := range sourceTables {
+		if table.Schema.GetColumnIndex(identifier.Value) < 0 {
+			continue
+		}
+		if matchedTable != "" {
+			return plan.ColumnRef{}, fmt.Errorf("column is ambiguous: %s", identifier.Value)
+		}
+		matchedTable = tableName
+	}
+	if matchedTable == "" {
+		return plan.ColumnRef{}, fmt.Errorf("column not found: %s", identifier.Value)
+	}
+	return plan.ColumnRef{Table: matchedTable, Column: identifier.Value}, nil
+}
+
+func containsColumn(columns []plan.ColumnRef, target plan.ColumnRef) bool {
+	for _, column := range columns {
+		if column.Table == target.Table && column.Column == target.Column {
+			return true
+		}
+	}
+	return false
+}
+
+func qualifiedColumn(column plan.ColumnRef) string {
+	if column.Table == "" {
+		return column.Column
+	}
+	return column.Table + "." + column.Column
 }
 
 func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {

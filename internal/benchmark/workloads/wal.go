@@ -3,7 +3,7 @@ package workloads
 import (
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/benchmark"
+	"github.com/leengari/joydb/internal/benchmark"
 )
 
 // InsertWithWAL measures insert throughput with WAL enabled.

@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/infrastructure/logging"
-	"github.com/leengari/mini-rdbms/internal/network"
-	"github.com/leengari/mini-rdbms/internal/repl"
-	"github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/infrastructure/logging"
+	"github.com/leengari/joydb/internal/network"
+	"github.com/leengari/joydb/internal/repl"
+	"github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 func main() {

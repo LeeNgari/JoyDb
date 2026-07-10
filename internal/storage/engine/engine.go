@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
 )
 
 // StorageEngine defines the interface for all storage backends

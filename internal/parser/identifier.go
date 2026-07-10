@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseIdentifierList parses a comma-separated list of identifiers

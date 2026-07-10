@@ -3,8 +3,8 @@ package projection
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
 )
 
 // ProjectRow applies projection to a single row

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseCreate parses CREATE DATABASE or CREATE TABLE statement

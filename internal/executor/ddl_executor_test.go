@@ -3,8 +3,8 @@ package executor
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/plan"
 	"github.com/stretchr/testify/assert"
 )
 

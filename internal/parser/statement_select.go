@@ -3,8 +3,8 @@ package parser
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // parseSelect parses a SELECT statement
@@ -64,6 +64,27 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 		stmt.Where = expr
 	}
 
+	// GROUP BY (Optional)
+	if p.curTok.Type == lexer.GROUP {
+		p.nextToken()
+		if p.curTok.Type != lexer.BY {
+			return nil, fmt.Errorf("expected BY after GROUP, got %s", p.curTok.Literal)
+		}
+		p.nextToken()
+
+		for {
+			column, err := p.parseQualifiedIdentifier()
+			if err != nil {
+				return nil, fmt.Errorf("expected column name after GROUP BY: %w", err)
+			}
+			stmt.GroupBy = append(stmt.GroupBy, column)
+			if p.curTok.Type != lexer.COMMA {
+				break
+			}
+			p.nextToken()
+		}
+	}
+
 	// ORDER BY (Optional)
 	if p.curTok.Type == lexer.ORDER {
 		p.nextToken()
@@ -77,7 +98,7 @@ func (p *Parser) parseSelect() (*ast.SelectStatement, error) {
 			if p.curTok.Type != lexer.IDENTIFIER {
 				return nil, fmt.Errorf("expected column name after ORDER BY, got %s", p.curTok.Literal)
 			}
-			
+
 			col := &ast.Identifier{TokenLiteralValue: p.curTok.Literal, Value: p.curTok.Literal}
 			p.nextToken()
 

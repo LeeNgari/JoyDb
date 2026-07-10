@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/index/btree"
-	"github.com/leengari/mini-rdbms/internal/wal"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/index/btree"
+	"github.com/leengari/joydb/internal/wal"
 )
 
 var SnapshotMagic = []byte("JOYDBSNP")

@@ -1,13 +1,14 @@
 package planner
 
 import (
+	"strings"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/index/btree"
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/index/btree"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/plan"
 )
 
 func TestPlanInsertColumnless(t *testing.T) {
@@ -65,6 +66,69 @@ func TestPlanInsertColumnless(t *testing.T) {
 		if val != v {
 			t.Errorf("Expected column %s to have value %v, got %v", k, v, val)
 		}
+	}
+}
+
+func TestPlanSelectGroupBy(t *testing.T) {
+	db := &schema.Database{Tables: map[string]*schema.Table{
+		"employees": {
+			Name: "employees",
+			Schema: &schema.TableSchema{Columns: []schema.Column{
+				{Name: "id", Type: schema.ColumnTypeInt},
+				{Name: "department", Type: schema.ColumnTypeText},
+			}},
+		},
+	}}
+	tx := transaction.NewTransaction()
+	defer tx.Close()
+
+	stmt := &ast.SelectStatement{
+		TableName: &ast.Identifier{Value: "employees"},
+		Fields: []ast.Expression{
+			&ast.Identifier{Value: "department"},
+			&ast.AggregateFunctionCall{Function: "COUNT", Argument: &ast.Identifier{Value: "*"}, Alias: "total"},
+		},
+		GroupBy: []*ast.Identifier{{Value: "department"}},
+	}
+
+	node, err := Plan(stmt, db, tx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	selectNode := node.(*plan.SelectNode)
+	if len(selectNode.GroupBy) != 1 || selectNode.GroupBy[0].Table != "employees" {
+		t.Fatalf("unexpected GROUP BY plan: %+v", selectNode.GroupBy)
+	}
+	if len(selectNode.SelectItems) != 2 || selectNode.SelectItems[0].Column == nil || selectNode.SelectItems[1].Aggregate == nil {
+		t.Fatalf("SELECT item order was not preserved: %+v", selectNode.SelectItems)
+	}
+}
+
+func TestPlanSelectRejectsNonGroupedColumn(t *testing.T) {
+	db := &schema.Database{Tables: map[string]*schema.Table{
+		"employees": {
+			Name: "employees",
+			Schema: &schema.TableSchema{Columns: []schema.Column{
+				{Name: "department", Type: schema.ColumnTypeText},
+				{Name: "name", Type: schema.ColumnTypeText},
+			}},
+		},
+	}}
+	tx := transaction.NewTransaction()
+	defer tx.Close()
+
+	stmt := &ast.SelectStatement{
+		TableName: &ast.Identifier{Value: "employees"},
+		Fields: []ast.Expression{
+			&ast.Identifier{Value: "name"},
+			&ast.AggregateFunctionCall{Function: "COUNT", Argument: &ast.Identifier{Value: "*"}},
+		},
+		GroupBy: []*ast.Identifier{{Value: "department"}},
+	}
+
+	_, err := Plan(stmt, db, tx)
+	if err == nil || !strings.Contains(err.Error(), "must appear in GROUP BY") {
+		t.Fatalf("expected GROUP BY validation error, got %v", err)
 	}
 }
 
@@ -147,4 +211,3 @@ func TestPlanSelectIndexScan(t *testing.T) {
 		t.Fatalf("Expected no children (fallback to sequential scan), got %d", len(selectNodeSeq.Children()))
 	}
 }
-

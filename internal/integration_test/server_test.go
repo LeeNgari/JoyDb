@@ -10,10 +10,10 @@ import (
 
 	"encoding/json"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/network"
-	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/network"
+	storageEngine "github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 type ColumnMetadata struct {

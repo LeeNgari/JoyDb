@@ -4,8 +4,8 @@ import (
 	"sync"
 
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/engine"
 )
 
 // BaselineMap tests the absolute maximum throughput of a simple Go map protected by a Mutex.

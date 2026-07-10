@@ -3,7 +3,7 @@ package projection
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/schema"
 )
 
 // ValidateProjection checks if all columns in the projection exist in the table schema

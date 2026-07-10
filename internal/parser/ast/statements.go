@@ -16,12 +16,13 @@ type OrderByClause struct {
 type SelectStatement struct {
 	Fields     []Expression
 	TableName  *Identifier
-	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
-	Joins      []*JoinClause // Optional JOIN clauses
-	Where      Expression    // Optional WHERE clause
+	TableAlias string          // Table alias e.g. "u" in "FROM users AS u"
+	Joins      []*JoinClause   // Optional JOIN clauses
+	Where      Expression      // Optional WHERE clause
+	GroupBy    []*Identifier   // Optional GROUP BY columns
 	OrderBy    []OrderByClause // Optional ORDER BY clauses
-	Limit      *int          // Optional LIMIT
-	Offset     *int          // Optional OFFSET
+	Limit      *int            // Optional LIMIT
+	Offset     *int            // Optional OFFSET
 }
 
 func (s *SelectStatement) statementNode()       {}
@@ -37,18 +38,28 @@ func (s *SelectStatement) String() string {
 	}
 	out.WriteString(" FROM ")
 	out.WriteString(s.TableName.String())
-	
+
 	// Add JOINs if present
 	for _, join := range s.Joins {
 		out.WriteString(" ")
 		out.WriteString(join.String())
 	}
-	
+
 	if s.Where != nil {
 		out.WriteString(" WHERE ")
 		out.WriteString(s.Where.String())
 	}
-	
+
+	if len(s.GroupBy) > 0 {
+		out.WriteString(" GROUP BY ")
+		for i, group := range s.GroupBy {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			out.WriteString(group.String())
+		}
+	}
+
 	if len(s.OrderBy) > 0 {
 		out.WriteString(" ORDER BY ")
 		for i, ob := range s.OrderBy {
@@ -63,15 +74,15 @@ func (s *SelectStatement) String() string {
 			}
 		}
 	}
-	
+
 	if s.Limit != nil {
 		out.WriteString(fmt.Sprintf(" LIMIT %d", *s.Limit))
 	}
-	
+
 	if s.Offset != nil {
 		out.WriteString(fmt.Sprintf(" OFFSET %d", *s.Offset))
 	}
-	
+
 	return out.String()
 }
 
@@ -142,7 +153,7 @@ func (s *UpdateStatement) String() string {
 	out.WriteString("UPDATE ")
 	out.WriteString(s.TableName.String())
 	out.WriteString(" SET ")
-	
+
 	// Note: map iteration order is non-deterministic, but that's okay for debugging
 	first := true
 	for col, val := range s.Updates {
@@ -154,7 +165,7 @@ func (s *UpdateStatement) String() string {
 		out.WriteString(val.String())
 		first = false
 	}
-	
+
 	if s.Where != nil {
 		out.WriteString(" WHERE ")
 		out.WriteString(s.Where.String())
@@ -248,7 +259,7 @@ func (c *ColumnDef) String() string {
 	out.WriteString(c.Name)
 	out.WriteString(" ")
 	out.WriteString(c.Type)
-	
+
 	if c.PrimaryKey {
 		out.WriteString(" PRIMARY KEY")
 	}
@@ -261,7 +272,7 @@ func (c *ColumnDef) String() string {
 	if c.NotNull {
 		out.WriteString(" NOT NULL")
 	}
-	
+
 	return out.String()
 }
 
@@ -286,7 +297,7 @@ func (s *CreateTableStatement) String() string {
 	out.WriteString("CREATE TABLE ")
 	out.WriteString(s.TableName)
 	out.WriteString(" (")
-	
+
 	for i, col := range s.Columns {
 		out.WriteString(col.String())
 		if i < len(s.Columns)-1 || len(s.ForeignKeys) > 0 {
@@ -306,7 +317,7 @@ func (s *CreateTableStatement) String() string {
 			out.WriteString(", ")
 		}
 	}
-	
+
 	out.WriteString(")")
 	return out.String()
 }

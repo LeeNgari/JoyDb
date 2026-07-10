@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/domain/transaction"
-	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/executor"
-	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
-	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
-	storageEngine "github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/transaction"
+	"github.com/leengari/joydb/internal/engine"
+	"github.com/leengari/joydb/internal/executor"
+	"github.com/leengari/joydb/internal/query/operations/projection"
+	"github.com/leengari/joydb/internal/query/operations/testutil"
+	storageEngine "github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 // TestCRUDOperations tests all CRUD operations with isolated test database

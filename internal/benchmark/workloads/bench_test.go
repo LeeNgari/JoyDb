@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/benchmark"
+	"github.com/leengari/joydb/internal/benchmark"
 )
 
 func init() {

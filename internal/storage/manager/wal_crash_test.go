@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/storage/engine"
-	"github.com/leengari/mini-rdbms/internal/wal"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/storage/engine"
+	"github.com/leengari/joydb/internal/wal"
 	"gotest.tools/v3/assert"
 )
 

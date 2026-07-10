@@ -2,7 +2,7 @@ package wal
 
 import (
 	"testing"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/joydb/internal/domain/schema"
 	"github.com/stretchr/testify/assert"
 )
 

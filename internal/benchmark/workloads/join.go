@@ -3,7 +3,7 @@ package workloads
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/engine"
+	"github.com/leengari/joydb/internal/engine"
 )
 
 // JoinNestedLoop100x100 measures JOIN performance on small tables

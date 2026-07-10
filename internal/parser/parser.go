@@ -3,16 +3,17 @@ package parser
 import (
 	"fmt"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 // Converts tokens into an ast
 type Parser struct {
-	tokens  []lexer.Token // List of tokens from the lexer
-	curPos  int           // Current position in the token list
-	curTok  lexer.Token   // Current token being examined
-	peekTok lexer.Token   // Next token
+	tokens         []lexer.Token // List of tokens from the lexer
+	curPos         int           // Current position in the token list
+	curTok         lexer.Token   // Current token being examined
+	peekTok        lexer.Token   // Next token
+	parameterCount int
 }
 
 func New(tokens []lexer.Token) *Parser {

@@ -1,7 +1,7 @@
 package manager
 
 import (
-	"github.com/leengari/mini-rdbms/internal/wal"
+	"github.com/leengari/joydb/internal/wal"
 )
 
 // BufferedEntry represents a single WAL operation buffered in memory

@@ -3,10 +3,10 @@ package projection_test
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/domain/data"
-	"github.com/leengari/mini-rdbms/internal/domain/schema"
-	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
-	"github.com/leengari/mini-rdbms/internal/query/operations/testutil"
+	"github.com/leengari/joydb/internal/domain/data"
+	"github.com/leengari/joydb/internal/domain/schema"
+	"github.com/leengari/joydb/internal/query/operations/projection"
+	"github.com/leengari/joydb/internal/query/operations/testutil"
 )
 
 // TestProjection_SelectAll tests selecting all columns

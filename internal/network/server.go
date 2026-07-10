@@ -8,9 +8,9 @@ import (
 	"log/slog"
 	"net"
 
-	"github.com/leengari/mini-rdbms/internal/engine"
-	"github.com/leengari/mini-rdbms/internal/executor"
-	"github.com/leengari/mini-rdbms/internal/storage/manager"
+	"github.com/leengari/joydb/internal/engine"
+	"github.com/leengari/joydb/internal/executor"
+	"github.com/leengari/joydb/internal/storage/manager"
 )
 
 type Request struct {

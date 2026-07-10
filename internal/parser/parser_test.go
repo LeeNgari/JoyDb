@@ -3,8 +3,8 @@ package parser
 import (
 	"testing"
 
-	"github.com/leengari/mini-rdbms/internal/parser/ast"
-	"github.com/leengari/mini-rdbms/internal/parser/lexer"
+	"github.com/leengari/joydb/internal/parser/ast"
+	"github.com/leengari/joydb/internal/parser/lexer"
 )
 
 func TestParseSelect(t *testing.T) {
@@ -86,6 +86,36 @@ func TestParseSelectLimitOffset(t *testing.T) {
 	}
 }
 
+func TestParseSelectGroupBy(t *testing.T) {
+	input := "SELECT department, role, COUNT(*) AS total FROM employees GROUP BY department, employees.role ORDER BY total DESC LIMIT 5;"
+	tokens, err := lexer.Tokenize(input)
+	if err != nil {
+		t.Fatalf("Lexer error: %v", err)
+	}
+
+	stmt, err := New(tokens).Parse()
+	if err != nil {
+		t.Fatalf("Parse error: %v", err)
+	}
+
+	selectStmt := stmt.(*ast.SelectStatement)
+	if len(selectStmt.GroupBy) != 2 {
+		t.Fatalf("Expected 2 GROUP BY columns, got %d", len(selectStmt.GroupBy))
+	}
+	if selectStmt.GroupBy[0].Value != "department" {
+		t.Fatalf("Expected department, got %s", selectStmt.GroupBy[0].Value)
+	}
+	if selectStmt.GroupBy[1].Table != "employees" || selectStmt.GroupBy[1].Value != "role" {
+		t.Fatalf("Expected employees.role, got %s", selectStmt.GroupBy[1].String())
+	}
+	if len(selectStmt.OrderBy) != 1 || selectStmt.OrderBy[0].Column.Value != "total" || !selectStmt.OrderBy[0].Desc {
+		t.Fatalf("Unexpected ORDER BY: %+v", selectStmt.OrderBy)
+	}
+	if selectStmt.Limit == nil || *selectStmt.Limit != 5 {
+		t.Fatalf("Expected LIMIT 5, got %v", selectStmt.Limit)
+	}
+}
+
 func TestParseInsert(t *testing.T) {
 	input := "INSERT INTO items (name, price) VALUES ('apple', 1.23);"
 	tokens, err := lexer.Tokenize(input)
@@ -118,7 +148,7 @@ func TestParseInsert(t *testing.T) {
 	if len(ins.Values) != 2 {
 		t.Fatalf("Expected 2 values, got %d", len(ins.Values))
 	}
-	
+
 	val1, ok := ins.Values[0].(*ast.Literal)
 	if !ok || val1.Value != "apple" {
 		t.Errorf("Expected value 0 to be 'apple', got %v", ins.Values[0])
