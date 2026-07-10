@@ -1,0 +1,49 @@
+package transaction
+
+import (
+	"sync/atomic"
+	"time"
+)
+
+// txIDCounter is an atomic counter for generating unique transaction IDs
+// Used for WAL integration which requires uint64 transaction IDs
+var txIDCounter uint64
+
+// ChangeType represents the type of modification
+type ChangeType string
+
+const (
+	ChangeTypeInsert ChangeType = "INSERT"
+	ChangeTypeUpdate ChangeType = "UPDATE"
+	ChangeTypeDelete ChangeType = "DELETE"
+)
+
+// Change represents a single modification within a transaction
+type Change struct {
+	Type    ChangeType
+	Table   string
+	RowID   int64
+	Data    map[string]interface{} // New data for INSERT/UPDATE
+	OldData map[string]interface{} // Old data for UPDATE/DELETE
+}
+
+// Transaction represents a database transaction context
+type Transaction struct {
+	TxID      uint64    // Numeric transaction ID for WAL integration
+	Active    bool      // Whether transaction is currently active
+	StartTime time.Time // When the transaction began
+	Changes   []Change  // Modifications made
+}
+
+func NewTransaction() *Transaction {
+	return &Transaction{
+		TxID:      atomic.AddUint64(&txIDCounter, 1),
+		Active:    true,
+		StartTime: time.Now(),
+		Changes:   make([]Change, 0),
+	}
+}
+
+func (tx *Transaction) Close() {
+	tx.Active = false
+}

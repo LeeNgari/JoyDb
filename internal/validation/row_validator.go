@@ -1,0 +1,142 @@
+package validation
+
+import (
+	"fmt"
+
+	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/errors"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
+)
+
+// ValidateRow checks if the given row matches the table's schema
+// - Checks required fields (NOT NULL)
+// - Validates type compatibility (with JSON reality)
+// - Returns ConstraintError for better error handling
+func ValidateRow(table *schema.Table, row data.Row, rowIndex int) error {
+	for i, col := range table.Schema.Columns {
+		val := row.Values[i]
+
+		// Handle missing value
+		if val == nil {
+			if col.NotNull {
+				return &errors.ConstraintError{
+					Table:      table.Name,
+					Column:     col.Name,
+					Constraint: "not_null",
+					Reason:     "missing required value",
+					RowIndex:   rowIndex,
+				}
+			}
+			continue // nullable
+		}
+
+		// Type validation
+		switch col.Type {
+		case schema.ColumnTypeText:
+			if _, ok := val.(string); !ok {
+				return &errors.ConstraintError{
+					Table:      table.Name,
+					Column:     col.Name,
+					Value:      val,
+					Constraint: "type_mismatch",
+					Reason:     fmt.Sprintf("expected string, got %T", val),
+					RowIndex:   rowIndex,
+				}
+			}
+		case schema.ColumnTypeInt:
+			// Normalize to int64 for consistency
+			switch v := val.(type) {
+			case int:
+				row.Values[i] = int64(v) // normalize to int64
+			case int64:
+				// already int64, perfect
+			case float64:
+				// JSON numbers come as float64
+				if v == float64(int64(v)) {
+					row.Values[i] = int64(v)
+				} else {
+					return &errors.ConstraintError{
+						Table:      table.Name,
+						Column:     col.Name,
+						Value:      val,
+						Constraint: "type_mismatch",
+						Reason:     fmt.Sprintf("expected integer, got float with decimal: %v", v),
+						RowIndex:   rowIndex,
+					}
+				}
+			default:
+				return &errors.ConstraintError{
+					Table:      table.Name,
+					Column:     col.Name,
+					Value:      val,
+					Constraint: "type_mismatch",
+					Reason:     fmt.Sprintf("expected integer, got %T", val),
+					RowIndex:   rowIndex,
+				}
+			}
+		case schema.ColumnTypeFloat:
+			if _, ok := val.(float64); !ok {
+				return typeMismatchError(table.Name, col.Name, val, "Float (number)", rowIndex)
+			}
+
+		case schema.ColumnTypeEmail:
+			str, ok := val.(string)
+			if !ok {
+				return typeMismatchError(table.Name, col.Name, val, "string", rowIndex)
+			}
+			// Validate email format
+			if err := ValidateEmail(str); err != nil {
+				return &errors.ConstraintError{
+					Table:      table.Name,
+					Column:     col.Name,
+					Value:      val,
+					Constraint: "invalid_email",
+					Reason:     err.Error(),
+					RowIndex:   rowIndex,
+				}
+			}
+
+		case schema.ColumnTypeBool:
+			if _, ok := val.(bool); !ok {
+				return typeMismatchError(table.Name, col.Name, val, "boolean", rowIndex)
+			}
+
+		case schema.ColumnTypeDate:
+			switch v := val.(type) {
+			case string:
+				if err := ValidateDate(v); err != nil {
+					return typeMismatchError(table.Name, col.Name, val, "date/time string", rowIndex)
+				}
+			default:
+				return typeMismatchError(table.Name, col.Name, val, "date string", rowIndex)
+			}
+
+		case schema.ColumnTypeTime:
+			switch v := val.(type) {
+			case string:
+				if err := ValidateTime(v); err != nil {
+					return typeMismatchError(table.Name, col.Name, val, "time string", rowIndex)
+				}
+			default:
+				return typeMismatchError(table.Name, col.Name, val, "time string", rowIndex)
+			}
+
+		default:
+			return fmt.Errorf("unknown column type %q", col.Type)
+		}
+	}
+
+	return nil
+}
+
+// typeMismatchError creates a type mismatch error
+func typeMismatchError(table, col string, val interface{}, expected string, rowIndex int) *errors.ConstraintError {
+	return &errors.ConstraintError{
+		Table:      table,
+		Column:     col,
+		Value:      val,
+		Constraint: "type_mismatch",
+		Reason:     fmt.Sprintf("expected %s, got %T", expected, val),
+		RowIndex:   rowIndex,
+	}
+}

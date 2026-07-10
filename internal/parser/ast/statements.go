@@ -1,0 +1,323 @@
+package ast
+
+import (
+	"bytes"
+	"fmt"
+)
+
+// OrderByClause represents a column to order by and the direction
+type OrderByClause struct {
+	Column *Identifier
+	Desc   bool // false = ASC (default), true = DESC
+}
+
+// SelectStatement: SELECT fields FROM table [JOIN ...] [WHERE condition]
+// Represents a SELECT SQL query with optional JOINs and WHERE clause
+type SelectStatement struct {
+	Fields     []Expression
+	TableName  *Identifier
+	TableAlias string        // Table alias e.g. "u" in "FROM users AS u"
+	Joins      []*JoinClause // Optional JOIN clauses
+	Where      Expression    // Optional WHERE clause
+	OrderBy    []OrderByClause // Optional ORDER BY clauses
+	Limit      *int          // Optional LIMIT
+	Offset     *int          // Optional OFFSET
+}
+
+func (s *SelectStatement) statementNode()       {}
+func (s *SelectStatement) TokenLiteral() string { return "SELECT" }
+func (s *SelectStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("SELECT ")
+	for i, f := range s.Fields {
+		if i > 0 {
+			out.WriteString(", ")
+		}
+		out.WriteString(f.String())
+	}
+	out.WriteString(" FROM ")
+	out.WriteString(s.TableName.String())
+	
+	// Add JOINs if present
+	for _, join := range s.Joins {
+		out.WriteString(" ")
+		out.WriteString(join.String())
+	}
+	
+	if s.Where != nil {
+		out.WriteString(" WHERE ")
+		out.WriteString(s.Where.String())
+	}
+	
+	if len(s.OrderBy) > 0 {
+		out.WriteString(" ORDER BY ")
+		for i, ob := range s.OrderBy {
+			if i > 0 {
+				out.WriteString(", ")
+			}
+			out.WriteString(ob.Column.String())
+			if ob.Desc {
+				out.WriteString(" DESC")
+			} else {
+				out.WriteString(" ASC")
+			}
+		}
+	}
+	
+	if s.Limit != nil {
+		out.WriteString(fmt.Sprintf(" LIMIT %d", *s.Limit))
+	}
+	
+	if s.Offset != nil {
+		out.WriteString(fmt.Sprintf(" OFFSET %d", *s.Offset))
+	}
+	
+	return out.String()
+}
+
+// JoinClause represents a JOIN operation in a SELECT statement
+// Example: INNER JOIN orders ON users.id = orders.user_id
+type JoinClause struct {
+	JoinType        string      // "INNER", "LEFT", "RIGHT", "FULL"
+	RightTable      *Identifier // Table to join with
+	RightTableAlias string      // Right table alias e.g. "o" in "JOIN orders AS o"
+	OnCondition     Expression  // JOIN condition (e.g., users.id = orders.user_id)
+}
+
+func (j *JoinClause) String() string {
+	var out bytes.Buffer
+	out.WriteString(j.JoinType)
+	out.WriteString(" JOIN ")
+	out.WriteString(j.RightTable.String())
+	out.WriteString(" ON ")
+	out.WriteString(j.OnCondition.String())
+	return out.String()
+}
+
+// InsertStatement: INSERT INTO table (col1, col2) VALUES (val1, val2)
+type InsertStatement struct {
+	TableName *Identifier
+	Columns   []*Identifier
+	Values    []Expression
+}
+
+func (s *InsertStatement) statementNode()       {}
+func (s *InsertStatement) TokenLiteral() string { return "INSERT" }
+func (s *InsertStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("INSERT INTO ")
+	out.WriteString(s.TableName.String())
+	out.WriteString(" (")
+	for i, c := range s.Columns {
+		out.WriteString(c.String())
+		if i < len(s.Columns)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(") VALUES (")
+	for i, v := range s.Values {
+		out.WriteString(v.String())
+		if i < len(s.Values)-1 {
+			out.WriteString(", ")
+		}
+	}
+	out.WriteString(")")
+	return out.String()
+}
+
+// UpdateStatement: UPDATE table SET col1 = val1, col2 = val2 WHERE ...
+// Represents an UPDATE SQL statement that modifies existing rows in a table.
+// The Updates map contains column names as keys and their new values as expressions.
+// WHERE clause is optional - if nil, all rows will be updated.
+type UpdateStatement struct {
+	TableName *Identifier
+	Updates   map[string]Expression // column name -> new value expression
+	Where     Expression            // optional predicate
+}
+
+func (s *UpdateStatement) statementNode()       {}
+func (s *UpdateStatement) TokenLiteral() string { return "UPDATE" }
+func (s *UpdateStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("UPDATE ")
+	out.WriteString(s.TableName.String())
+	out.WriteString(" SET ")
+	
+	// Note: map iteration order is non-deterministic, but that's okay for debugging
+	first := true
+	for col, val := range s.Updates {
+		if !first {
+			out.WriteString(", ")
+		}
+		out.WriteString(col)
+		out.WriteString(" = ")
+		out.WriteString(val.String())
+		first = false
+	}
+	
+	if s.Where != nil {
+		out.WriteString(" WHERE ")
+		out.WriteString(s.Where.String())
+	}
+	return out.String()
+}
+
+// DeleteStatement: DELETE FROM table WHERE ...
+// Represents a DELETE SQL statement that removes rows from a table.
+// WHERE clause is optional - if nil, all rows will be deleted.
+type DeleteStatement struct {
+	TableName *Identifier
+	Where     Expression // optional predicate
+}
+
+func (s *DeleteStatement) statementNode()       {}
+func (s *DeleteStatement) TokenLiteral() string { return "DELETE" }
+func (s *DeleteStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("DELETE FROM ")
+	out.WriteString(s.TableName.String())
+	if s.Where != nil {
+		out.WriteString(" WHERE ")
+		out.WriteString(s.Where.String())
+	}
+	return out.String()
+}
+
+// CreateDatabaseStatement: CREATE DATABASE name
+type CreateDatabaseStatement struct {
+	Name string
+}
+
+func (s *CreateDatabaseStatement) statementNode()       {}
+func (s *CreateDatabaseStatement) TokenLiteral() string { return "CREATE" }
+func (s *CreateDatabaseStatement) String() string {
+	return "CREATE DATABASE " + s.Name
+}
+
+// DropDatabaseStatement: DROP DATABASE name
+type DropDatabaseStatement struct {
+	Name string
+}
+
+func (s *DropDatabaseStatement) statementNode()       {}
+func (s *DropDatabaseStatement) TokenLiteral() string { return "DROP" }
+func (s *DropDatabaseStatement) String() string {
+	return "DROP DATABASE " + s.Name
+}
+
+// AlterDatabaseStatement: ALTER DATABASE name RENAME TO newName
+type AlterDatabaseStatement struct {
+	Name    string
+	NewName string
+}
+
+func (s *AlterDatabaseStatement) statementNode()       {}
+func (s *AlterDatabaseStatement) TokenLiteral() string { return "ALTER" }
+func (s *AlterDatabaseStatement) String() string {
+	return "ALTER DATABASE " + s.Name + " RENAME TO " + s.NewName
+}
+
+// UseDatabaseStatement: USE name
+type UseDatabaseStatement struct {
+	Name string
+}
+
+func (s *UseDatabaseStatement) statementNode()       {}
+func (s *UseDatabaseStatement) TokenLiteral() string { return "USE" }
+func (s *UseDatabaseStatement) String() string {
+	return "USE " + s.Name
+}
+
+// ===========================================================================
+// DDL STATEMENTS (TABLES)
+// ===========================================================================
+
+// ColumnDef represents a column definition in a CREATE TABLE statement
+type ColumnDef struct {
+	Name          string
+	Type          string // "INT", "TEXT", "FLOAT", "BOOL", "DATE", "TIME", "EMAIL"
+	PrimaryKey    bool
+	NotNull       bool
+	Unique        bool
+	AutoIncrement bool
+}
+
+// String returns a string representation of the column definition
+func (c *ColumnDef) String() string {
+	var out bytes.Buffer
+	out.WriteString(c.Name)
+	out.WriteString(" ")
+	out.WriteString(c.Type)
+	
+	if c.PrimaryKey {
+		out.WriteString(" PRIMARY KEY")
+	}
+	if c.AutoIncrement {
+		out.WriteString(" AUTO_INCREMENT")
+	}
+	if c.Unique {
+		out.WriteString(" UNIQUE")
+	}
+	if c.NotNull {
+		out.WriteString(" NOT NULL")
+	}
+	
+	return out.String()
+}
+
+// ForeignKey represents a foreign key constraint in a CREATE TABLE statement
+type ForeignKey struct {
+	ColumnName    string
+	RefTableName  string
+	RefColumnName string
+}
+
+// CreateTableStatement: CREATE TABLE name (col1 type1, ...)
+type CreateTableStatement struct {
+	TableName   string
+	Columns     []*ColumnDef
+	ForeignKeys []*ForeignKey
+}
+
+func (s *CreateTableStatement) statementNode()       {}
+func (s *CreateTableStatement) TokenLiteral() string { return "CREATE" }
+func (s *CreateTableStatement) String() string {
+	var out bytes.Buffer
+	out.WriteString("CREATE TABLE ")
+	out.WriteString(s.TableName)
+	out.WriteString(" (")
+	
+	for i, col := range s.Columns {
+		out.WriteString(col.String())
+		if i < len(s.Columns)-1 || len(s.ForeignKeys) > 0 {
+			out.WriteString(", ")
+		}
+	}
+
+	for i, fk := range s.ForeignKeys {
+		out.WriteString("FOREIGN KEY (")
+		out.WriteString(fk.ColumnName)
+		out.WriteString(") REFERENCES ")
+		out.WriteString(fk.RefTableName)
+		out.WriteString("(")
+		out.WriteString(fk.RefColumnName)
+		out.WriteString(")")
+		if i < len(s.ForeignKeys)-1 {
+			out.WriteString(", ")
+		}
+	}
+	
+	out.WriteString(")")
+	return out.String()
+}
+
+// DropTableStatement: DROP TABLE name
+type DropTableStatement struct {
+	TableName string
+}
+
+func (s *DropTableStatement) statementNode()       {}
+func (s *DropTableStatement) TokenLiteral() string { return "DROP" }
+func (s *DropTableStatement) String() string {
+	return "DROP TABLE " + s.TableName
+}

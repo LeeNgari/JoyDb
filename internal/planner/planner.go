@@ -1,0 +1,552 @@
+package planner
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/leengari/mini-rdbms/internal/domain/data"
+	"github.com/leengari/mini-rdbms/internal/domain/schema"
+	"github.com/leengari/mini-rdbms/internal/domain/transaction"
+	"github.com/leengari/mini-rdbms/internal/parser/ast"
+	"github.com/leengari/mini-rdbms/internal/plan"
+	"github.com/leengari/mini-rdbms/internal/planner/predicate"
+	"github.com/leengari/mini-rdbms/internal/query/operations/join"
+	"github.com/leengari/mini-rdbms/internal/query/operations/projection"
+	"github.com/leengari/mini-rdbms/internal/util/types"
+)
+
+// Plan converts an AST statement into an execution plan
+func Plan(stmt ast.Statement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	switch s := stmt.(type) {
+	case *ast.SelectStatement:
+		return planSelect(s, db, tx)
+	case *ast.InsertStatement:
+		return planInsert(s, db, tx)
+	case *ast.UpdateStatement:
+		return planUpdate(s, db, tx)
+	case *ast.DeleteStatement:
+		return planDelete(s, db, tx)
+	case *ast.CreateTableStatement:
+		return planCreateTable(s, db, tx)
+	case *ast.DropTableStatement:
+		return planDropTable(s, db, tx)
+	default:
+		return nil, fmt.Errorf("unsupported statement type: %T", stmt)
+	}
+}
+
+func planSelect(stmt *ast.SelectStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+
+	tableName := stmt.TableName.Value
+
+	// Build alias registry & validate table/alias references
+	validTables := make(map[string]bool)
+	validTables[strings.ToLower(tableName)] = true
+	
+	aliasMap := make(map[string]string)
+	if stmt.TableAlias != "" {
+		aliasMap[strings.ToLower(stmt.TableAlias)] = tableName
+		validTables[strings.ToLower(stmt.TableAlias)] = true
+	}
+	for _, joinClause := range stmt.Joins {
+		validTables[strings.ToLower(joinClause.RightTable.Value)] = true
+		if joinClause.RightTableAlias != "" {
+			aliasMap[strings.ToLower(joinClause.RightTableAlias)] = joinClause.RightTable.Value
+			validTables[strings.ToLower(joinClause.RightTableAlias)] = true
+		}
+	}
+
+	// Validate AST fields
+	for _, expr := range stmt.Fields {
+		if f, ok := expr.(*ast.Identifier); ok {
+			if f.Table != "" {
+				if !validTables[strings.ToLower(f.Table)] {
+					return nil, fmt.Errorf("table or alias not found: %s", f.Table)
+				}
+			}
+		} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+			if agg.Argument != nil && agg.Argument.Table != "" {
+				if !validTables[strings.ToLower(agg.Argument.Table)] {
+					return nil, fmt.Errorf("table or alias not found in aggregate: %s", agg.Argument.Table)
+				}
+			}
+		}
+	}
+
+	// Validate AST WHERE clause
+	if err := validateExpressionTableReferences(stmt.Where, validTables); err != nil {
+		return nil, err
+	}
+
+	// Validate AST JOIN conditions
+	for _, joinClause := range stmt.Joins {
+		if err := validateExpressionTableReferences(joinClause.OnCondition, validTables); err != nil {
+			return nil, err
+		}
+	}
+
+	// Substitute aliases in AST fields
+	for _, expr := range stmt.Fields {
+		if f, ok := expr.(*ast.Identifier); ok {
+			if f.Table != "" {
+				if realTable, ok := aliasMap[strings.ToLower(f.Table)]; ok {
+					f.Table = realTable
+				}
+			}
+		} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+			if agg.Argument != nil && agg.Argument.Table != "" {
+				if realTable, ok := aliasMap[strings.ToLower(agg.Argument.Table)]; ok {
+					agg.Argument.Table = realTable
+				}
+			}
+		}
+	}
+
+	// Substitute aliases in AST WHERE clause
+	resolveExpressionAliases(stmt.Where, aliasMap)
+
+	// Substitute aliases in AST JOIN conditions
+	for _, joinClause := range stmt.Joins {
+		resolveExpressionAliases(joinClause.OnCondition, aliasMap)
+	}
+
+	table, ok := db.Tables[tableName]
+	if !ok {
+		return nil, fmt.Errorf("table not found: %s", tableName)
+	}
+
+	var pred func(data.Row) bool
+	var indexScan *plan.IndexScanNode
+
+	if stmt.Where != nil {
+		p, err := predicate.Build(stmt.Where, table.Schema)
+		if err != nil {
+			return nil, err
+		}
+		pred = p
+
+		// Check if we can use an index scan (only if no joins)
+		if len(stmt.Joins) == 0 {
+			info := predicate.AnalyzeForIndexScan(stmt.Where)
+			if info != nil {
+				pkCol := table.Schema.GetPrimaryKeyColumn()
+				if pkCol != nil && pkCol.Name == info.Column && table.PKIndex != nil {
+					// Attempt to convert the literal value to the exact column type
+					var boundVal interface{} = info.Value
+					if binExpr, ok := stmt.Where.(*ast.BinaryExpression); ok {
+						if lit, ok := binExpr.Right.(*ast.Literal); ok {
+							if convertedLit, err := types.ConvertLiteralToSchemaType(lit, pkCol.Type); err == nil {
+								boundVal = convertedLit.Value
+							}
+						}
+					}
+
+					indexScan = &plan.IndexScanNode{
+						TableName:   tableName,
+						ColumnName:  info.Column,
+						Operator:    info.Operator,
+						Bound:       boundVal,
+						Transaction: tx,
+					}
+					indexScan.Metadata()["scan_type"] = "index"
+					indexScan.Metadata()["table"] = tableName
+				}
+			}
+		}
+	}
+
+	var proj *projection.Projection
+	var planAggregates []plan.AggregateSpec
+
+	if len(stmt.Fields) == 1 {
+		if f, ok := stmt.Fields[0].(*ast.Identifier); ok && f.Value == "*" {
+			proj = projection.NewProjection()
+		}
+	}
+
+	if proj == nil {
+		proj = &projection.Projection{
+			SelectAll: false,
+			Columns:   []projection.ColumnRef{},
+		}
+		for _, expr := range stmt.Fields {
+			if f, ok := expr.(*ast.Identifier); ok {
+				proj.Columns = append(proj.Columns, projection.ColumnRef{
+					Table:  f.Table,
+					Column: f.Value,
+					Alias:  f.Alias,
+				})
+			} else if agg, ok := expr.(*ast.AggregateFunctionCall); ok {
+				colName := "*"
+				if agg.Argument != nil {
+					colName = agg.Argument.Value
+				}
+				
+				alias := agg.Alias
+				if alias == "" {
+					alias = fmt.Sprintf("%s(%s)", agg.Function, colName)
+				}
+				
+				planAggregates = append(planAggregates, plan.AggregateSpec{
+					Function: agg.Function,
+					Column:   colName,
+					Alias:    alias,
+				})
+				// For aggregates, we don't put them in the normal projection columns yet.
+			}
+		}
+	}
+
+	var planOrderBy []plan.OrderByClause
+	for _, ob := range stmt.OrderBy {
+		planOrderBy = append(planOrderBy, plan.OrderByClause{
+			Column: ob.Column.Value, // For now just use the column value (no table qualifier check yet)
+			Desc:   ob.Desc,
+		})
+	}
+
+	selectNode := &plan.SelectNode{
+		TableName:   tableName,
+		Predicate:   pred,
+		Projection:  proj,
+		Transaction: tx,
+		OrderBy:     planOrderBy,
+		Limit:       stmt.Limit,
+		Offset:      stmt.Offset,
+		Aggregates:  planAggregates,
+	}
+
+	if indexScan != nil {
+		selectNode.AddChild(indexScan)
+	}
+
+	selectNode.Metadata()["source_table"] = tableName
+	selectNode.Metadata()["has_predicate"] = pred != nil
+	selectNode.Metadata()["estimated_rows"] = 1000 // Scaffold: naive estimate
+
+	// Build JOINs as tree children
+	if len(stmt.Joins) > 0 {
+		// Create base scan node for left table
+		// Note: We don't push down the full filter if there are joins,
+		// because the filter likely contains columns from other tables.
+		leftScan := &plan.ScanNode{
+			TableName:   tableName,
+			Predicate:   nil,
+			Transaction: tx,
+		}
+		leftScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
+		leftScan.Metadata()["table"] = tableName
+
+		currentNode := plan.Node(leftScan)
+
+		for _, joinClause := range stmt.Joins {
+
+			joinTableName := joinClause.RightTable.Value
+			_, ok := db.Tables[joinTableName]
+			if !ok {
+				return nil, fmt.Errorf("right table not found: %s", joinTableName)
+			}
+
+			binExpr, ok := joinClause.OnCondition.(*ast.BinaryExpression)
+			if !ok {
+				return nil, fmt.Errorf("JOIN ON condition must be a comparison expression")
+			}
+			if binExpr.Operator != "=" {
+				return nil, fmt.Errorf("JOIN ON condition must use = operator")
+			}
+
+			leftIdent, ok := binExpr.Left.(*ast.Identifier)
+			if !ok {
+				return nil, fmt.Errorf("left side of JOIN condition must be an identifier")
+			}
+			rightIdent, ok := binExpr.Right.(*ast.Identifier)
+			if !ok {
+				return nil, fmt.Errorf("right side of JOIN condition must be an identifier")
+			}
+
+			var jt join.JoinType
+			switch joinClause.JoinType {
+			case "INNER":
+				jt = join.JoinTypeInner
+			case "LEFT":
+				jt = join.JoinTypeLeft
+			case "RIGHT":
+				jt = join.JoinTypeRight
+			case "FULL":
+				jt = join.JoinTypeFull
+			default:
+				return nil, fmt.Errorf("unsupported JOIN type: %s", joinClause.JoinType)
+			}
+
+			rightScan := &plan.ScanNode{
+				TableName:   joinTableName,
+				Transaction: tx,
+			}
+			rightScan.Metadata()["scan_type"] = "sequential" // Scaffold: always sequential
+			rightScan.Metadata()["table"] = joinTableName
+
+			joinNode := plan.NewJoinNode(
+				currentNode,
+				rightScan,
+				jt,
+				leftIdent.Value,
+				rightIdent.Value,
+			)
+			joinNode.Metadata()["join_algorithm"] = "nested_loop" // Scaffold: always nested loop
+			joinNode.Metadata()["left_table"] = tableName
+			joinNode.Metadata()["right_table"] = joinTableName
+
+			currentNode = joinNode
+		}
+
+		selectNode.AddChild(currentNode)
+	}
+
+	return selectNode, nil
+}
+
+func planInsert(stmt *ast.InsertStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	tableName := stmt.TableName.Value
+	table, ok := db.Tables[tableName]
+	if !ok {
+		return nil, fmt.Errorf("table not found: %s", tableName)
+	}
+
+	cols := stmt.Columns
+	if len(cols) == 0 {
+		cols = make([]*ast.Identifier, len(table.Schema.Columns))
+		for i, col := range table.Schema.Columns {
+			cols[i] = &ast.Identifier{
+				TokenLiteralValue: col.Name,
+				Value:             col.Name,
+			}
+		}
+	}
+
+	if len(cols) != len(stmt.Values) {
+		return nil, fmt.Errorf("column count (%d) does not match value count (%d)", len(cols), len(stmt.Values))
+	}
+
+	row := make(map[string]interface{})
+	for i, col := range cols {
+		lit, ok := stmt.Values[i].(*ast.Literal)
+		if !ok {
+			return nil, fmt.Errorf("only literals supported in VALUES")
+		}
+
+		schemaCol := findColumnInSchema(table, col.Value)
+		if schemaCol != nil {
+			convertedLit, err := types.ConvertLiteralToSchemaType(lit, schemaCol.Type)
+			if err != nil {
+				return nil, fmt.Errorf("column '%s': %w", col.Value, err)
+			}
+			row[col.Value] = convertedLit.Value
+		} else {
+			row[col.Value] = lit.Value
+		}
+	}
+
+	return &plan.InsertNode{
+		TableName:   tableName,
+		RawData:     row,
+		Transaction: tx,
+	}, nil
+}
+
+func planUpdate(stmt *ast.UpdateStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	tableName := stmt.TableName.Value
+	table, ok := db.Tables[tableName]
+	if !ok {
+		return nil, fmt.Errorf("table not found: %s", tableName)
+	}
+
+	updates := make(map[string]interface{})
+	for colName, valueExpr := range stmt.Updates {
+		lit, ok := valueExpr.(*ast.Literal)
+		if !ok {
+			return nil, fmt.Errorf("only literals supported in SET clause")
+		}
+
+		schemaCol := findColumnInSchema(table, colName)
+		if schemaCol != nil {
+			convertedLit, err := types.ConvertLiteralToSchemaType(lit, schemaCol.Type)
+			if err != nil {
+				return nil, fmt.Errorf("column '%s': %w", colName, err)
+			}
+			updates[colName] = convertedLit.Value
+		} else {
+			updates[colName] = lit.Value
+		}
+	}
+
+	var pred func(data.Row) bool
+	if stmt.Where != nil {
+		var err error
+		pred, err = predicate.Build(stmt.Where, table.Schema)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pred = func(data.Row) bool { return true }
+	}
+
+	node := &plan.UpdateNode{
+		TableName:   tableName,
+		Predicate:   pred,
+		Updates:     updates,
+		Transaction: tx,
+	}
+
+	node.Metadata()["table"] = tableName
+	node.Metadata()["has_predicate"] = pred != nil
+
+	return node, nil
+}
+
+func planDelete(stmt *ast.DeleteStatement, db *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	tableName := stmt.TableName.Value
+	_, ok := db.Tables[tableName]
+	if !ok {
+		return nil, fmt.Errorf("table not found: %s", tableName)
+	}
+
+	var pred func(data.Row) bool
+	if stmt.Where != nil {
+		var err error
+		table, ok := db.Tables[tableName]
+		if !ok {
+			return nil, fmt.Errorf("table not found: %s", tableName)
+		}
+		pred, err = predicate.Build(stmt.Where, table.Schema)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		pred = func(data.Row) bool { return true }
+	}
+
+	node := &plan.DeleteNode{
+		TableName:   tableName,
+		Predicate:   pred,
+		Transaction: tx,
+	}
+
+	node.Metadata()["table"] = tableName
+	node.Metadata()["has_predicate"] = pred != nil
+
+	return node, nil
+}
+
+func planCreateTable(stmt *ast.CreateTableStatement, _ *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	// Convert AST ColumnDef to schema.Column
+	columns := make([]schema.Column, len(stmt.Columns))
+	for i, astCol := range stmt.Columns {
+
+		var colType schema.ColumnType
+		switch astCol.Type {
+		case "INT":
+			colType = schema.ColumnTypeInt
+		case "FLOAT":
+			colType = schema.ColumnTypeFloat
+		case "TEXT", "STRING":
+			colType = schema.ColumnTypeText
+		case "BOOL", "BOOLEAN":
+			colType = schema.ColumnTypeBool
+		case "DATE":
+			colType = schema.ColumnTypeDate
+		case "TIME":
+			colType = schema.ColumnTypeTime
+		case "EMAIL":
+			colType = schema.ColumnTypeEmail
+		default:
+			// Default to TEXT if unknown
+			colType = schema.ColumnTypeText
+		}
+
+		columns[i] = schema.Column{
+			Name:          astCol.Name,
+			Type:          colType,
+			PrimaryKey:    astCol.PrimaryKey,
+			NotNull:       astCol.NotNull,
+			Unique:        astCol.Unique,
+			AutoIncrement: astCol.AutoIncrement,
+		}
+	}
+
+	fks := make([]schema.ForeignKey, len(stmt.ForeignKeys))
+	for i, astFk := range stmt.ForeignKeys {
+		fks[i] = schema.ForeignKey{
+			ColumnName:    astFk.ColumnName,
+			RefTableName:  astFk.RefTableName,
+			RefColumnName: astFk.RefColumnName,
+		}
+	}
+
+	return &plan.CreateTableNode{
+		TableName:   stmt.TableName,
+		Columns:     columns,
+		ForeignKeys: fks,
+		Transaction: tx,
+	}, nil
+}
+
+func planDropTable(stmt *ast.DropTableStatement, _ *schema.Database, tx *transaction.Transaction) (plan.Node, error) {
+	return &plan.DropTableNode{
+		TableName:   stmt.TableName,
+		Transaction: tx,
+	}, nil
+}
+
+func findColumnInSchema(table *schema.Table, colName string) *schema.Column {
+	for i := range table.Schema.Columns {
+		if table.Schema.Columns[i].Name == colName {
+			return &table.Schema.Columns[i]
+		}
+	}
+	return nil
+}
+
+func resolveExpressionAliases(expr ast.Expression, aliasMap map[string]string) {
+	if expr == nil {
+		return
+	}
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		if e.Table != "" {
+			if realTable, ok := aliasMap[strings.ToLower(e.Table)]; ok {
+				e.Table = realTable
+			}
+		}
+	case *ast.BinaryExpression:
+		resolveExpressionAliases(e.Left, aliasMap)
+		resolveExpressionAliases(e.Right, aliasMap)
+	case *ast.LogicalExpression:
+		resolveExpressionAliases(e.Left, aliasMap)
+		resolveExpressionAliases(e.Right, aliasMap)
+	}
+}
+
+func validateExpressionTableReferences(expr ast.Expression, validTables map[string]bool) error {
+	if expr == nil {
+		return nil
+	}
+	switch e := expr.(type) {
+	case *ast.Identifier:
+		if e.Table != "" {
+			if !validTables[strings.ToLower(e.Table)] {
+				return fmt.Errorf("table or alias not found: %s", e.Table)
+			}
+		}
+	case *ast.BinaryExpression:
+		if err := validateExpressionTableReferences(e.Left, validTables); err != nil {
+			return err
+		}
+		return validateExpressionTableReferences(e.Right, validTables)
+	case *ast.LogicalExpression:
+		if err := validateExpressionTableReferences(e.Left, validTables); err != nil {
+			return err
+		}
+		return validateExpressionTableReferences(e.Right, validTables)
+	}
+	return nil
+}
